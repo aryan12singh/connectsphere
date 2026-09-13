@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { GalleryVerticalEndIcon } from '@lucide/vue'
 import { onMounted, ref, watch } from 'vue'
+import { loginWithBff } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -19,6 +20,11 @@ const THEME_STORAGE_KEY = 'connectsphere-theme'
 
 const isDark = ref(false)
 const rememberMe = ref(false)
+const email = ref('')
+const password = ref('')
+const isSubmitting = ref(false)
+const successMessage = ref('')
+const errorMessage = ref('')
 
 useHead({
   title: 'Sign in | ConnectSphere',
@@ -46,8 +52,28 @@ watch(isDark, (dark) => {
   localStorage.setItem(THEME_STORAGE_KEY, dark ? 'dark' : 'light')
 })
 
-function handleSubmit() {
-  // Authentication is intentionally outside the scope of the supplied frames.
+async function handleSubmit() {
+  if (isSubmitting.value)
+    return
+
+  isSubmitting.value = true
+  successMessage.value = ''
+  errorMessage.value = ''
+
+  try {
+    const result = await loginWithBff({
+      email: email.value,
+      password: password.value,
+      rememberMe: rememberMe.value,
+    })
+    successMessage.value = `Signed in as ${result.user.email}`
+  }
+  catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : 'Sign in failed. Please try again.'
+  }
+  finally {
+    isSubmitting.value = false
+  }
 }
 </script>
 
@@ -89,10 +115,12 @@ function handleSubmit() {
               <FieldLabel for="email">Email</FieldLabel>
               <Input
                 id="email"
+                v-model="email"
                 name="email"
                 type="email"
                 autocomplete="email"
                 placeholder="m@example.com"
+                :disabled="isSubmitting"
                 required
               />
             </Field>
@@ -106,9 +134,11 @@ function handleSubmit() {
               </div>
               <Input
                 id="password"
+                v-model="password"
                 name="password"
                 type="password"
                 autocomplete="current-password"
+                :disabled="isSubmitting"
                 required
               />
             </Field>
@@ -124,8 +154,14 @@ function handleSubmit() {
       </CardContent>
 
       <CardFooter class="flex flex-col gap-4">
-        <Button type="submit" form="login-form" class="w-full">
-          Sign in
+        <p v-if="successMessage" role="status" class="text-center text-sm text-foreground">
+          {{ successMessage }}
+        </p>
+        <p v-if="errorMessage" role="alert" class="text-center text-sm text-destructive">
+          {{ errorMessage }}
+        </p>
+        <Button type="submit" form="login-form" class="w-full" :disabled="isSubmitting">
+          {{ isSubmitting ? 'Signing in…' : 'Sign in' }}
         </Button>
         <p class="text-center text-sm text-muted-foreground">
           Don’t have an account? <span class="text-foreground">Contact your Event Coordinator.</span>
