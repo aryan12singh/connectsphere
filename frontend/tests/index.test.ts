@@ -107,6 +107,13 @@ describe('organiser dashboard page', () => {
     expect(footer.text()).toContain('View details')
     // CardFooter's [.border-t]:pt-6 outranks p-4 — the frame needs an explicit 16px top override.
     expect(footer.classes()).toContain('pt-4!')
+    // Frame 55:4549 clips the description to one ellipsized line (Tailwind `truncate`,
+    // the shorthand shadcn mandates). The header must stretch its children: the
+    // primitive ships items-start, which sizes children to content so nothing
+    // ever overflows and no ellipsis can appear.
+    expect(wrapper.get('[data-testid="event-card"]').classes()).toContain('min-w-0')
+    expect(wrapper.get('[data-testid="event-card"] [data-slot="card-header"]').classes()).toContain('items-stretch')
+    expect(wrapper.get('[data-testid="event-card"] [data-testid="event-meta"]').classes()).toContain('truncate')
     expect(wrapper.get('[data-testid="event-card"] [data-slot="card-header"]').text()).toContain(draft.title)
   })
 

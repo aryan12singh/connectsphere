@@ -181,16 +181,16 @@ watch(isDark, (dark) => {
         Events data is unavailable right now. Please try again later.
       </p>
       <div v-else-if="filteredEvents.length > 0" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card v-for="event in filteredEvents" :key="event.id" data-testid="event-card" class="gap-4 rounded-[18px] p-0">
-          <CardHeader class="flex flex-col gap-1 px-4 pt-4">
+        <Card v-for="event in filteredEvents" :key="event.id" data-testid="event-card" class="min-w-0 gap-4 rounded-[18px] p-0">
+          <CardHeader class="flex min-w-0 flex-col items-stretch gap-1 px-4 pt-4">
             <p class="text-[10px] font-medium uppercase tracking-[0.5px] text-muted-foreground">
               {{ event.category }}
             </p>
-            <div class="flex flex-col gap-1">
+            <div class="flex min-w-0 flex-col gap-1">
               <h2 class="text-base font-medium leading-6">
                 {{ event.title }}
               </h2>
-              <p class="truncate text-sm text-muted-foreground" :title="event.meta">
+              <p data-testid="event-meta" class="min-w-0 truncate text-sm text-muted-foreground" :title="event.meta">
                 {{ event.meta }}
               </p>
             </div>
