@@ -216,3 +216,21 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node.js / Nuxt
+node_modules/
+.nuxt/
+.output/
+.nitro/
+.data/
+logs/
+
+# Local environment variants
+.env.*
+!.env.example
+
+# Editor and operating-system files
+.DS_Store
+.fleet/
+.idea/
+.vscode/
