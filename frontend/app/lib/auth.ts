@@ -16,6 +16,21 @@ export interface LoginResponse {
   token: string
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/** Runtime contract guard — true for any well-formed login payload, mock or production. */
+export function isLoginResponse(value: unknown): value is LoginResponse {
+  if (!isRecord(value) || !isRecord(value.user) || typeof value.token !== 'string')
+    return false
+  const user = value.user
+  return typeof user.id === 'string'
+    && typeof user.email === 'string'
+    && typeof user.name === 'string'
+    && typeof user.role === 'string'
+}
+
 /**
  * Modular frontend client for the BFF login route.
  * The BFF (`server/api/auth/login.post.ts`) returns mock data for now;

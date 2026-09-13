@@ -1,17 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
-import { loginWithBff } from '../app/lib/auth'
+import { isLoginResponse, loginWithBff } from '../app/lib/auth'
+import { makeLoginResponse, makeUser } from './factories'
 
 describe('loginWithBff (frontend BFF client)', () => {
-  it('posts credentials to the BFF login route and returns the mock user', async () => {
-    const mockResponse = {
-      user: { id: 'mock-user-1', email: 'm@example.com', name: 'Event Organiser', role: 'organiser' },
-      token: 'mock-token-123',
-    }
+  it('posts credentials to the BFF login route and returns the user, whatever the dataset', async () => {
+    const mockResponse = makeLoginResponse('producer@example.com')
     const fetchMock = vi.fn().mockResolvedValue(mockResponse)
 
     const result = await loginWithBff(
       {
-        email: 'm@example.com',
+        email: 'producer@example.com',
         password: 'password123',
         rememberMe: true,
       },
@@ -21,23 +19,41 @@ describe('loginWithBff (frontend BFF client)', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/login', {
       method: 'POST',
-      body: { email: 'm@example.com', password: 'password123', rememberMe: true },
+      body: { email: 'producer@example.com', password: 'password123', rememberMe: true },
     })
     expect(result).toEqual(mockResponse)
   })
 
-  it('throws a friendly error when the BFF rejects the login', async () => {
+  it('surfaces the BFF rejection message unchanged', async () => {
     const fetchMock = vi.fn().mockRejectedValue(
-      Object.assign(new Error('Invalid credentials'), { statusCode: 401 }),
+      Object.assign(new Error('Account locked'), { statusCode: 403 }),
     )
 
     await expect(loginWithBff(
       {
-        email: 'm@example.com',
+        email: 'producer@example.com',
         password: 'wrong',
         rememberMe: false,
       },
       fetchMock as typeof $fetch,
-    )).rejects.toThrow('Invalid credentials')
+    )).rejects.toThrow('Account locked')
+  })
+})
+
+describe('isLoginResponse (BFF contract)', () => {
+  it('accepts any well-formed login payload, not just the mock user', () => {
+    expect(isLoginResponse(makeLoginResponse())).toBe(true)
+    expect(isLoginResponse({
+      user: makeUser({ email: 'real@venue.sg', role: 'coordinator' }),
+      token: 'prod-jwt',
+    })).toBe(true)
+  })
+
+  it('rejects malformed payloads', () => {
+    expect(isLoginResponse(null)).toBe(false)
+    expect(isLoginResponse({})).toBe(false)
+    expect(isLoginResponse({ user: makeUser() })).toBe(false)
+    expect(isLoginResponse({ user: { ...makeUser(), email: 42 }, token: 't' })).toBe(false)
+    expect(isLoginResponse({ user: makeUser(), token: 't', extra: 'ok' })).toBe(true)
   })
 })
