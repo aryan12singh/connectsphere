@@ -60,7 +60,7 @@ function handleSubmit() {
             <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
               <GalleryVerticalEndIcon class="size-3.5" aria-hidden="true" />
             </span>
-            <span class="truncate text-sm font-semibold">ConnectSphere</span>
+            <span class="truncate text-sm font-medium">ConnectSphere</span>
           </div>
 
           <div class="flex shrink-0 items-center gap-2">

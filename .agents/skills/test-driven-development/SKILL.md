@@ -1,0 +1,49 @@
+---
+name: test-driven-development
+description: Use when implementing or changing application behavior, including features, bug fixes, refactors, UI interactions, and regressions, before writing production code.
+---
+
+# Test-Driven Development
+
+## Core rule
+
+Write one behavioral test, run it, and observe the expected failure before writing production code. Then write the smallest implementation that passes and refactor only while all tests remain green.
+
+```
+RED → verify the failure → GREEN → verify the suite → REFACTOR → repeat
+```
+
+Production code written before its test is not TDD. Remove it and restart from the failing test; do not keep it open, stash it as a reference, or adapt it piecemeal. The only exception is explicit approval from the human responsible for the work.
+
+## Workflow
+
+1. Define one externally observable behavior and the production change that should make its test fail.
+2. Write the smallest test for that behavior. Derive expected values independently from the implementation.
+3. Run the focused test. RED is valid only when the assertion fails because the behavior is missing or wrong—not because of a syntax, import, fixture, or environment error.
+4. Write only enough production code to make the test pass. Do not add untested options, abstractions, or adjacent improvements.
+5. Run the focused test and relevant suite. Fix production code when the behavior is wrong; change the test only when the specified behavior was wrong.
+6. Refactor names, structure, and duplication while tests stay green. Start the next behavior with a new RED test.
+
+## Test quality
+
+- Test outcomes and public contracts rather than implementation details.
+- Give each test a name that identifies the regression it catches.
+- Prefer real collaborators. Mock only slow, nondeterministic, destructive, or external boundaries, and assert the system’s behavior rather than the mock’s existence.
+- Cover meaningful success, boundary, invalid-input, and failure cases.
+- Keep test-only helpers out of production APIs.
+- For UI work, use the lowest suitable layer: pure logic tests, component tests, accessibility assertions, visual regression, or browser end-to-end tests. Manual browser review complements automated regression coverage; it does not replace it.
+- Reproduce every reported bug with a failing regression test before fixing it.
+
+## Red flags
+
+Stop and restart the cycle when reasoning includes:
+
+- “It is too small or urgent to test.”
+- “I will add tests afterward.”
+- “The existing implementation can remain as a reference.”
+- “Manual or browser QA is enough.”
+- “The test passed on its first run.”
+
+## Completion gate
+
+Before reporting completion, confirm that each behavior had an observed RED failure, focused and full relevant tests pass, type/build/static checks pass when applicable, test output has no unexplained errors or warnings, and user-visible behavior was verified at the appropriate integration level.
