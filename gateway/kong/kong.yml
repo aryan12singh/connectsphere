@@ -1,0 +1,60 @@
+_format_version: "3.0"
+
+# Composite / saga-triggering endpoints -> orchestrator-service.
+# Everything else -> the owning domain service directly.
+
+services:
+  - name: orchestrator-service
+    url: http://orchestrator-service:3000
+    routes:
+      - name: decide-event-request
+        paths: ["~/event-requests/[^/]+/decision$"]
+        methods: ["POST"]
+      - name: decide-venue-booking
+        paths: ["~/venue-bookings/[^/]+/decision$"]
+        methods: ["POST"]
+      - name: confirm-event
+        paths: ["~/events/[^/]+/confirm$"]
+        methods: ["POST"]
+
+  - name: user-service
+    url: http://user-service:3000
+    routes:
+      - name: user-routes
+        paths: ["/users"]
+
+  - name: event-service
+    url: http://event-service:3000
+    routes:
+      - name: event-routes
+        paths: ["/event-requests", "/events"]
+
+  - name: venue-service
+    url: http://venue-service:3000
+    routes:
+      - name: venue-routes
+        paths: ["/venues"]
+
+  - name: booking-service
+    url: http://booking-service:3000
+    routes:
+      - name: booking-routes
+        paths: ["/venue-bookings"]
+
+  - name: attendance-service
+    url: http://attendance-service:3000
+    routes:
+      - name: attendance-routes
+        paths: ["/attendances"]
+
+  - name: messaging-service
+    url: http://messaging-service:3000
+    routes:
+      - name: messaging-routes
+        paths: ["/message-threads"]
+
+  - name: notification-service
+    url: http://notification-service:3000
+    routes:
+      - name: notification-routes
+        paths: ["/notifications"]

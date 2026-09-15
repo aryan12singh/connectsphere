@@ -1,0 +1,128 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: connectsphere
+      POSTGRES_PASSWORD: connectsphere
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh
+
+  pgadmin:
+    image: dpage/pgadmin4
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@connectsphere.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  kong:
+    image: kong:3.6
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+    volumes:
+      - ../gateway/kong/kong.yml:/kong/kong.yml
+    ports:
+      - "8000:8000" # proxy — this is what the frontend and Swagger UI hit
+      - "8001:8001" # admin API
+    depends_on:
+      - user-service
+      - event-service
+      - venue-service
+      - booking-service
+      - attendance-service
+      - messaging-service
+      - notification-service
+      - orchestrator-service
+
+  user-service:
+    build: ../services/user-service
+    environment:
+      DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/user_db
+    depends_on:
+      - postgres
+
+  event-service:
+    build: ../services/event-service
+    environment:
+      DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/event_db
+    depends_on:
+      - postgres
+
+  venue-service:
+    build: ../services/venue-service
+    environment:
+      DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/venue_db
+    depends_on:
+      - postgres
+
+  booking-service:
+    build: ../services/booking-service
+    environment:
+      DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/booking_db
+    depends_on:
+      - postgres
+
+  attendance-service:
+    build: ../services/attendance-service
+    environment:
+      DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/attendance_db
+    depends_on:
+      - postgres
+
+  messaging-service:
+    build: ../services/messaging-service
+    environment:
+      DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/messaging_db
+    depends_on:
+      - postgres
+
+  notification-service:
+    build: ../services/notification-service
+    environment:
+      DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/notification_db
+      RABBITMQ_URL: amqp://rabbitmq:5672
+    depends_on:
+      - postgres
+      - rabbitmq
+
+  orchestrator-service:
+    build: ../services/orchestrator-service
+    environment:
+      DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/orchestrator_db
+      USER_SERVICE_URL: http://user-service:3000
+      EVENT_SERVICE_URL: http://event-service:3000
+      VENUE_SERVICE_URL: http://venue-service:3000
+      BOOKING_SERVICE_URL: http://booking-service:3000
+      ATTENDANCE_SERVICE_URL: http://attendance-service:3000
+      MESSAGING_SERVICE_URL: http://messaging-service:3000
+      NOTIFICATION_SERVICE_URL: http://notification-service:3000
+    depends_on:
+      - postgres
+      - user-service
+      - event-service
+      - venue-service
+      - booking-service
+      - notification-service
+
+volumes:
+  pgdata:
