@@ -1,5 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createApp, createError, defineEventHandler, getCookie, toWebHandler } from 'h3'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { isLoginResponse, isUserRole, loginWithBff } from '../../frontend/app/lib/auth'
+
+const authMiddlewareMocks = vi.hoisted(() => ({
+  navigateToLogin: vi.fn(),
+  sessionFetch: vi.fn(),
+}))
+
+mockNuxtImport('useRequestFetch', () => () => authMiddlewareMocks.sessionFetch)
+mockNuxtImport('navigateTo', () => authMiddlewareMocks.navigateToLogin)
 
 // CS-10 — single file per story (IS212/IEEE 829). One describe per AC, all TCs together.
 // Execution log is generated deterministically via tests/scripts/compile-test-run.ts → test-runs/<date-time>.md
@@ -28,9 +38,52 @@ describe('CS-10 — TC-CS10-02 invalid credentials generic, no session', () => {
 })
 
 describe('CS-10 — TC-CS10-03 unauthenticated denied server-side', () => {
-  it('BFF denies unauthenticated session check (401) — interface directs to login', async () => {
-    expect(isLoginResponse(null)).toBe(false)
-    expect(true).toBe(true)
+  it('GET /api/auth/session without a session cookie returns 401 Unauthorized', async () => {
+    vi.stubGlobal('defineEventHandler', defineEventHandler)
+    vi.stubGlobal('getCookie', getCookie)
+    vi.stubGlobal('createError', createError)
+
+    try {
+      const { default: sessionHandler } = await import('../../frontend/server/api/auth/session.get')
+      const app = createApp()
+      app.use('/api/auth/session', sessionHandler)
+
+      const response = await toWebHandler(app)(
+        new Request('http://localhost/api/auth/session'),
+      )
+
+      expect(response.status).toBe(401)
+      await expect(response.json()).resolves.toMatchObject({
+        statusCode: 401,
+        statusMessage: 'Unauthorized',
+      })
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('CS-10 — TC-CS10-07 unauthenticated interface directs to login', () => {
+  it('redirects a cookie-less visit to a protected route to /login', async () => {
+    const middlewareModules = import.meta.glob('../../frontend/app/middleware/auth.global.ts')
+    const loadAuthMiddleware = middlewareModules['../../frontend/app/middleware/auth.global.ts']
+
+    expect(loadAuthMiddleware, 'global authentication middleware is not registered').toBeTypeOf('function')
+
+    authMiddlewareMocks.sessionFetch.mockReset().mockRejectedValue(
+      Object.assign(new Error('Unauthorized'), { statusCode: 401 }),
+    )
+    authMiddlewareMocks.navigateToLogin.mockReset().mockResolvedValue('/login')
+
+    const { default: authMiddleware } = await loadAuthMiddleware!() as {
+      default: (to: { path: string }) => Promise<unknown>
+    }
+
+    await authMiddleware({ path: '/' })
+
+    expect(authMiddlewareMocks.sessionFetch).toHaveBeenCalledWith('/api/auth/session')
+    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/login')
   })
 })
 

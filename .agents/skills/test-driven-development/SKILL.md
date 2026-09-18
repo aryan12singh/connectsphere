@@ -15,6 +15,18 @@ RED → verify the failure → GREEN → verify the suite → REFACTOR → repea
 
 Production code written before its test is not TDD. Remove it and restart from the failing test; do not keep it open, stash it as a reference, or adapt it piecemeal. The only exception is explicit approval from the human responsible for the work.
 
+## Requirements own the tests
+
+Once a test is accepted as representing a requirement or acceptance criterion, treat it as a requirements-owned contract rather than implementation scaffolding.
+
+- Do not delete, skip, weaken, broaden, or rewrite an accepted test merely to make changed production code pass.
+- When production code and an accepted test disagree, change the production code by default.
+- Change an accepted test only when the linked requirement or acceptance criterion changes, when evidence shows the test never represented that requirement correctly, or when test infrastructure is defective without changing product behavior.
+- When a requirement changes, update the requirement record, human-readable test case, automated test, and expected result together so the reason is traceable.
+- A correction to an invalid test must strengthen its connection to the existing requirement; it must not relax the requirement.
+- Never use tautologies, unconditional assertions such as `expect(true).toBe(true)`, mocks that simply replay the expected outcome, or helper-only assertions when the requirement names a real system boundary.
+- For HTTP, persistence, authentication, authorization, and other boundary requirements, exercise the real boundary handler or the closest deterministic in-process adapter and assert the externally observable result.
+
 ## Workflow
 
 1. Define one externally observable behavior and the production change that should make its test fail.
