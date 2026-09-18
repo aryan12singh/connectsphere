@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -19,7 +18,6 @@ import { Switch } from '@/components/ui/switch'
 const THEME_STORAGE_KEY = 'connectsphere-theme'
 
 const isDark = ref(false)
-const rememberMe = ref(false)
 const email = ref('')
 const password = ref('')
 const isSubmitting = ref(false)
@@ -64,9 +62,11 @@ async function handleSubmit() {
     const result = await loginWithBff({
       email: email.value,
       password: password.value,
-      rememberMe: rememberMe.value,
     })
     successMessage.value = `Signed in as ${result.user.email}`
+    // Single homepage RBAC (secure): all roles land on "/" — BFF filters data server-side from session.
+    // No per-role redirect path; role is never trusted client-side for authorization.
+    await navigateTo('/')
   }
   catch (error) {
     errorMessage.value = error instanceof Error ? error.message : 'Sign in failed. Please try again.'
@@ -143,12 +143,6 @@ async function handleSubmit() {
               />
             </Field>
 
-            <Field orientation="horizontal" class="gap-2">
-              <Checkbox id="remember-me" v-model="rememberMe" />
-              <FieldLabel for="remember-me" class="font-normal">
-                Remember me
-              </FieldLabel>
-            </Field>
           </FieldGroup>
         </form>
       </CardContent>

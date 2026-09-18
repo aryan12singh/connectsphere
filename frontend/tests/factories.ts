@@ -39,7 +39,7 @@ export function makeUser(overrides: Partial<LoginResponse['user']> = {}): LoginR
     id: `test-user-${seq}`,
     email: `user${seq}@example.com`,
     name: 'Test Organiser',
-    role: 'organiser',
+    role: 'EVENT_ORGANISER',
     ...overrides,
   }
 }

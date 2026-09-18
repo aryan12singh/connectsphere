@@ -3,5 +3,6 @@ import { defineVitestConfig } from '@nuxt/test-utils/config'
 export default defineVitestConfig({
   test: {
     environment: 'nuxt',
+    include: ['tests/**/*.{test,spec}.{ts,js}', '../tests/specs/**/*.{test,spec}.{ts,js}', '../tests/specs/*.{test,spec}.{ts,js}'],
   },
 })

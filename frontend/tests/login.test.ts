@@ -53,7 +53,6 @@ describe('login page', () => {
     expect(loginMock).toHaveBeenCalledWith({
       email: session.user.email,
       password: 'password123',
-      rememberMe: false,
     })
     expect(wrapper.get('[role="status"]').text()).toContain(`Signed in as ${session.user.email}`)
   })

@@ -1,14 +1,29 @@
+export type FrontendRole = 'EVENT_ORGANISER' | 'EVENT_COORDINATOR' | 'VENUE_STAFF' | 'ATTENDEE' | 'TECHNICAL_SUPPORT_STAFF'
+export type BackendRole = 'EVENT_ORGANISER' | 'EVENT_COORDINATOR' | 'VENUE_STAFF' | 'ATTENDEE' | 'ADMIN'
+export type UserRole = FrontendRole
+
+export const ROLE_HOME: Record<UserRole, string> = {
+  EVENT_ORGANISER: '/',
+  EVENT_COORDINATOR: '/coordinator',
+  VENUE_STAFF: '/venues',
+  ATTENDEE: '/attendee',
+  TECHNICAL_SUPPORT_STAFF: '/support',
+}
+
+export function isUserRole(value: unknown): value is UserRole {
+  return typeof value === 'string' && (Object.keys(ROLE_HOME) as UserRole[]).includes(value as UserRole)
+}
+
 export interface LoginPayload {
   email: string
   password: string
-  rememberMe: boolean
 }
 
 export interface MockUser {
   id: string
   email: string
   name: string
-  role: string
+  role: UserRole
 }
 
 export interface LoginResponse {
@@ -28,7 +43,7 @@ export function isLoginResponse(value: unknown): value is LoginResponse {
   return typeof user.id === 'string'
     && typeof user.email === 'string'
     && typeof user.name === 'string'
-    && typeof user.role === 'string'
+    && isUserRole(user.role)
 }
 
 /**

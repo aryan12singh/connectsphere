@@ -11,7 +11,6 @@ describe('loginWithBff (frontend BFF client)', () => {
       {
         email: 'producer@example.com',
         password: 'password123',
-        rememberMe: true,
       },
       fetchMock as typeof $fetch,
     )
@@ -19,7 +18,7 @@ describe('loginWithBff (frontend BFF client)', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/login', {
       method: 'POST',
-      body: { email: 'producer@example.com', password: 'password123', rememberMe: true },
+      body: { email: 'producer@example.com', password: 'password123' },
     })
     expect(result).toEqual(mockResponse)
   })
@@ -33,7 +32,6 @@ describe('loginWithBff (frontend BFF client)', () => {
       {
         email: 'producer@example.com',
         password: 'wrong',
-        rememberMe: false,
       },
       fetchMock as typeof $fetch,
     )).rejects.toThrow('Account locked')
@@ -44,7 +42,7 @@ describe('isLoginResponse (BFF contract)', () => {
   it('accepts any well-formed login payload, not just the mock user', () => {
     expect(isLoginResponse(makeLoginResponse())).toBe(true)
     expect(isLoginResponse({
-      user: makeUser({ email: 'real@venue.sg', role: 'coordinator' }),
+      user: makeUser({ email: 'real@venue.sg', role: 'EVENT_COORDINATOR' }),
       token: 'prod-jwt',
     })).toBe(true)
   })
