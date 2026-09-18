@@ -1,0 +1,12 @@
+# CS-10 Test Execution — 2026-09-16 23:37:37
+
+> Yellow section — one deterministic file per run (template per IS212 picture). Generated from vitest results.
+
+| Test Case ID | Actual Result | Pass/Fail/Not Executed/Blocked | Remarks | Date of Execution |
+|---|---|---|---|---|
+| TC-CS10-01 | As expected — see TC scenario | Pass |  | 2026-09-16 23:37:37 |
+| TC-CS10-02 | As expected — see TC scenario | Pass |  | 2026-09-16 23:37:37 |
+| TC-CS10-03 | As expected — see TC scenario | Pass |  | 2026-09-16 23:37:37 |
+| TC-CS10-04 | As expected — see TC scenario | Pass |  | 2026-09-16 23:37:37 |
+| TC-CS10-05 | As expected — see TC scenario | Pass |  | 2026-09-16 23:37:37 |
+| TC-CS10-06 | As expected — see TC scenario | Pass |  | 2026-09-16 23:37:37 |
