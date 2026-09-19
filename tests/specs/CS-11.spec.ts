@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { createApp, toWebHandler } from 'h3'
+import { mountSuspended } from '@nuxt/test-utils/runtime'
+
+async function mountNewRequestPage() {
+  const pageModules = import.meta.glob('../../frontend/app/pages/requests/new.vue')
+  const loadPage = pageModules['../../frontend/app/pages/requests/new.vue']
+
+  expect(loadPage, 'new-request page is not implemented').toBeTypeOf('function')
+
+  const { default: NewRequestPage } = await loadPage!() as { default: Parameters<typeof mountSuspended>[0] }
+  return await mountSuspended(NewRequestPage)
+}
 
 // CS-11 — single file per story (IS212/IEEE 829). One describe per TC, all TCs together.
 // Story: As an Event Organiser, I want to submit my event requirements and view the
@@ -268,5 +279,64 @@ describe('CS-11 — TC-CS11-19 CS-11 does not persist incomplete drafts', () => 
   it('rejects incomplete submits with validation only and creates no draft', async () => {
     const response = await postEventRequest({ eventName: 'Partial' })
     expect(response.status).toBe(422)
+  })
+})
+
+describe('CS-11 — TC-CS11-01 new-request form renders every Figma information category', () => {
+  it('renders all sections, labels and controls from frame 2044:4675', async () => {
+    const wrapper = await mountNewRequestPage()
+    const text = wrapper.text()
+
+    expect(wrapper.get('h1').text()).toBe('New event request')
+    for (const label of [
+      'Event name',
+      'Purpose',
+      'Description',
+      'Proposed date',
+      'Expected attendance',
+      'Start time',
+      'End time',
+      'Time zone',
+      'Minimum capacity',
+      'Preferred layout',
+      'Venue type',
+      'Venue / location requirements',
+      'Accessibility needs',
+      'Accessibility details',
+      'Equipment & technical requirements',
+      'Additional technical details',
+    ]) expect(text).toContain(label)
+
+    for (const option of [
+      'Wheelchair accessible entrance & seating',
+      'Hearing loop / assisted listening',
+      'Accessible restrooms nearby',
+      'No known accessibility needs',
+      'Other accessibility needs',
+      'Projector & screen',
+      'PA system & microphones',
+      'Staging / podium',
+      'Live streaming setup',
+      'No equipment required',
+      'Other equipment / technical need',
+    ]) expect(text).toContain(option)
+
+    expect(wrapper.get('input[type="date"]')).toBeTruthy()
+    expect(wrapper.get('input[type="number"]')).toBeTruthy()
+    expect(wrapper.get('button[type="submit"]').text()).toContain('Submit request')
+    expect(wrapper.text()).toContain('Save draft')
+  })
+
+  it('shows the full status card on desktop only and a sticky action bar on mobile', async () => {
+    const wrapper = await mountNewRequestPage()
+
+    const statusCard = wrapper.get('[aria-label="Request status"]')
+    expect(statusCard.classes()).toContain('hidden')
+
+    const mobileBar = wrapper.get('[data-testid="mobile-action-bar"]')
+    expect(mobileBar.classes()).toContain('lg:hidden')
+    expect(mobileBar.classes()).toContain('fixed')
+    expect(mobileBar.text()).toContain('Save draft')
+    expect(mobileBar.text()).toContain('Submit request')
   })
 })
