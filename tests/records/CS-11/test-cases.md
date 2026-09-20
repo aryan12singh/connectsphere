@@ -41,3 +41,11 @@ Implement one RED→GREEN slice at a time:
 7. TC-CS11-01/06/19 — cross-cutting UI, lead-time and scope checks.
 
 Do not convert blocked cases into passing placeholders, tautologies or mocks that merely return the asserted result. A case becomes executable only when its listed contract dependency is agreed; once accepted, its expected result changes only with a traceable requirement change.
+
+## Agreed BFF surface (2026-09-20 11:00:00)
+
+`POST/PUT/GET /api/events` is the canonical CS-11 BFF surface (single resource, uppercase `EventRequestStatus` + `DRAFT`; `NEW` client-only). The `/api/event-requests/*` cases above stay until the backend contract lands. New automated coverage (all in `tests/specs/CS-11.spec.ts`): TC-CS11-20 (draft/submit create, 422, 401), TC-CS11-21 (PUT submit-transition, edit-save, 403, 404), TC-CS11-22 (create-form submit/draft/error flow returns home refreshed). New-request form cards render flat (no card chrome; Request-status card unchanged); dashboard cards link to `/requests/:id`.
+
+## Unified form template (2026-09-20 12:00:00)
+
+Create (`/requests/new`) and detail (`/requests/:id`) render one shared `RequestFormPage` shell (header + optional coordinator banner + reusable fields + one responsive action grid). The create page's separate desktop status card and sticky mobile bar are removed; TC-CS11-01 UI coverage now asserts the single action bar. Action rules: draft → Save changes + Submit request; non-draft (except REJECTED) → single Save and Submit in edit mode; REJECTED → read-only, no edit.

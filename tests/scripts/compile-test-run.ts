@@ -51,8 +51,10 @@ function loadResults(storyPrefix: string): Map<string, { status: string, actual:
 
 const storyPrefix = story.replace('-', '')
 const tcOrder = story === 'CS-10'
-  ? ['TC-CS10-01', 'TC-CS10-02', 'TC-CS10-03', 'TC-CS10-04', 'TC-CS10-05', 'TC-CS10-06', 'TC-CS10-07']
-  : Array.from({ length: 19 }, (_, i) => `TC-${storyPrefix}-${String(i + 1).padStart(2, '0')}`)
+  ? ['TC-CS10-01', 'TC-CS10-02', 'TC-CS10-03', 'TC-CS10-04', 'TC-CS10-05', 'TC-CS10-06', 'TC-CS10-07', 'TC-CS10-08']
+  : story === 'CS-30'
+    ? ['TC-CS30-01', 'TC-CS30-02', 'TC-CS30-03', 'TC-CS30-04', 'TC-CS30-05']
+    : Array.from({ length: 19 }, (_, i) => `TC-${storyPrefix}-${String(i + 1).padStart(2, '0')}`)
 const results = loadResults(storyPrefix)
 
 let md = `# ${story} Test Execution — ${display}\n\n`

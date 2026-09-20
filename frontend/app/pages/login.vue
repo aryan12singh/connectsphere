@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { GalleryVerticalEndIcon } from '@lucide/vue'
 import { onMounted, ref, watch } from 'vue'
-import { loginWithBff } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -17,6 +16,7 @@ import { Switch } from '@/components/ui/switch'
 
 const THEME_STORAGE_KEY = 'connectsphere-theme'
 
+const { fetch: refreshSession } = useUserSession()
 const isDark = ref(false)
 const email = ref('')
 const password = ref('')
@@ -26,6 +26,10 @@ const errorMessage = ref('')
 
 useHead({
   title: 'Sign in | ConnectSphere',
+})
+
+definePageMeta({
+  layout: false,
 })
 
 function applyTheme(dark: boolean) {
@@ -59,13 +63,23 @@ async function handleSubmit() {
   errorMessage.value = ''
 
   try {
-    const result = await loginWithBff({
-      email: email.value,
-      password: password.value,
+    const { data, error: signInError } = await useFetch('/api/auth', {
+      method: 'POST',
+      body: {
+        email: email.value,
+        password: password.value,
+      },
     })
-    successMessage.value = `Signed in as ${result.user.email}`
-    // Single homepage RBAC (secure): all roles land on "/" — BFF filters data server-side from session.
+    const signedInEmail = data.value?.user?.email
+    if (signInError.value || typeof signedInEmail !== 'string') {
+      errorMessage.value = 'Invalid credentials'
+      return
+    }
+    successMessage.value = `Signed in as ${signedInEmail}`
+    // Sealed session lives server-side: refresh the client session state,
+    // then land on the single homepage — BFF filters data server-side.
     // No per-role redirect path; role is never trusted client-side for authorization.
+    await refreshSession()
     await navigateTo('/')
   }
   catch (error) {
