@@ -151,11 +151,12 @@ describe('CS-10 — TC-CS10-07 unauthenticated interface directs to login', () =
     expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/login')
   })
 
-  it('lets an authenticated visit through without redirecting', async () => {
+  it('lets an authenticated organiser visit through without redirecting', async () => {
     const middlewareModules = import.meta.glob('../../frontend/app/middleware/auth.global.ts')
     const loadAuthMiddleware = middlewareModules['../../frontend/app/middleware/auth.global.ts']
 
     authMiddlewareMocks.loggedIn.value = true
+    authMiddlewareMocks.sessionUser.value = { id: 'u-organiser', email: 'organiser@example.com', name: 'Organiser One', role: 'EVENT_ORGANISER' }
     authMiddlewareMocks.sessionFetch.mockReset()
     authMiddlewareMocks.navigateToLogin.mockReset()
 
@@ -167,6 +168,42 @@ describe('CS-10 — TC-CS10-07 unauthenticated interface directs to login', () =
 
     expect(authMiddlewareMocks.sessionFetch).not.toHaveBeenCalled()
     expect(authMiddlewareMocks.navigateToLogin).not.toHaveBeenCalled()
+  })
+
+  it('lets an authenticated coordinator visit through without redirecting', async () => {
+    const middlewareModules = import.meta.glob('../../frontend/app/middleware/auth.global.ts')
+    const loadAuthMiddleware = middlewareModules['../../frontend/app/middleware/auth.global.ts']
+
+    authMiddlewareMocks.loggedIn.value = true
+    authMiddlewareMocks.sessionUser.value = { id: 'u-coordinator', email: 'coordinator@example.com', name: 'Coordinator One', role: 'EVENT_COORDINATOR' }
+    authMiddlewareMocks.sessionFetch.mockReset()
+    authMiddlewareMocks.navigateToLogin.mockReset().mockResolvedValue('/login')
+
+    const { default: authMiddleware } = await loadAuthMiddleware!() as {
+      default: (to: { path: string }) => Promise<unknown>
+    }
+
+    await authMiddleware({ path: '/' })
+
+    expect(authMiddlewareMocks.navigateToLogin).not.toHaveBeenCalled()
+  })
+
+  it('redirects other authenticated roles to /login for now', async () => {
+    const middlewareModules = import.meta.glob('../../frontend/app/middleware/auth.global.ts')
+    const loadAuthMiddleware = middlewareModules['../../frontend/app/middleware/auth.global.ts']
+
+    authMiddlewareMocks.loggedIn.value = true
+    authMiddlewareMocks.sessionUser.value = { id: 'u-attendee', email: 'attendee@example.com', name: 'Attendee One', role: 'ATTENDEE' }
+    authMiddlewareMocks.sessionFetch.mockReset()
+    authMiddlewareMocks.navigateToLogin.mockReset().mockResolvedValue('/login')
+
+    const { default: authMiddleware } = await loadAuthMiddleware!() as {
+      default: (to: { path: string }) => Promise<unknown>
+    }
+
+    await authMiddleware({ path: '/' })
+
+    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/login')
   })
 })
 

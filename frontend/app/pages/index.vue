@@ -7,8 +7,16 @@ import { Card, CardFooter, CardHeader } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 const activeTab = ref('all')
 
+const { user } = useUserSession()
+// Coordinators work from the review queue; unknown roles fall through to the
+// dashboard here — the route middleware and every BFF route enforce the real
+// gate server-side.
+const isCoordinator = computed(() => user.value?.role === 'EVENT_COORDINATOR')
+
+const pageTitle = computed(() => isCoordinator.value ? 'Review queue | ConnectSphere' : 'Your events | ConnectSphere')
+
 useHead({
-  title: 'Your events | ConnectSphere',
+  title: pageTitle,
 })
 
 // useFetch resolves relative URLs through the request-scoped fetcher, which
@@ -106,7 +114,8 @@ function badgeFor(status: EventStatus) {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-[90rem] px-5 py-6 md:px-8 md:py-8">
+  <ReviewQueue v-if="isCoordinator" />
+  <main v-else class="mx-auto w-full max-w-[90rem] px-5 py-6 md:px-8 md:py-8">
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">

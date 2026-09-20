@@ -181,9 +181,9 @@ export function describeEvent(record: Pick<EventRequestRecord, 'proposedDate' | 
 }
 
 /** Dashboard rows derived live from records — writes stay visible. */
-export function createEventsResponse(): { events: OrganiserEvent[] } {
+export function createEventsResponse(records = listRequestRecords()): { events: OrganiserEvent[] } {
   return {
-    events: listRequestRecords().map(record => ({
+    events: records.map(record => ({
       id: record.id,
       category: (record as Partial<SeedRequest>).category ?? 'CUSTOM EVENT',
       title: record.eventName,

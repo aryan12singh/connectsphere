@@ -13,6 +13,12 @@ const detailMocks = vi.hoisted(() => ({
   coordinatorResponse: { value: null as unknown },
   putResponse: { value: null as unknown },
   putError: { value: null as unknown },
+  queueResponse: { value: null as unknown },
+  queueError: { value: null as unknown },
+  queueRefresh: vi.fn(),
+  decisionResponse: { value: null as unknown },
+  decisionError: { value: null as unknown },
+  sessionUser: { value: null as null | { id: string, email: string, name: string, role: string } },
   navigateTo: vi.fn(),
   refreshNuxtData: vi.fn(),
 }))
@@ -21,10 +27,22 @@ mockNuxtImport('useFetch', () => (url: unknown, init?: { method?: string }) => {
   detailMocks.useFetch(url, init)
   if (typeof url === 'string' && url.startsWith('/api/users/'))
     return { data: detailMocks.coordinatorResponse, error: { value: null } }
+  if (typeof url === 'string' && url === '/api/review-queue')
+    return { data: detailMocks.queueResponse, error: detailMocks.queueError, refresh: detailMocks.queueRefresh }
+  if (typeof url === 'string' && url === '/api/review-queue')
+    return { data: detailMocks.queueResponse, error: detailMocks.queueError, refresh: detailMocks.queueRefresh }
+  if (typeof url === 'string' && url.includes('/decision'))
+    return { data: detailMocks.decisionResponse, error: detailMocks.decisionError }
   if ((init as { method?: string } | undefined)?.method === 'PUT')
     return { data: detailMocks.putResponse, error: detailMocks.putError }
   return { data: detailMocks.eventResponse, error: detailMocks.eventError }
 })
+mockNuxtImport('useUserSession', () => () => ({
+  loggedIn: { value: true },
+  user: detailMocks.sessionUser,
+  fetch: vi.fn().mockResolvedValue(undefined),
+  clear: vi.fn().mockResolvedValue(undefined),
+}))
 mockNuxtImport('useRoute', () => () => ({ params: { id: 'req-1' } }))
 mockNuxtImport('navigateTo', () => detailMocks.navigateTo)
 mockNuxtImport('refreshNuxtData', () => detailMocks.refreshNuxtData)
@@ -446,5 +464,320 @@ describe('CS-30 — TC-CS30-06 edit actions follow request status', () => {
     const wrapper = await mountDetailPage()
     expect(wrapper.findAll('button').filter(b => b.text().includes('Edit request')).length).toBe(0)
     expect(wrapper.find('fieldset[disabled]').exists()).toBe(true)
+  })
+})
+
+const COORDINATOR_USER = { id: 'u-coordinator', email: 'coordinator@example.com', name: 'Coordinator One', role: 'EVENT_COORDINATOR' }
+
+describe('CS-30 — TC-CS30-06 review queue is coordinator-only', () => {
+  it('GET returns submitted requests with organiser contact for coordinators', async () => {
+    stubBffGlobals()
+    try {
+      const cookie = await sealBffCookie(COORDINATOR_USER)
+      const { default: queueHandler } = await import('../../frontend/server/api/review-queue.get') as unknown as {
+        default: (event: never) => Promise<{ requests: Record<string, unknown>[] }>
+      }
+      const body = await queueHandler(mockBffEvent({ cookie }).event)
+      expect(body.requests.length > 0).toBe(true)
+      expect(body.requests.every(item => item.status === 'SUBMITTED')).toBe(true)
+      const first = body.requests[0]!
+      expect(first).toHaveProperty('id')
+      expect(first).toHaveProperty('title')
+      expect(first).toMatchObject({ organiser: { name: expect.any(String) } })
+      expect(typeof first.submittedAt).toBe('string')
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('GET denies organisers with 403', async () => {
+    stubBffGlobals()
+    try {
+      const cookie = await sealBffCookie(ORGANISER_USER)
+      const { default: queueHandler } = await import('../../frontend/server/api/review-queue.get') as unknown as {
+        default: (event: never) => Promise<unknown>
+      }
+      await expect(queueHandler(mockBffEvent({ cookie }).event)).rejects.toMatchObject({ statusCode: 403 })
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('GET denies unauthenticated callers with 401', async () => {
+    stubBffGlobals()
+    try {
+      const { default: queueHandler } = await import('../../frontend/server/api/review-queue.get') as unknown as {
+        default: (event: never) => Promise<unknown>
+      }
+      await expect(queueHandler(mockBffEvent({}).event)).rejects.toMatchObject({ statusCode: 401 })
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('CS-30 — TC-CS30-07 coordinator decisions transition submitted requests', () => {
+  it('approve moves SUBMITTED to APPROVED', async () => {
+    stubBffGlobals()
+    try {
+      const cookie = await sealBffCookie(COORDINATOR_USER)
+      const { default: decideHandler } = await import('../../frontend/server/api/events/[id]/decision.post') as unknown as {
+        default: (event: never) => Promise<Record<string, unknown>>
+      }
+      const body = await decideHandler(mockBffEvent({ cookie, method: 'POST', params: { id: 'e2' }, body: { decision: 'approve' } }).event)
+      expect(body).toMatchObject({ id: 'e2', status: 'APPROVED' })
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('reject and amendments transitions apply', async () => {
+    stubBffGlobals()
+    try {
+      const cookie = await sealBffCookie(COORDINATOR_USER)
+      const { default: decideHandler } = await import('../../frontend/server/api/events/[id]/decision.post') as unknown as {
+        default: (event: never) => Promise<Record<string, unknown>>
+      }
+      const rejected = await decideHandler(mockBffEvent({ cookie, method: 'POST', params: { id: 'e4' }, body: { decision: 'reject' } }).event)
+      expect(rejected).toMatchObject({ status: 'REJECTED' })
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('organisers cannot decide (403), unknown decisions 422, unknown ids 404', async () => {
+    stubBffGlobals()
+    try {
+      const orgCookie = await sealBffCookie(ORGANISER_USER)
+      const coordCookie = await sealBffCookie(COORDINATOR_USER)
+      const { default: decideHandler } = await import('../../frontend/server/api/events/[id]/decision.post') as unknown as {
+        default: (event: never) => Promise<Record<string, unknown>>
+      }
+      await expect(decideHandler(mockBffEvent({ cookie: orgCookie, method: 'POST', params: { id: 'e2' }, body: { decision: 'approve' } }).event))
+        .rejects.toMatchObject({ statusCode: 403 })
+      await expect(decideHandler(mockBffEvent({ cookie: coordCookie, method: 'POST', params: { id: 'e2' }, body: { decision: 'explode' } }).event))
+        .rejects.toMatchObject({ statusCode: 422 })
+      await expect(decideHandler(mockBffEvent({ cookie: coordCookie, method: 'POST', params: { id: 'nope' }, body: { decision: 'approve' } }).event))
+        .rejects.toMatchObject({ statusCode: 404 })
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('deciding a non-submitted request conflicts with 409', async () => {
+    stubBffGlobals()
+    try {
+      const cookie = await sealBffCookie(COORDINATOR_USER)
+      const { default: decideHandler } = await import('../../frontend/server/api/events/[id]/decision.post') as unknown as {
+        default: (event: never) => Promise<Record<string, unknown>>
+      }
+      await expect(decideHandler(mockBffEvent({ cookie, method: 'POST', params: { id: 'e1' }, body: { decision: 'approve' } }).event))
+        .rejects.toMatchObject({ statusCode: 409 })
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('CS-30 — TC-CS30-08 role scoping on reads', () => {
+  it('coordinator sees an empty organiser list; organisers see only their own', async () => {
+    stubBffGlobals()
+    try {
+      const coordCookie = await sealBffCookie(COORDINATOR_USER)
+      const otherCookie = await sealBffCookie({ id: 'u-organiser-b', email: 'b@example.com', name: 'B', role: 'EVENT_ORGANISER' })
+      const { default: listHandler } = await import('../../frontend/server/api/events.get') as unknown as {
+        default: (event: never) => Promise<{ events: Record<string, unknown>[] }>
+      }
+      const coordBody = await listHandler(mockBffEvent({ cookie: coordCookie }).event)
+      expect(coordBody.events).toEqual([])
+      const otherBody = await listHandler(mockBffEvent({ cookie: otherCookie }).event)
+      expect(otherBody.events).toEqual([])
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('assigned coordinator reads submitted details; drafts stay owner-only', async () => {
+    stubBffGlobals()
+    try {
+      const orgCookie = await sealBffCookie(ORGANISER_USER)
+      const coordCookie = await sealBffCookie(COORDINATOR_USER)
+      const { default: postHandler } = await import('../../frontend/server/api/events.post') as unknown as {
+        default: (event: never) => Promise<Record<string, unknown>>
+      }
+      const created = await postHandler(mockBffEvent({ cookie: orgCookie, method: 'POST', body: { ...VALID_FORM, saveAs: 'submit' } }).event)
+      const { default: getHandler } = await import('../../frontend/server/api/events/[id].get') as unknown as {
+        default: (event: never) => Promise<Record<string, unknown>>
+      }
+      const body = await getHandler(mockBffEvent({ cookie: coordCookie, params: { id: created.id as string } }).event)
+      expect(body).toMatchObject({ id: created.id, status: 'SUBMITTED' })
+      expect(typeof body.coordinatorId).toBe('string')
+      await expect(getHandler(mockBffEvent({ cookie: coordCookie, params: { id: 'e1' } }).event))
+        .rejects.toMatchObject({ statusCode: 403 })
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+const QUEUE_ITEMS = [
+  {
+    id: 'req-1',
+    title: 'Autumn Product Summit',
+    status: 'SUBMITTED',
+    submittedAt: '2026-09-20T07:00:00.000Z',
+    coordinatorId: null,
+    organiser: { name: 'Priya Nair', company: 'TechCorp' },
+    eventName: 'Autumn Product Summit',
+    purpose: 'Product launch',
+    description: 'Flagship summit.',
+    proposedDate: '2026-10-14',
+    expectedAttendance: 220,
+    startTime: '09:00',
+    endTime: '17:00',
+    timeZone: 'Asia/Singapore',
+    minimumCapacity: 220,
+    preferredLayout: 'theatre',
+    venueType: 'physical',
+    venueRequirements: 'Riverside Hall',
+    accessibilityNeeds: ['wheelchair'],
+    accessibilityDetails: '',
+    equipmentNeeds: ['projector', 'pa-system'],
+    technicalDetails: '',
+  },
+  {
+    id: 'req-2',
+    title: 'Vendor Expo 2026',
+    status: 'SUBMITTED',
+    submittedAt: '2026-09-19T09:00:00.000Z',
+    coordinatorId: null,
+    organiser: { name: 'Marcus Tan', company: 'Oakview Retail Group' },
+    eventName: 'Vendor Expo 2026',
+    purpose: 'Trade show',
+    description: 'Vendor exposition.',
+    proposedDate: '2026-12-05',
+    expectedAttendance: 400,
+    startTime: '10:00',
+    endTime: '18:00',
+    timeZone: 'Asia/Singapore',
+    minimumCapacity: 400,
+    preferredLayout: 'classroom',
+    venueType: 'physical',
+    venueRequirements: 'Oakview Pavilion',
+    accessibilityNeeds: [],
+    accessibilityDetails: '',
+    equipmentNeeds: ['projector'],
+    technicalDetails: '',
+  },
+]
+
+async function mountIndexPage() {
+  const pageModules = import.meta.glob('../../frontend/app/pages/index.vue')
+  const loadIndexPage = pageModules['../../frontend/app/pages/index.vue']
+  expect(loadIndexPage, 'index page is not implemented').toBeTypeOf('function')
+  const { default: IndexPage } = await loadIndexPage!() as { default: Parameters<typeof mountSuspended>[0] }
+  return await mountSuspended(IndexPage)
+}
+
+function showQueue() {
+  detailMocks.sessionUser.value = { id: 'u-coordinator', email: 'coordinator@example.com', name: 'Coordinator One', role: 'EVENT_COORDINATOR' }
+  detailMocks.queueResponse.value = { requests: QUEUE_ITEMS }
+  detailMocks.queueError.value = null
+  detailMocks.coordinatorResponse.value = null
+  detailMocks.decisionResponse.value = null
+  detailMocks.decisionError.value = null
+  detailMocks.useFetch.mockReset()
+  detailMocks.queueRefresh.mockReset()
+}
+
+describe('CS-30 — TC-CS30-09 homepage renders per role', () => {
+  it('coordinator sees the review queue, not the organiser dashboard', async () => {
+    showQueue()
+    const wrapper = await mountIndexPage()
+    expect(wrapper.text()).toContain('Review queue')
+    expect(wrapper.text()).toContain('Autumn Product Summit')
+    expect(wrapper.text()).toContain('Vendor Expo 2026')
+    expect(wrapper.text()).not.toContain('Your events')
+  })
+
+  it('organiser keeps the Your events dashboard', async () => {
+    detailMocks.sessionUser.value = { id: 'u-organiser', email: 'organiser@example.com', name: 'Organiser One', role: 'EVENT_ORGANISER' }
+    detailMocks.eventResponse.value = { events: [] }
+    detailMocks.eventError.value = null
+    const wrapper = await mountIndexPage()
+    expect(wrapper.text()).toContain('Your events')
+    expect(wrapper.text()).not.toContain('Review queue')
+  })
+})
+
+describe('CS-30 — TC-CS30-10 queue selection and detail', () => {
+  it('selects the first item by default and switches on click', async () => {
+    showQueue()
+    const wrapper = await mountIndexPage()
+    expect(wrapper.text()).toContain('Priya Nair')
+    const items = wrapper.findAll('button[data-testid="queue-item"]')
+    expect(items.length).toBe(2)
+    expect(items[0]!.attributes('aria-current')).toBe('true')
+    await items[1]!.trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('Marcus Tan')
+  })
+
+  it('empty queue shows the empty state', async () => {
+    detailMocks.sessionUser.value = { id: 'u-coordinator', email: 'coordinator@example.com', name: 'Coordinator One', role: 'EVENT_COORDINATOR' }
+    detailMocks.queueResponse.value = { requests: [] }
+    detailMocks.queueError.value = null
+    const wrapper = await mountIndexPage()
+    expect(wrapper.text()).toMatch(/no requests awaiting review/i)
+  })
+
+  it('failed queue load shows an error', async () => {
+    detailMocks.sessionUser.value = { id: 'u-coordinator', email: 'coordinator@example.com', name: 'Coordinator One', role: 'EVENT_COORDINATOR' }
+    detailMocks.queueResponse.value = null
+    detailMocks.queueError.value = new Error('boom')
+    const wrapper = await mountIndexPage()
+    expect(wrapper.text()).toMatch(/unavailable|failed|error/i)
+  })
+})
+
+describe('CS-30 — TC-CS30-11 coordinator decision actions', () => {
+  it('approve posts the decision, drops the row at once and refreshes', async () => {
+    showQueue()
+    detailMocks.decisionResponse.value = { id: 'req-1', status: 'APPROVED' }
+    const wrapper = await mountIndexPage()
+    const approves = wrapper.findAll('button').filter(b => b.text() === 'Approve')
+    expect(approves.length).toBe(1)
+    await approves[0]!.trigger('click')
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const posts = detailMocks.useFetch.mock.calls.filter(([url, init]) => url === '/api/events/req-1/decision' && (init as { method?: string })?.method === 'POST')
+    expect(posts.length).toBe(1)
+    expect((posts[0]![1] as { body?: Record<string, unknown> }).body).toMatchObject({ decision: 'approve' })
+    expect(detailMocks.refreshNuxtData).toHaveBeenCalledWith('coordinator-queue')
+    expect(wrapper.text()).not.toContain('Autumn Product Summit')
+    expect(wrapper.text()).toContain('Vendor Expo 2026')
+  })
+
+  it('failed decision shows an error and keeps the queue', async () => {
+    showQueue()
+    detailMocks.decisionResponse.value = null
+    detailMocks.decisionError.value = { statusCode: 409, message: 'Conflict' }
+    const wrapper = await mountIndexPage()
+    const rejects = wrapper.findAll('button').filter(b => b.text() === 'Reject')
+    expect(rejects.length).toBe(1)
+    await rejects[0]!.trigger('click')
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(wrapper.text()).toMatch(/could not record|failed|conflict/i)
+    expect(wrapper.text()).toContain('Autumn Product Summit')
   })
 })

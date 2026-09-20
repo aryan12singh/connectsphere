@@ -2,7 +2,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import EventRequestForm from './EventRequestForm.vue'
-import type { RequestFormState } from './event-request-form'
+import type { RequestFormState } from './request-form-state'
 
 export interface CoordinatorBanner {
   name?: unknown

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import RequestFormPage from '@/components/RequestFormPage.vue'
-import { emptyRequestForm, formToPayload } from '@/components/event-request-form'
-import type { RequestFormState } from '@/components/event-request-form'
+import { emptyRequestForm, formToPayload } from '@/components/request-form-state'
+import type { RequestFormState } from '@/components/request-form-state'
 
 const route = useRoute()
 const requestId = computed(() => String((route.params as Record<string, unknown>).id ?? ''))

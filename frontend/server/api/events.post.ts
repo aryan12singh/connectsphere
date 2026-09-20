@@ -35,6 +35,9 @@ export interface EventRequestRecord {
   createdAt: string
   updatedAt: string
   coordinatorId: string | null
+  reviewedById?: string | null
+  reviewedAt?: string | null
+  decisionNotes?: string
   eventName: string
   purpose: string
   description: string

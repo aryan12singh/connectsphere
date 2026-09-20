@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { emptyRequestForm, formToPayload } from '@/components/event-request-form'
-import type { RequestFormState } from '@/components/event-request-form'
+import { emptyRequestForm, formToPayload } from '@/components/request-form-state'
+import type { RequestFormState } from '@/components/request-form-state'
 
 const requestForm = ref<RequestFormState>(emptyRequestForm())
 

@@ -2,8 +2,8 @@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import type { RequestFormState } from './event-request-form'
-import { ACCESSIBILITY_OPTIONS, EQUIPMENT_OPTIONS } from './event-request-form'
+import type { RequestFormState } from './request-form-state'
+import { ACCESSIBILITY_OPTIONS, EQUIPMENT_OPTIONS } from './request-form-state'
 
 withDefaults(defineProps<{ disabled?: boolean }>(), { disabled: false })
 const model = defineModel<RequestFormState>({ required: true })
