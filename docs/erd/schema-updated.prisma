@@ -1,0 +1,339 @@
+// ConnectSphere — PROPOSED contract, marked proposal (reference copy)
+//
+// Mirrors the tracked reference (docs/erd/schema.prisma) for CS-10/CS-11/CS-30
+// review. This file is documentation, not a deployable schema, and NOT what
+// actually runs. Promote agreed changes back into schema.prisma.
+// To render an ERD from this file: npx prisma-erd-generator, or paste into
+// dbdiagram.io / a mermaid erDiagram converter.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // reference only — not a real deployment target
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// user-service (user_db) — User, roles
+// Owns identity/profile. passwordHash never leaves this service.
+// ─────────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  EVENT_ORGANISER
+  EVENT_COORDINATOR
+  VENUE_STAFF
+  ATTENDEE
+  TECHNICAL_SUPPORT_STAFF
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         UserRole
+  // Consumed by the BFF queue display (`Name · Company`); null when unknown.
+  company      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Every relation below is CROSS-SERVICE — in event-service, venue-service
+  // etc. these become plain `xxxId String` fields with no @relation.
+  eventRequestsSubmitted EventRequest[]         @relation("OrganiserRequests")
+  eventRequestsReviewed  EventRequest[]         @relation("CoordinatorReviews")
+  eventsConfirmed        Event[]                @relation("CoordinatorConfirmations")
+  venuesManaged          Venue[]                @relation("VenueStaffManaged")
+  venueBookingsRequested VenueBookingRequest[]  @relation("CoordinatorBookings")
+  venueBookingsDecided   VenueBookingRequest[]  @relation("VenueStaffDecisions")
+  attendances            Attendance[]
+  messagesSent           Message[]
+  messageThreadsJoined   MessageThreadParticipant[]
+  notifications          Notification[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// auth-service (auth_db) — Session
+// Owns opaque revocable sessions. Login verifies via user-service
+// POST /internal/users/verify {email,password} → {id}|401 (Pattern 2);
+// passwordHash never leaves user-service; auth-service persists only
+// Session.tokenHash and returns {token} only.
+// ─────────────────────────────────────────────────────────────────────────
+
+model Session {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String // cross-service (-> user-service User.id), no @relation
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+  @@map("sessions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// event-service — EventRequest, Event (+ CS-30 CoordinatorAssignment)
+// BFF field mappings: eventName → title, expectedAttendance → expectedAttendees,
+// proposedDate + startTime/endTime (strings) → proposedStartAt/EndAt (DateTime),
+// coordinatorId → current (non-revoked) CoordinatorAssignment row (derived,
+// never a column). `NEW` is client-only and never sent.
+// ─────────────────────────────────────────────────────────────────────────
+
+enum EventRequestStatus {
+  DRAFT
+  SUBMITTED
+  RETURNED_FOR_AMENDMENT
+  APPROVED
+  REJECTED
+}
+
+enum EventStatus {
+  ARRANGEMENT_PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model EventRequest {
+  id                String             @id @default(uuid())
+  title             String
+  purpose           String             @default("")
+  description       String
+  proposedDate      DateTime
+  expectedAttendees Int
+  timeZone          String             @default("Asia/Singapore")
+  venueType         String             @default("")
+  minimumCapacity   Int?
+  preferredLayout   String?
+  venueRequirements String             @default("")
+  accessibilityNeeds   String[]
+  accessibilityDetails String           @default("")
+  equipmentNeeds       String[]
+  technicalDetails     String           @default("")
+  // Internal/future: the BFF never sends these today.
+  registrationEnabled  Boolean          @default(false)
+  registrationDetails  String           @default("")
+  operationKey         String?
+  status            EventRequestStatus @default(DRAFT)
+  // Null until first submit — drafts are unsubmitted.
+  submittedAt       DateTime?
+
+  organiserId String // cross-service in reality (-> User)
+  organiser   User   @relation("OrganiserRequests", fields: [organiserId], references: [id])
+
+  reviewedById String? // cross-service in reality (-> User)
+  reviewedBy   User?     @relation("CoordinatorReviews", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  decisionNotes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event Event? // same-service relation — survives the split as-is
+  assignments CoordinatorAssignment[]
+
+  @@index([status])
+  @@map("event_requests")
+}
+
+// CS-30 — at most one CURRENT coordinator per request: exactly one row with
+// revokedAt == null. Handover revokes the former row and inserts the new one,
+// so former/new coordinator, initiating actor and time are all recorded.
+// (Enforced by partial-unique on (requestId) WHERE revokedAt IS NULL plus an
+// app-level check — competing writes can never yield two current rows.)
+// Frontend display labels: DRAFT→Draft, SUBMITTED→Submitted,
+// RETURNED_FOR_AMENDMENT→Returned, APPROVED→Approved, REJECTED→Rejected.
+
+model CoordinatorAssignment {
+  id            String       @id @default(uuid())
+  requestId     String
+  request       EventRequest @relation(fields: [requestId], references: [id])
+  coordinatorId String // cross-service in reality (-> User)
+  assignedById  String // initiating actor, cross-service in reality (-> User)
+  assignedAt    DateTime     @default(now())
+  revokedAt     DateTime?
+
+  @@index([requestId, revokedAt])
+  @@map("coordinator_assignments")
+}
+
+model Event {
+  id             String       @id @default(uuid())
+  eventRequestId String       @unique
+  eventRequest   EventRequest @relation(fields: [eventRequestId], references: [id]) // same-service, survives
+
+  title         String
+  description   String
+  startDateTime DateTime
+  endDateTime   DateTime
+  status        EventStatus @default(ARRANGEMENT_PENDING)
+
+  confirmedById String? // cross-service in reality (-> User)
+  confirmedBy   User?     @relation("CoordinatorConfirmations", fields: [confirmedById], references: [id])
+  confirmedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  venueBookingRequests VenueBookingRequest[] // cross-service in reality (-> booking-service)
+  attendances          Attendance[]          // cross-service in reality (-> attendance-service)
+  messageThreads       MessageThread[]       // cross-service in reality (-> messaging-service)
+
+  @@index([status])
+  @@map("events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// venue-service — Venue
+// ─────────────────────────────────────────────────────────────────────────
+
+model Venue {
+  id        String   @id @default(uuid())
+  name      String
+  address   String
+  capacity  Int
+  amenities String[]
+  isActive  Boolean  @default(true)
+
+  managedById String // cross-service in reality (-> User)
+  managedBy   User   @relation("VenueStaffManaged", fields: [managedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookingRequests VenueBookingRequest[] // cross-service in reality (-> booking-service)
+
+  @@map("venues")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// booking-service — VenueBookingRequest
+// ─────────────────────────────────────────────────────────────────────────
+
+enum BookingRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model VenueBookingRequest {
+  id      String @id @default(uuid())
+  eventId String // cross-service in reality (-> event-service)
+  event   Event  @relation(fields: [eventId], references: [id])
+  venueId String // cross-service in reality (-> venue-service)
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  requestedById  String // cross-service in reality (-> User)
+  requestedBy    User     @relation("CoordinatorBookings", fields: [requestedById], references: [id])
+  requestedStart DateTime
+  requestedEnd   DateTime
+  status         BookingRequestStatus @default(PENDING)
+
+  decidedById   String? // cross-service in reality (-> User)
+  decidedBy     User?     @relation("VenueStaffDecisions", fields: [decidedById], references: [id])
+  decidedAt     DateTime?
+  decisionNotes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([venueId, requestedStart, requestedEnd])
+  @@map("venue_booking_requests")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// attendance-service — Attendance
+// ─────────────────────────────────────────────────────────────────────────
+
+enum AttendanceStatus {
+  REGISTERED
+  CANCELLED
+  ATTENDED
+  NO_SHOW
+}
+
+model Attendance {
+  id           String           @id @default(uuid())
+  eventId      String // cross-service in reality (-> event-service)
+  event        Event            @relation(fields: [eventId], references: [id])
+  attendeeId   String // cross-service in reality (-> User)
+  attendee     User             @relation(fields: [attendeeId], references: [id])
+  status       AttendanceStatus @default(REGISTERED)
+  registeredAt DateTime         @default(now())
+
+  @@unique([eventId, attendeeId])
+  @@map("attendances")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// messaging-service — MessageThread, Message
+// ─────────────────────────────────────────────────────────────────────────
+
+model MessageThread {
+  id        String   @id @default(uuid())
+  eventId   String? // cross-service in reality (-> event-service)
+  event     Event?   @relation(fields: [eventId], references: [id])
+  subject   String
+  createdAt DateTime @default(now())
+
+  messages     Message[]                  // same-service, survives
+  participants MessageThreadParticipant[] // same-service, survives
+
+  @@map("message_threads")
+}
+
+model MessageThreadParticipant {
+  id       String        @id @default(uuid())
+  threadId String
+  thread   MessageThread @relation(fields: [threadId], references: [id]) // same-service, survives
+  userId   String // cross-service in reality (-> User)
+  user     User          @relation(fields: [userId], references: [id])
+
+  @@unique([threadId, userId])
+  @@map("message_thread_participants")
+}
+
+model Message {
+  id       String        @id @default(uuid())
+  threadId String
+  thread   MessageThread @relation(fields: [threadId], references: [id]) // same-service, survives
+  senderId String // cross-service in reality (-> User)
+  sender   User          @relation(fields: [senderId], references: [id])
+  body     String
+  sentAt   DateTime      @default(now())
+
+  @@index([threadId, sentAt])
+  @@map("messages")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// notification-service — Notification (internal/future: no BFF or CS-50 delivery yet)
+// ─────────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String // cross-service in reality (-> User)
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  payload   Json
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// orchestrator-service — SagaInstance, SagaStep (not shown here)
+//
+// Deliberately omitted from this reference model: it holds no domain
+// entities from the diagram above, only its own saga-run bookkeeping.
+// See services/orchestrator-service/prisma/schema.prisma for that shape.
+// ─────────────────────────────────────────────────────────────────────────
