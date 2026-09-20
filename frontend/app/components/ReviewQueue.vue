@@ -185,6 +185,13 @@ async function decide(decision: 'approve' | 'reject' | 'amendments') {
             <Button size="sm" variant="secondary" :disabled="deciding" @click="decide('amendments')">
               Ask for amendments
             </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              title="Coordinator reassignment is not available yet"
+            >
+              Change coordinator
+            </Button>
             <Button size="sm" variant="destructive" :disabled="deciding" @click="decide('reject')">
               Reject
             </Button>

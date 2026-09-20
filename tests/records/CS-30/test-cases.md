@@ -31,3 +31,5 @@ Story: *As an Event Organiser, I want a single responsible Coordinator for my su
 *Seed data 2026-09-20: seeds are complete records (same shape the BFF persists; deterministic timestamps) and the dashboard `meta` line is derived from record data (`date · venue · capacity`), so homepage, detail reads and the edit form prepopulate from one source. Seeded assignments exist for submitted/approved/returned rows.*
 
 *Live list 2026-09-20: the dashboard list was a static import-time snapshot, so PUT edits and POST creates never showed. `GET /api/events` now derives rows live from the store (seeds overlaid with writes + created records); dashboard cards update after save without a reload.*
+
+*Change-coordinator affordance 2026-09-20: disabled "Change coordinator" action sits left of Reject (order covered by test). Intentionally unbound — reassignment endpoint + rights swap belong to the backend team; enabling it is a future slice.*

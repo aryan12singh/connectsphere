@@ -780,4 +780,16 @@ describe('CS-30 — TC-CS30-11 coordinator decision actions', () => {
     expect(wrapper.text()).toMatch(/could not record|failed|conflict/i)
     expect(wrapper.text()).toContain('Autumn Product Summit')
   })
+
+  it('shows a disabled Change coordinator action left of Reject', async () => {
+    showQueue()
+    const wrapper = await mountIndexPage()
+    const actions = wrapper.findAll('button').filter(b =>
+      ['Approve', 'Ask for amendments', 'Change coordinator', 'Reject'].includes(b.text()),
+    )
+    expect(actions.map(b => b.text())).toEqual(['Approve', 'Ask for amendments', 'Change coordinator', 'Reject'])
+    const change = actions[2]!
+    expect(change.attributes('disabled')).not.toBe(undefined)
+    expect(change.attributes('title')).toMatch(/not available yet/i)
+  })
 })
