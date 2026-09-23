@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ConnectSphere User Service — BFF Contract</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>body{margin:0;font-family:system-ui,sans-serif}nav{padding:1rem 2rem;background:#075c77;color:white}nav a{color:white;margin-right:1.5rem}aside{padding:.75rem 2rem;background:#fff7db}</style>
+</head>
+<body>
+  <nav><a href="../auth-service/swagger.html">Auth service API</a><a href="../event-service/swagger.html">Event service API</a><strong>ConnectSphere User Service — BFF Contract</strong></nav>
+  <aside>Backend contract. Browsers use the sealed cookie; API clients and hand execution use bearer tokens. These pages do not run backend services.</aside>
+  <div id="swagger-ui"></div>
+  <script id="openapi-spec" type="application/json">{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ConnectSphere User Service — BFF Contract",
+    "version": "0.1.0",
+    "description": "Dual access: the read accepts the sealed session cookie OR a bearer token. Authentication lives in the auth service; passwordHash never leaves user-service."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "users",
+      "description": "Identity and profile reads backed by the Prisma User model."
+    }
+  ],
+  "paths": {
+    "/api/users/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "Hand-execution field: paste Bearer <opaque-token> here instead of the Authorize dialog. Same semantics; an invalid bearer takes precedence over a valid cookie (401).",
+            "schema": {
+              "type": "string",
+              "example": "Bearer mock-token-u-organiser"
+            }
+          }
+        ],
+        "operationId": "getUser",
+        "summary": "Read one user profile view",
+        "tags": ["users"],
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "description": "Any authenticated caller (organisers read their coordinator contact). passwordHash is never returned. An invalid bearer takes precedence over a valid cookie (401).",
+        "responses": {
+          "200": {
+            "description": "BFF profile view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated or invalid bearer"
+          },
+          "404": {
+            "description": "Unknown user"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "nuxt-session",
+        "description": "Sealed session cookie (HttpOnly, SameSite=Lax; Secure in production). Absent, expired or revoked sessions yield 401 on protected routes."
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Hand-executable credential: Authorization: Bearer <opaque-token>. Same token and revocation semantics as the session cookie; an invalid bearer takes precedence over a valid cookie (401)."
+      }
+    },
+    "schemas": {
+      "Role": {
+        "type": "string",
+        "description": "Same five values in Prisma UserRole, the BFF and every client; ADMIN was removed.",
+        "enum": [
+          "EVENT_ORGANISER",
+          "EVENT_COORDINATOR",
+          "VENUE_STAFF",
+          "ATTENDEE",
+          "TECHNICAL_SUPPORT_STAFF"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "description": "BFF view of Prisma User. passwordHash is never returned; name composes firstName and lastName.",
+        "required": [
+          "id",
+          "email",
+          "name",
+          "role"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "company": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Organisation display name; mirrors Prisma User.company."
+          }
+        }
+      }
+    }
+  }
+}</script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>SwaggerUIBundle({spec:JSON.parse(document.getElementById('openapi-spec').textContent),dom_id:'#swagger-ui',deepLinking:true});</script>
+</body>
+</html>

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ConnectSphere Auth Service — BFF Contract</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>body{margin:0;font-family:system-ui,sans-serif}nav{padding:1rem 2rem;background:#075c77;color:white}nav a{color:white;margin-right:1.5rem}aside{padding:.75rem 2rem;background:#fff7db}</style>
+</head>
+<body>
+  <nav><a href="../user-service/swagger.html">User service API</a><a href="../event-service/swagger.html">Event service API</a><strong>ConnectSphere Auth Service — BFF Contract</strong></nav>
+  <aside>Backend contract. Browsers use the sealed cookie; API clients and hand execution use bearer tokens. These pages do not run backend services.</aside>
+  <div id="swagger-ui"></div>
+  <script id="openapi-spec" type="application/json">{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ConnectSphere Auth Service — BFF Contract",
+    "version": "0.1.0",
+    "description": "Dual access: protected operations accept the sealed session cookie OR a bearer token (either satisfies auth). Login returns the user view plus the opaque token; logout revokes whichever credential is presented. Roles are the five Prisma UserRole values; unknown roles are denied, never defaulted. Hand execution: POST /api/auth first, then paste the returned token as bearer (cookie jar works too, but HttpOnly values cannot be pasted by hand)."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "auth",
+      "description": "Session lifecycle backed by the Prisma Session model (tokenHash stored, raw token presented for revocation)."
+    }
+  ],
+  "paths": {
+    "/api/auth": {
+      "post": {
+        "operationId": "login",
+        "summary": "Authenticate with email and password",
+        "tags": ["auth"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated; sealed session cookie set; returns the user view plus the opaque token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing credentials"
+          },
+          "401": {
+            "description": "Invalid credentials (same text for bad email vs bad password)"
+          },
+          "403": {
+            "description": "Account role missing or not recognised"
+          }
+        }
+      },
+      "delete": {
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "Hand-execution field: paste Bearer <opaque-token> here instead of the Authorize dialog. Same semantics; an invalid bearer takes precedence over a valid cookie (401).",
+            "schema": {
+              "type": "string",
+              "example": "Bearer mock-token-u-organiser"
+            }
+          }
+        ],
+        "operationId": "logout",
+        "summary": "Revoke the current session",
+        "tags": ["auth"],
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "description": "Revokes whichever credential is presented (sets revokedAt); replaying it afterwards yields 401. An invalid bearer takes precedence over a valid cookie. Succeeds even with no credentials.",
+        "responses": {
+          "200": {
+            "description": "Session revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer token"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "nuxt-session",
+        "description": "Sealed session cookie (HttpOnly, SameSite=Lax; Secure in production). Absent, expired or revoked sessions yield 401 on protected routes."
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Hand-executable credential: Authorization: Bearer <opaque-token>. Same token and revocation semantics as the session cookie; an invalid bearer takes precedence over a valid cookie (401)."
+      }
+    },
+    "schemas": {
+      "Role": {
+        "type": "string",
+        "description": "Same five values in Prisma UserRole, the BFF and every client; ADMIN was removed.",
+        "enum": [
+          "EVENT_ORGANISER",
+          "EVENT_COORDINATOR",
+          "VENUE_STAFF",
+          "ATTENDEE",
+          "TECHNICAL_SUPPORT_STAFF"
+        ]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "description": "Credentials payload for POST /api/auth.",
+        "required": [
+          "email",
+          "password"
+        ],
+        "example": {
+          "email": "organiser@example.com",
+          "password": "Password123!"
+        },
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "description": "BFF view of Prisma User. passwordHash is never returned; name composes firstName and lastName.",
+        "required": [
+          "id",
+          "email",
+          "name",
+          "role"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "company": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Organisation display name; mirrors Prisma User.company."
+          }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "description": "User view plus the opaque session token (present it back as bearer or cookie).",
+        "required": [
+          "user",
+          "token"
+        ],
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/User"
+          },
+          "token": {
+            "type": "string"
+          }
+        }
+      },
+      "LogoutResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}</script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>SwaggerUIBundle({spec:JSON.parse(document.getElementById('openapi-spec').textContent),dom_id:'#swagger-ui',deepLinking:true});</script>
+</body>
+</html>

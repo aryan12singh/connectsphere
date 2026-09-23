@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ConnectSphere Event Service — BFF Contract</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>body{margin:0;font-family:system-ui,sans-serif}nav{padding:1rem 2rem;background:#075c77;color:white}nav a{color:white;margin-right:1.5rem}aside{padding:.75rem 2rem;background:#fff7db}</style>
+</head>
+<body>
+  <nav><a href="../user-service/swagger.html">User service API</a><a href="../auth-service/swagger.html">Auth service API</a><strong>ConnectSphere Event Service — BFF Contract</strong></nav>
+  <aside>Backend contract. Browsers use the sealed cookie; API clients and hand execution use bearer tokens. These pages do not run backend services.</aside>
+  <div id="swagger-ui"></div>
+  <script id="openapi-spec" type="application/json">{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ConnectSphere Event Service — BFF Contract",
+    "version": "0.1.0",
+    "description": "Dual access: every protected operation accepts the sealed session cookie OR a bearer token (invalid bearer takes precedence, 401). Request statuses follow Prisma EventRequestStatus plus DRAFT (NEW is client-only and never sent). Reads are owner- or assignee-scoped; the organiser list is owner-scoped, coordinators work from the review queue. No 503 path: missing coordinators surface as null coordinatorId."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "requests",
+      "description": "Owner-scoped event-request lifecycle backed by the Prisma EventRequest model."
+    },
+    {
+      "name": "review",
+      "description": "Coordinator-only review queue and decisions backed by EventRequest plus CoordinatorAssignment."
+    }
+  ],
+  "paths": {
+    "/api/events": {
+      "get": {
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "Hand-execution field: paste Bearer <opaque-token> here instead of the Authorize dialog. Same semantics; an invalid bearer takes precedence over a valid cookie (401).",
+            "schema": {
+              "type": "string",
+              "example": "Bearer mock-token-u-organiser"
+            }
+          }
+        ],
+        "operationId": "listOwnedEvents",
+        "summary": "List dashboard rows owned by the caller",
+        "tags": ["requests"],
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "description": "Organisers see only their own records; every other role receives an empty list. Meta lines are derived from record data.",
+        "responses": {
+          "200": {
+            "description": "Dashboard rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "events"
+                  ],
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DashboardEvent"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated or invalid bearer"
+          }
+        }
+      },
+      "post": {
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "Hand-execution field: paste Bearer <opaque-token> here instead of the Authorize dialog. Same semantics; an invalid bearer takes precedence over a valid cookie (401).",
+            "schema": {
+              "type": "string",
+              "example": "Bearer mock-token-u-organiser"
+            }
+          }
+        ],
+        "operationId": "createEventRequest",
+        "summary": "Save a draft or submit a request",
+        "tags": ["requests"],
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "description": "status DRAFT creates a draft; status SUBMITTED creates a submitted request and assigns a coordinator. Owner is the authenticated user.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated or invalid bearer"
+          },
+          "422": {
+            "description": "Field-level validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "Hand-execution field: paste Bearer <opaque-token> here instead of the Authorize dialog. Same semantics; an invalid bearer takes precedence over a valid cookie (401).",
+            "schema": {
+              "type": "string",
+              "example": "Bearer mock-token-u-organiser"
+            }
+          }
+        ],
+        "operationId": "getEventRequest",
+        "summary": "Get one request with its current coordinator",
+        "tags": ["requests"],
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "description": "Owner reads any own record; coordinators read submitted or assigned records. Everyone else is denied without contents.",
+        "responses": {
+          "200": {
+            "description": "Request record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated or invalid bearer"
+          },
+          "403": {
+            "description": "Non-owner and not an assigned reviewer"
+          },
+          "404": {
+            "description": "Unknown request"
+          }
+        }
+      },
+      "put": {
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "Hand-execution field: paste Bearer <opaque-token> here instead of the Authorize dialog. Same semantics; an invalid bearer takes precedence over a valid cookie (401).",
+            "schema": {
+              "type": "string",
+              "example": "Bearer mock-token-u-organiser"
+            }
+          }
+        ],
+        "operationId": "updateEventRequest",
+        "summary": "Edit a draft or submit it",
+        "tags": ["requests"],
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "description": "Owner-only. Same payload as create: resubmitting DRAFT fields edits the draft; status SUBMITTED on a DRAFT transitions it and assigns a coordinator; other statuses are preserved by resubmission.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated or invalid bearer"
+          },
+          "403": {
+            "description": "Non-owner"
+          },
+          "404": {
+            "description": "Unknown request"
+          },
+          "422": {
+            "description": "Field-level validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review-queue": {
+      "get": {
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "Hand-execution field: paste Bearer <opaque-token> here instead of the Authorize dialog. Same semantics; an invalid bearer takes precedence over a valid cookie (401).",
+            "schema": {
+              "type": "string",
+              "example": "Bearer mock-token-u-organiser"
+            }
+          }
+        ],
+        "operationId": "listReviewQueue",
+        "summary": "List submitted requests awaiting review",
+        "tags": ["review"],
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "description": "EVENT_COORDINATOR only. Each item carries its organiser contact.",
+        "responses": {
+          "200": {
+            "description": "Queue items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "requests"
+                  ],
+                  "properties": {
+                    "requests": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/QueueItem"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated or invalid bearer"
+          },
+          "403": {
+            "description": "Not a coordinator"
+          }
+        }
+      }
+    },
+    "/api/events/{id}/decision": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "description": "Hand-execution field: paste Bearer <opaque-token> here instead of the Authorize dialog. Same semantics; an invalid bearer takes precedence over a valid cookie (401).",
+            "schema": {
+              "type": "string",
+              "example": "Bearer mock-token-u-organiser"
+            }
+          }
+        ],
+        "operationId": "decideEventRequest",
+        "summary": "Record a coordinator decision",
+        "tags": ["review"],
+        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "description": "EVENT_COORDINATOR only. approve, reject and amendments move a SUBMITTED request to APPROVED, REJECTED and RETURNED_FOR_AMENDMENT; anything else conflicts.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Decided record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventRequest"
+                },
+                "example": {
+                  "id": "req-1",
+                  "organiserId": "u-organiser",
+                  "status": "APPROVED",
+                  "submittedAt": "2026-09-20T00:00:00.000Z",
+                  "createdAt": "2026-09-19T00:00:00.000Z",
+                  "updatedAt": "2026-09-20T01:00:00.000Z",
+                  "coordinatorId": "u-coordinator",
+                  "reviewedById": "u-coordinator",
+                  "reviewedAt": "2026-09-20T01:00:00.000Z",
+                  "decisionNotes": "",
+                  "eventName": "Autumn Product Summit",
+                  "purpose": "Product launch",
+                  "venueType": "physical",
+                  "expectedAttendance": 220
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated or invalid bearer"
+          },
+          "403": {
+            "description": "Not a coordinator"
+          },
+          "404": {
+            "description": "Unknown request"
+          },
+          "409": {
+            "description": "Request is not submitted"
+          },
+          "422": {
+            "description": "Unknown decision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "nuxt-session",
+        "description": "Sealed session cookie (HttpOnly, SameSite=Lax; Secure in production). Absent, expired or revoked sessions yield 401 on protected routes."
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Hand-executable credential: Authorization: Bearer <opaque-token>. Same token and revocation semantics as the session cookie; an invalid bearer takes precedence over a valid cookie (401)."
+      }
+    },
+    "schemas": {
+      "EventRequestStatus": {
+        "type": "string",
+        "description": "Prisma EventRequestStatus plus DRAFT. NEW is client-only and never sent.",
+        "enum": [
+          "DRAFT",
+          "SUBMITTED",
+          "RETURNED_FOR_AMENDMENT",
+          "APPROVED",
+          "REJECTED"
+        ]
+      },
+      "EventRequestInput": {
+        "type": "object",
+        "description": "Create payload. status selects DRAFT vs SUBMITTED (which also assigns a coordinator).",
+        "required": [
+          "eventName",
+          "proposedDate",
+          "startTime",
+          "endTime",
+          "timeZone",
+          "expectedAttendance",
+          "venueType",
+          "status",
+          "organiserId"
+        ],
+        "properties": {
+          "eventName": {
+            "type": "string",
+            "x-prisma-field": "title"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "proposedDate": {
+            "type": "string",
+            "format": "date",
+            "description": "Local date; combined with startTime/endTime/timeZone at the service boundary."
+          },
+          "startTime": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          },
+          "endTime": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          },
+          "timeZone": {
+            "type": "string",
+            "description": "IANA time zone."
+          },
+          "expectedAttendance": {
+            "type": "integer",
+            "minimum": 1,
+            "x-prisma-field": "expectedAttendees"
+          },
+          "venueType": {
+            "type": "string",
+            "enum": [
+              "physical",
+              "virtual",
+              "hybrid"
+            ]
+          },
+          "minimumCapacity": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "preferredLayout": {
+            "type": "string"
+          },
+          "venueRequirements": {
+            "type": "string"
+          },
+          "accessibilityNeeds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "accessibilityDetails": {
+            "type": "string"
+          },
+          "equipmentNeeds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "technicalDetails": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "description": "Initial lifecycle state. Only DRAFT or SUBMITTED may be set at creation (SUBMITTED also assigns a coordinator).",
+            "enum": [
+              "DRAFT",
+              "SUBMITTED"
+            ]
+          },
+          "organiserId": {
+            "type": "string",
+            "description": "Mandatory owner id, sent implicitly from the authenticated session — never a manual form field. Must reference an existing user or the request is rejected."
+          }
+        },
+        "example": {
+          "eventName": "Autumn Product Summit",
+          "purpose": "Product launch",
+          "description": "Annual gathering for customers and partners.",
+          "proposedDate": "2026-11-20",
+          "startTime": "09:00",
+          "endTime": "17:00",
+          "timeZone": "Asia/Singapore",
+          "expectedAttendance": 200,
+          "venueType": "physical",
+          "minimumCapacity": 220,
+          "preferredLayout": "theatre",
+          "venueRequirements": "Hall A, near MRT",
+          "accessibilityNeeds": ["wheelchair"],
+          "equipmentNeeds": ["projector"],
+          "status": "DRAFT",
+          "organiserId": "u-organiser"
+        }
+      },
+      "EventRequest": {
+        "type": "object",
+        "description": "Persisted request view. reviewedById, reviewedAt and decisionNotes are null until coordinator review; submittedAt is null until first submit.",
+        "required": [
+          "id",
+          "organiserId",
+          "status",
+          "coordinatorId"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "organiserId": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EventRequestStatus"
+          },
+          "submittedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "coordinatorId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Current coordinator from the single non-revoked CoordinatorAssignment row."
+          },
+          "reviewedById": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reviewedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "decisionNotes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "eventName": {
+            "type": "string",
+            "x-prisma-field": "title"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "proposedDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "startTime": {
+            "type": "string"
+          },
+          "endTime": {
+            "type": "string"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "expectedAttendance": {
+            "type": "integer",
+            "x-prisma-field": "expectedAttendees"
+          },
+          "venueType": {
+            "type": "string"
+          },
+          "minimumCapacity": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "preferredLayout": {
+            "type": "string"
+          },
+          "venueRequirements": {
+            "type": "string"
+          },
+          "accessibilityNeeds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "accessibilityDetails": {
+            "type": "string"
+          },
+          "equipmentNeeds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "technicalDetails": {
+            "type": "string"
+          }
+        }
+      },
+      "DashboardEvent": {
+        "type": "object",
+        "description": "Dashboard row: meta is derived server-side from record data (date, venue, capacity).",
+        "required": [
+          "id",
+          "category",
+          "title",
+          "meta",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "meta": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EventRequestStatus"
+          }
+        }
+      },
+      "QueueItem": {
+        "type": "object",
+        "description": "Review-queue row: full request fields plus the organiser contact.",
+        "required": [
+          "id",
+          "title",
+          "status",
+          "organiser"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "SUBMITTED"
+            ]
+          },
+          "submittedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "coordinatorId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "organiser": {
+            "type": "object",
+            "required": [
+              "name",
+              "company"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "company": {
+                "type": "string",
+                "description": "Mirrors Prisma User.company."
+              }
+            }
+          }
+        }
+      },
+      "DecisionInput": {
+        "type": "object",
+        "description": "Coordinator decision on a submitted request.",
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject",
+              "amendments"
+            ]
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "ValidationError": {
+        "type": "object",
+        "description": "h3 error shape for 422: statusCode plus field-keyed errors under data.",
+        "required": [
+          "statusCode",
+          "statusMessage",
+          "data"
+        ],
+        "properties": {
+          "statusCode": {
+            "type": "integer",
+            "example": 422
+          },
+          "statusMessage": {
+            "type": "string",
+            "example": "Validation failed"
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "errors"
+            ],
+            "properties": {
+              "errors": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}</script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>SwaggerUIBundle({spec:JSON.parse(document.getElementById('openapi-spec').textContent),dom_id:'#swagger-ui',deepLinking:true});</script>
+</body>
+</html>

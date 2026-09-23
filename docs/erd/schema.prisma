@@ -1,0 +1,273 @@
+// ConnectSphere — REFERENCE domain model (v0.1)
+//
+// This file is documentation, not a deployable schema. It shows the full
+// logical data model — every entity and every relation between them AS A DRAFT.
+//
+// It is NOT what actually runs.
+// To render an ERD from this file: npx prisma-erd-generator, or paste into
+// dbdiagram.io / a mermaid erDiagram converter.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // reference only — not a real deployment target
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// user-service — User, roles
+// ─────────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  EVENT_ORGANISER
+  EVENT_COORDINATOR
+  VENUE_STAFF
+  ATTENDEE
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         UserRole
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Every relation below is CROSS-SERVICE — in event-service, venue-service
+  // etc. these become plain `xxxId String` fields with no @relation.
+  eventRequestsSubmitted EventRequest[]         @relation("OrganiserRequests")
+  eventRequestsReviewed  EventRequest[]         @relation("CoordinatorReviews")
+  eventsConfirmed        Event[]                @relation("CoordinatorConfirmations")
+  venuesManaged          Venue[]                @relation("VenueStaffManaged")
+  venueBookingsRequested VenueBookingRequest[]  @relation("CoordinatorBookings")
+  venueBookingsDecided   VenueBookingRequest[]  @relation("VenueStaffDecisions")
+  attendances            Attendance[]
+  messagesSent           Message[]
+  messageThreadsJoined   MessageThreadParticipant[]
+  notifications          Notification[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// event-service — EventRequest, Event
+// ─────────────────────────────────────────────────────────────────────────
+
+enum EventRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum EventStatus {
+  ARRANGEMENT_PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model EventRequest {
+  id                String             @id @default(uuid())
+  title             String
+  description       String
+  proposedDate      DateTime
+  expectedAttendees Int
+  status            EventRequestStatus @default(PENDING)
+
+  organiserId String // cross-service in reality (-> User)
+  organiser   User   @relation("OrganiserRequests", fields: [organiserId], references: [id])
+
+  reviewedById String? // cross-service in reality (-> User)
+  reviewedBy   User?     @relation("CoordinatorReviews", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  decisionNotes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event Event? // same-service relation — survives the split as-is
+
+  @@index([status])
+  @@map("event_requests")
+}
+
+model Event {
+  id             String       @id @default(uuid())
+  eventRequestId String       @unique
+  eventRequest   EventRequest @relation(fields: [eventRequestId], references: [id]) // same-service, survives
+
+  title         String
+  description   String
+  startDateTime DateTime
+  endDateTime   DateTime
+  status        EventStatus @default(ARRANGEMENT_PENDING)
+
+  confirmedById String? // cross-service in reality (-> User)
+  confirmedBy   User?     @relation("CoordinatorConfirmations", fields: [confirmedById], references: [id])
+  confirmedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  venueBookingRequests VenueBookingRequest[] // cross-service in reality (-> booking-service)
+  attendances          Attendance[]          // cross-service in reality (-> attendance-service)
+  messageThreads       MessageThread[]       // cross-service in reality (-> messaging-service)
+
+  @@index([status])
+  @@map("events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// venue-service — Venue
+// ─────────────────────────────────────────────────────────────────────────
+
+model Venue {
+  id        String   @id @default(uuid())
+  name      String
+  address   String
+  capacity  Int
+  amenities String[]
+  isActive  Boolean  @default(true)
+
+  managedById String // cross-service in reality (-> User)
+  managedBy   User   @relation("VenueStaffManaged", fields: [managedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookingRequests VenueBookingRequest[] // cross-service in reality (-> booking-service)
+
+  @@map("venues")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// booking-service — VenueBookingRequest
+// ─────────────────────────────────────────────────────────────────────────
+
+enum BookingRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model VenueBookingRequest {
+  id      String @id @default(uuid())
+  eventId String // cross-service in reality (-> event-service)
+  event   Event  @relation(fields: [eventId], references: [id])
+  venueId String // cross-service in reality (-> venue-service)
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  requestedById  String // cross-service in reality (-> User)
+  requestedBy    User     @relation("CoordinatorBookings", fields: [requestedById], references: [id])
+  requestedStart DateTime
+  requestedEnd   DateTime
+  status         BookingRequestStatus @default(PENDING)
+
+  decidedById   String? // cross-service in reality (-> User)
+  decidedBy     User?     @relation("VenueStaffDecisions", fields: [decidedById], references: [id])
+  decidedAt     DateTime?
+  decisionNotes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([venueId, requestedStart, requestedEnd])
+  @@map("venue_booking_requests")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// attendance-service — Attendance
+// ─────────────────────────────────────────────────────────────────────────
+
+enum AttendanceStatus {
+  REGISTERED
+  CANCELLED
+  ATTENDED
+  NO_SHOW
+}
+
+model Attendance {
+  id           String           @id @default(uuid())
+  eventId      String // cross-service in reality (-> event-service)
+  event        Event            @relation(fields: [eventId], references: [id])
+  attendeeId   String // cross-service in reality (-> User)
+  attendee     User             @relation(fields: [attendeeId], references: [id])
+  status       AttendanceStatus @default(REGISTERED)
+  registeredAt DateTime         @default(now())
+
+  @@unique([eventId, attendeeId])
+  @@map("attendances")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// messaging-service — MessageThread, Message
+// ─────────────────────────────────────────────────────────────────────────
+
+model MessageThread {
+  id        String   @id @default(uuid())
+  eventId   String? // cross-service in reality (-> event-service)
+  event     Event?   @relation(fields: [eventId], references: [id])
+  subject   String
+  createdAt DateTime @default(now())
+
+  messages     Message[]                  // same-service, survives
+  participants MessageThreadParticipant[] // same-service, survives
+
+  @@map("message_threads")
+}
+
+model MessageThreadParticipant {
+  id       String        @id @default(uuid())
+  threadId String
+  thread   MessageThread @relation(fields: [threadId], references: [id]) // same-service, survives
+  userId   String // cross-service in reality (-> User)
+  user     User          @relation(fields: [userId], references: [id])
+
+  @@unique([threadId, userId])
+  @@map("message_thread_participants")
+}
+
+model Message {
+  id       String        @id @default(uuid())
+  threadId String
+  thread   MessageThread @relation(fields: [threadId], references: [id]) // same-service, survives
+  senderId String // cross-service in reality (-> User)
+  sender   User          @relation(fields: [senderId], references: [id])
+  body     String
+  sentAt   DateTime      @default(now())
+
+  @@index([threadId, sentAt])
+  @@map("messages")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// notification-service — Notification
+// ─────────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String // cross-service in reality (-> User)
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  payload   Json
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// orchestrator-service — SagaInstance, SagaStep (not shown here)
+//
+// Deliberately omitted from this reference model: it holds no domain
+// entities from the diagram above, only its own saga-run bookkeeping.
+// See services/orchestrator-service/prisma/schema.prisma for that shape.
+// ─────────────────────────────────────────────────────────────────────────
