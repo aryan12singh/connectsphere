@@ -5,3 +5,26 @@ Event Planning and Venue Booking System for ConnectSphere Event Services. IS212 
 
 - [Role and Event Access Matrix](docs/access-matrix.md) — which roles may view or change each protected resource, and known authorisation findings.
 - [Definition of Done](docs/DEFINITION_OF_DONE.md) — criteria every user story must satisfy before it is accepted.
+- [How to run and test](docs/how-to-run-and-test.md) — start the system from a clean clone and the manual test cases.
+- [Auth setup](docs/auth-setup.md) — how login, roles/permissions and the tech support admin API work.
+- [Development log](docs/development-log/dev-log.md) — decisions and progress, newest first.
+
+## Run it locally
+
+Needs Docker Desktop and Node.js 20+.
+
+```bash
+# 1. Backend: Postgres, Keycloak, Kong, user-service, auth-service
+docker compose -f infra/docker-compose.yml up --build -d
+
+# 2. Seed data (once) — see docs/how-to-run-and-test.md, step B2
+
+# 3. Website
+cd frontend
+npm install
+cp .env.example .env        # Windows: copy .env.example .env
+npm run dev                 # http://localhost:3000
+```
+
+Full steps, seed users and test cases: [docs/how-to-run-and-test.md](docs/how-to-run-and-test.md).
+

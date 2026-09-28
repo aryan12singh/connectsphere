@@ -18,43 +18,29 @@ Browser ──► Nuxt BFF /api/* ──► Kong :8000 ──► auth-service �
                                  └──► auth_db  (sessions, role permissions, settings, audit log)
 ```
 
-## 1. Copy the files into your repo
+## 1–4. Running it and trying it
 
-Unzip and copy each folder onto the same path in your repo:
+Step-by-step start-up (Docker, seed data, website) and the manual test
+cases are in **[how-to-run-and-test.md](how-to-run-and-test.md)**. It works
+in PowerShell as well as bash.
 
-| From the zip | Into your repo | Action |
-|---|---|---|
-| `services/user-service/` | `services/user-service/` | Replace |
-| `services/auth-service/` | `services/auth-service/` | Replace (or new) |
-| `infra/keycloak/` | `infra/keycloak/` | Replace (adds auth-service's admin service account) |
-| `infra/docker-compose.yml` | same | Replace (final merged version) |
-| `infra/postgres/init-databases.sh` | same | Replace (adds `auth_db`) |
-| `gateway/kong/kong.yml` | same | Replace (final merged version) |
-| `frontend/` (14 files) | `frontend/` — same paths | 8 new + 6 replaced. See section 7 for the list |
-| `docs/dev-log.md`, `docs/auth-setup.md` | `docs/` | Replace |
+What's where in the repo:
 
-Nothing in this setup uses your `backend/` folder. If it still holds code
-from the old monolith draft, clear it out so nobody builds on it.
-
-Check that `.gitignore` contains `node_modules/` and `.env`.
-
-## 2. Start the stack
-
-From the repo root:
-
-```bash
-docker compose -f infra/docker-compose.yml up --build
-```
-
-Each service runs `prisma migrate deploy` on start-up, which applies any new
-migrations. The auth migration also inserts the default settings and the
-default permissions for every role.
+| Path | What |
+|---|---|
+| `services/user-service/` | User profiles and roles (`user_db`) |
+| `services/auth-service/` | Login, sessions, permissions, settings, admin API (`auth_db`) |
+| `infra/docker-compose.yml` | Whole local stack. Not-yet-built services sit under the `not-built-yet` profile |
+| `infra/keycloak/connectsphere-realm.json` | Keycloak realm: seed users, `auth-service` client and its service account, lockout rules |
+| `infra/postgres/init-databases.sh` | Creates one database per service, the first time the Postgres volume is created |
+| `gateway/kong/kong.yml` | Routes, login rate limit, CORS |
+| `backend/seed_data/` | Seed SQL per database (01 user, 02 auth, ...). Copies of 01/02 also sit in each service's `prisma/seed/` |
+| `frontend/` (auth parts) | See section 7 |
 
 **If you ran an earlier version of this stack**, do this once:
 
 ```bash
 # Keycloak only imports the realm file when the realm doesn't exist yet.
-# Recreate the container so it picks up the new service account.
 docker compose -f infra/docker-compose.yml rm -sf keycloak
 docker compose -f infra/docker-compose.yml up -d keycloak
 
@@ -63,50 +49,10 @@ docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -
 docker compose -f infra/docker-compose.yml restart auth-service
 ```
 
-Services without code yet (event, venue, booking, attendance, messaging,
-notification, orchestrator) are defined in the compose file under the
-`not-built-yet` profile, so a normal `up` skips them. When one gets code:
+When a not-yet-built service gets code:
 
-1. Delete its `profiles:` line.
+1. Delete its `profiles:` line in the compose file.
 2. Add it to Kong's `depends_on`.
-
-## 3. Load the seed data
-
-Wait until both services log "listening", then run these from the repo root:
-
-```bash
-docker compose -f infra/docker-compose.yml exec -T postgres psql -U connectsphere -d user_db < services/user-service/prisma/seed/01_user_db.sql
-docker compose -f infra/docker-compose.yml exec -T postgres psql -U connectsphere -d auth_db < services/auth-service/prisma/seed/02_auth_db.sql
-```
-
-Or open the files in pgAdmin4 (http://localhost:5050) → Query Tool → run.
-Both are safe to run twice.
-
-## 4. Try it
-
-All seed users share the password `Password123!`. Tech support accounts are
-`hafiz.ismail@connectsphere.sg` and `chloe.ng@connectsphere.sg`.
-
-```bash
-# Log in as tech support (through Kong)
-curl -X POST http://localhost:8000/auth/login -H "Content-Type: application/json" \
-  -d '{"email":"hafiz.ismail@connectsphere.sg","password":"Password123!"}'
-# -> { "token": "...", "user": {...}, "permissions": ["audit.view", "permissions.manage", ...] }
-
-TOKEN=<paste token>
-
-curl http://localhost:8000/admin/users -H "Authorization: Bearer $TOKEN"
-curl http://localhost:8000/admin/permissions -H "Authorization: Bearer $TOKEN"
-curl http://localhost:8000/admin/settings -H "Authorization: Bearer $TOKEN"
-
-# Change the session length to 12 hours
-curl -X PUT http://localhost:8000/admin/settings -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" -d '{"sessionTtlHours":12}'
-```
-
-The full API, with a "Try it out" button, is in Swagger UI at
-http://localhost:3002/docs. The Keycloak admin console is at
-http://localhost:8080 (admin / admin).
 
 ## 5. What tech support can change
 

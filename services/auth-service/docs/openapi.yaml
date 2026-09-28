@@ -10,10 +10,13 @@ info:
     - Access is permission-based. Each route lists the permission it needs.
       By default only TECHNICAL_SUPPORT_STAFF has the admin permissions.
 servers:
-  - url: http://localhost:8000
-    description: Through Kong (how the frontend calls it)
+  # First = default in Swagger UI. /docs is served by auth-service on 3002,
+  # so "Try it out" must call 3002 (calling Kong on 8000 from this page is
+  # blocked by the browser as cross-origin).
   - url: http://localhost:3002
-    description: Direct to the service (local development only)
+    description: Direct to auth-service (use this from Swagger UI)
+  - url: http://localhost:8000
+    description: Through Kong (how the Nuxt server calls it)
 
 tags:
   - name: Auth

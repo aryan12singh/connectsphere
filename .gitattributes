@@ -1,0 +1,8 @@
+# Keep Unix line endings for files that run inside Linux containers, even
+# when cloned on Windows. A Windows-style (CRLF) init-databases.sh makes
+# Postgres fail to create the service databases.
+*.sh          text eol=lf
+Dockerfile    text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+*.sql         text eol=lf
