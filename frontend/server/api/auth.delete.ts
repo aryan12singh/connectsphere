@@ -1,19 +1,28 @@
 /**
  * BFF logout — DELETE /api/auth.
  *
- * Revokes the opaque token at the auth-service (sets `revokedAt`) and clears
- * the sealed session cookie (nuxt-auth-utils). Until the service lands,
- * revocation is an in-file mock stub; the `clearUserSession` binding below
- * is the production shape and stays. Succeeds even without a session.
+ * Live mode: ends the session at auth-service too (sets `revokedAt`), so the
+ * token is dead even if the cookie were copied. Then clears the sealed
+ * session cookie (nuxt-auth-utils). Succeeds even without a session, and
+ * even if the backend is unreachable — the user is always logged out here.
  */
-
-// Mock stub standing in for: auth-service session revoke (sets revokedAt).
-function revokeTokenAtAuthService() {
-  return true
-}
-
 export default defineEventHandler(async (event) => {
-  revokeTokenAtAuthService()
+  const { authMode } = useRuntimeConfig(event)
+
+  // Mock mode has no backend session to end; only the cookie.
+  if (authMode === 'live') {
+    const session = await getUserSession(event)
+    const token = session.secure?.token
+    if (token) {
+      try {
+        await backendFetch(event, '/auth/logout', { method: 'POST', token })
+      }
+      catch {
+        // Already expired/revoked, or backend down: nothing more to do.
+      }
+    }
+  }
+
   await clearUserSession(event)
   return { ok: true }
 })

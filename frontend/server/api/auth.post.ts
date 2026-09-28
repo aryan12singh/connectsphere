@@ -1,23 +1,20 @@
 import { findUserByEmail, verifyPassword } from '../utils/mockUserDb'
+import { MOCK_ROLE_PERMISSIONS } from '../utils/mockPermissions'
+import type { BackendUser } from '../utils/backend'
 
 /**
  * BFF login — POST /api/auth.
  *
- * Pattern 2 (user-service/auth-service split): credentials are verified
- * against the user-service record and the opaque token comes from the
- * auth-service, which returns `{token}` only. Until the services land, both
- * are in-file mock stubs with hardcoded data; the sealed-session binding
- * below (`setUserSession`) is the production shape and stays.
+ * Two modes (runtimeConfig.authMode / NUXT_AUTH_MODE):
+ *   live — auth-service checks the password (via Keycloak) and returns
+ *          { token, user, permissions }.
+ *   mock — the in-file mock users (server/utils/mockUserDb.ts). Default, so
+ *          the event mocks and existing tests keep working without a backend.
+ *
+ * Either way the result is sealed into the session cookie (nuxt-auth-utils).
+ * The token goes in `secure`, which never leaves the server; the browser
+ * only ever sees `user`.
  */
-
-// Mock stub standing in for: user-service POST /internal/users/verify
-// {email,password} → {id}|401. passwordHash never leaves user-service.
-function verifyAgainstUserService(email: string, password: string) {
-  const user = findUserByEmail(email)
-  if (!user || !verifyPassword(user, password))
-    return null
-  return user
-}
 
 // The five AC roles (backend UserRole). Anything else — ghost strings,
 // nulls, future values — is denied, never defaulted to a privileged role.
@@ -29,9 +26,36 @@ const ALLOWED_ROLES: readonly string[] = [
   'TECHNICAL_SUPPORT_STAFF',
 ]
 
-// Mock stub standing in for: auth-service login → {token} only.
-function fetchTokenFromAuthService() {
-  return 'mock-token-123'
+interface LoginResult {
+  token: string
+  user: { id: string, email: string, name: string, role: string, permissions: string[] }
+}
+
+// Real login through Kong → auth-service. Wrong password, unknown email and
+// locked account all come back as 401 from the backend.
+async function loginWithAuthService(event: Parameters<typeof backendFetch>[0], email: string, password: string): Promise<LoginResult> {
+  const result = await backendFetch<{ token: string, user: BackendUser, permissions: string[] }>(event, '/auth/login', {
+    method: 'POST',
+    body: { email, password },
+  })
+  return { token: result.token, user: toSessionUser(result.user, result.permissions) }
+}
+
+// Mock login against mockUserDb.
+function loginWithMock(email: string, password: string): LoginResult {
+  const user = findUserByEmail(email)
+  if (!user || !verifyPassword(user, password))
+    throw createError({ statusCode: 401, statusMessage: 'Invalid credentials' })
+  return {
+    token: 'mock-token-123',
+    user: {
+      id: user.id,
+      email: user.email,
+      name: `${user.firstName} ${user.lastName}`,
+      role: user.role,
+      permissions: MOCK_ROLE_PERMISSIONS[user.role] ?? [],
+    },
+  }
 }
 
 export default defineEventHandler(async (event) => {
@@ -42,33 +66,20 @@ export default defineEventHandler(async (event) => {
   if (!email || !password)
     throw createError({ statusCode: 400, statusMessage: 'Email and password are required' })
 
-  const user = verifyAgainstUserService(email, password)
-  if (!user)
-    throw createError({ statusCode: 401, statusMessage: 'Invalid credentials' })
+  const { authMode } = useRuntimeConfig(event)
+  const { token, user } = authMode === 'live'
+    ? await loginWithAuthService(event, email, password)
+    : loginWithMock(email, password)
 
   // Never assign privileged default — if role is missing/unknown, deny
   if (!user.role || !ALLOWED_ROLES.includes(user.role))
     throw createError({ statusCode: 403, statusMessage: 'Account not authorised' })
 
-  const token = fetchTokenFromAuthService()
-
-  // Sealed server-side session (nuxt-auth-utils). Token never in the body.
+  // Sealed server-side session (nuxt-auth-utils). `secure` stays on the server.
   await setUserSession(event, {
-    user: {
-      id: user.id,
-      email: user.email,
-      name: `${user.firstName} ${user.lastName}`,
-      role: user.role,
-    },
-    token,
+    user,
+    secure: { token },
   })
 
-  return {
-    user: {
-      id: user.id,
-      email: user.email,
-      name: `${user.firstName} ${user.lastName}`,
-      role: user.role,
-    },
-  }
+  return { user }
 })

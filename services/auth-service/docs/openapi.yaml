@@ -1,0 +1,339 @@
+openapi: 3.0.3
+info:
+  title: ConnectSphere auth-service
+  version: 0.2.0
+  description: |
+    Login, logout, "who am I", and the tech support admin API.
+
+    - Passwords are checked by Keycloak; this service issues its own session tokens.
+    - Send the token on every request as `Authorization: Bearer <token>`.
+    - Access is permission-based. Each route lists the permission it needs.
+      By default only TECHNICAL_SUPPORT_STAFF has the admin permissions.
+servers:
+  - url: http://localhost:8000
+    description: Through Kong (how the frontend calls it)
+  - url: http://localhost:3002
+    description: Direct to the service (local development only)
+
+tags:
+  - name: Auth
+  - name: Admin - users
+  - name: Admin - permissions
+  - name: Admin - settings
+  - name: Admin - audit
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Role:
+      type: string
+      enum: [EVENT_ORGANISER, EVENT_COORDINATOR, VENUE_STAFF, TECHNICAL_SUPPORT_STAFF, ATTENDEE]
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        firstName: { type: string }
+        lastName: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        company: { type: string, nullable: true }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    Permissions:
+      type: array
+      items: { type: string }
+      example: [events.view, attendance.register]
+    Settings:
+      type: object
+      properties:
+        sessionTtlHours: { type: integer, minimum: 1, maximum: 720, description: Applies to logins made after the change }
+        idleTimeoutMinutes: { type: integer, minimum: 0, maximum: 1440, description: 0 = off. Applies to all sessions immediately }
+        lockoutMaxFailures: { type: integer, minimum: 1, maximum: 20 }
+        lockoutWaitMinutes: { type: integer, minimum: 1, maximum: 60 }
+        lockoutMaxWaitMinutes: { type: integer, minimum: 1, maximum: 1440, description: Must be at least lockoutWaitMinutes }
+        passwordMinLength: { type: integer, minimum: 8, maximum: 128 }
+        passwordRequireUppercase: { type: boolean }
+        passwordRequireLowercase: { type: boolean }
+        passwordRequireDigit: { type: boolean }
+        passwordRequireSpecial: { type: boolean }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        details: { type: array, items: { type: string }, description: Only on invalid settings }
+  responses:
+    Unauthorised:
+      description: Not logged in or session has expired
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Logged in, but the role lacks the permission this route needs
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    BadRequest:
+      description: Invalid input
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Not found
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unavailable:
+      description: Keycloak or user-service unreachable
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, maxLength: 254, example: hafiz.ismail@connectsphere.sg }
+                password: { type: string, maxLength: 128, example: Password123! }
+      responses:
+        '200':
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, description: Session token. Shown only once — store it. }
+                  expiresAt: { type: string, format: date-time }
+                  user: { $ref: '#/components/schemas/User' }
+                  permissions: { $ref: '#/components/schemas/Permissions' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: Wrong email or password, account locked, or account disabled (same message for all)
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+        '429': { description: Too many login attempts from this client (Kong rate limit) }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out (ends this session)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Logged out }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Who is logged in, and what they may do
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: The current user, their permissions, and when the session ends
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+                  permissions: { $ref: '#/components/schemas/Permissions' }
+                  expiresAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+
+  /admin/users:
+    get:
+      tags: [Admin - users]
+      summary: List users (25 per page). Needs users.view
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: search, in: query, schema: { type: string }, description: Matches email, first or last name }
+        - { name: role, in: query, schema: { $ref: '#/components/schemas/Role' } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+      responses:
+        '200':
+          description: A page of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users: { type: array, items: { $ref: '#/components/schemas/User' } }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+                  total: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Admin - users]
+      summary: Create a user (Keycloak login + profile). Needs users.manage
+      description: The user can log in immediately with the password given. It must meet the current password rules.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, firstName, lastName, role, password]
+              properties:
+                email: { type: string, format: email, example: new.staff@connectsphere.sg }
+                firstName: { type: string, maxLength: 100 }
+                lastName: { type: string, maxLength: 100 }
+                role: { $ref: '#/components/schemas/Role' }
+                company: { type: string, maxLength: 200, nullable: true }
+                password: { type: string, maxLength: 128, example: LongerPass1! }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Email already used, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /admin/users/{id}/role:
+    patch:
+      tags: [Admin - users]
+      summary: Change a user's role. Needs users.manage
+      description: You cannot change your own role. Takes effect on the user's next request.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [role], properties: { role: { $ref: '#/components/schemas/Role' } } }
+      responses:
+        '200': { description: Updated user, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/users/{id}/status:
+    patch:
+      tags: [Admin - users]
+      summary: Disable or re-enable an account. Needs users.manage
+      description: Disabling blocks login and ends all of the user's open sessions. You cannot disable yourself.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [isActive], properties: { isActive: { type: boolean } } }
+      responses:
+        '200': { description: Updated user, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /admin/permissions:
+    get:
+      tags: [Admin - permissions]
+      summary: All permissions, each role's permissions, and protected ones. Needs permissions.manage
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Permission matrix
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  permissions:
+                    type: array
+                    items: { type: object, properties: { key: { type: string }, description: { type: string } } }
+                  roles:
+                    type: object
+                    additionalProperties: { $ref: '#/components/schemas/Permissions' }
+                  protected:
+                    type: object
+                    description: Permissions that can never be removed from that role
+                    additionalProperties: { $ref: '#/components/schemas/Permissions' }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/roles/{role}/permissions:
+    put:
+      tags: [Admin - permissions]
+      summary: Replace a role's permissions. Needs permissions.manage
+      description: Protected permissions are always kept even if left out.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: role, in: path, required: true, schema: { $ref: '#/components/schemas/Role' } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [permissions], properties: { permissions: { $ref: '#/components/schemas/Permissions' } } }
+      responses:
+        '200':
+          description: The role's permissions after saving
+          content:
+            application/json:
+              schema: { type: object, properties: { role: { type: string }, permissions: { $ref: '#/components/schemas/Permissions' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/settings:
+    get:
+      tags: [Admin - settings]
+      summary: Current login and password settings. Needs settings.manage
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Settings, content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Admin - settings]
+      summary: Change some settings. Needs settings.manage
+      description: Send only the fields to change. Lockout and password rules are copied to Keycloak; if that fails, nothing is saved.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Settings' }
+            example: { sessionTtlHours: 12, idleTimeoutMinutes: 30 }
+      responses:
+        '200': { description: Settings after saving, content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /admin/audit-logs:
+    get:
+      tags: [Admin - audit]
+      summary: Admin actions, newest first (50 per page). Needs audit.view
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }]
+      responses:
+        '200':
+          description: A page of audit entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        actorId: { type: string }
+                        action: { type: string, example: USER_ROLE_CHANGED }
+                        targetId: { type: string, nullable: true }
+                        details: { type: object, nullable: true }
+                        createdAt: { type: string, format: date-time }
+                  page: { type: integer }
+                  pageSize: { type: integer }
+                  total: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '403': { $ref: '#/components/responses/Forbidden' }

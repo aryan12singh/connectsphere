@@ -1,0 +1,82 @@
+// ─────────────────────────────────────────────────────────────────────────
+// auth-service — owns login sessions, permissions, auth settings and the
+// admin audit log (auth_db).
+//
+// How login works (hybrid Keycloak):
+//   1. Keycloak checks the email + password (and handles lockout).
+//   2. auth-service creates its own random session token, stores only its
+//      SHA-256 hash here, and hands the plain token to the client.
+//   3. Every later request sends the token; we hash it and look it up.
+//
+// `sessions` matches the columns in the seed file 02_auth_db.sql.
+// ─────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client" // Rust-free client: no engine binary to download, works on Alpine
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // -> auth_db
+}
+
+model Session {
+  id         String    @id @default(uuid())
+  // SHA-256 (hex) of the token. The plain token is never stored, so a
+  // leaked database can't be used to log in as anyone.
+  tokenHash  String    @unique
+  userId     String // ref: user-service users.id (no FK — different database)
+  expiresAt  DateTime
+  revokedAt  DateTime? // set on logout / account disable; can never be used again
+  lastUsedAt DateTime? // for the idle timeout; null means "not used since login"
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// Which permissions each role has. Editable by tech support.
+// `role` is text (not an enum) because the UserRole enum lives in
+// user-service's database. The list of valid permissions lives in code:
+// src/lib/permissions.js.
+model RolePermission {
+  role       String
+  permission String
+
+  @@id([role, permission])
+  @@map("role_permissions")
+}
+
+// Business rules tech support can change without a code change.
+// Always exactly one row, with id = 1.
+model AuthSettings {
+  id                       Int      @id @default(1)
+  sessionTtlHours          Int      @default(24) // how long a login lasts
+  idleTimeoutMinutes       Int      @default(0) // log out after this much inactivity; 0 = off
+  lockoutMaxFailures       Int      @default(5) // wrong passwords before lockout
+  lockoutWaitMinutes       Int      @default(1) // first lockout wait
+  lockoutMaxWaitMinutes    Int      @default(15) // longest lockout wait
+  passwordMinLength        Int      @default(8)
+  passwordRequireUppercase Boolean  @default(true)
+  passwordRequireLowercase Boolean  @default(true)
+  passwordRequireDigit     Boolean  @default(true)
+  passwordRequireSpecial   Boolean  @default(true)
+  updatedAt                DateTime @updatedAt
+  updatedById              String? // ref: user-service users.id — who last changed it
+
+  @@map("auth_settings")
+}
+
+// Record of every admin action, for accountability.
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String // ref: user-service users.id — who did it
+  action    String // e.g. "USER_CREATED", "USER_ROLE_CHANGED", "SETTINGS_UPDATED"
+  targetId  String? // what it was done to (a user id, a role name, ...)
+  details   Json? // before/after values
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("audit_logs")
+}
