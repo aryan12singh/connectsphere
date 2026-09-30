@@ -54,6 +54,17 @@ When a not-yet-built service gets code:
 1. Delete its `profiles:` line in the compose file.
 2. Add it to Kong's `depends_on`.
 
+## API documentation
+
+| Who reads it | File | What it covers |
+|---|---|---|
+| Frontend developers | `services/auth-service/swagger.html` (open the file in a browser) | The Nuxt `/api/*` routes: login, logout, `/api/auth/me`, the `/api/admin/*` proxy and the built-in `/api/_auth/session` |
+| Backend developers | `services/auth-service/docs/openapi.yaml`, served at http://localhost:3002/docs | auth-service behind Kong, plus `POST /internal/sessions/validate` for other services' permission checks |
+| Backend developers | `services/user-service/docs/openapi.yaml` | user-service's internal routes (not reachable from the browser) |
+
+Update the matching file whenever a route, request or response changes
+(Definition of Done, item 6).
+
 ## 5. What tech support can change
 
 | Area | What | Takes effect |

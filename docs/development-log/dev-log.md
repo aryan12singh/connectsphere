@@ -55,6 +55,59 @@ consistent. Add a new dated entry at the top of "Entries" each time.
 
 ## Entries
 
+### 2026-10-01 — API contracts updated; sign-out now revokes the backend session
+
+Shadow confirmed live mode works with Keycloak: the first stable version
+of login/RBAC/admin.
+
+**Decisions (Shadow)**
+- The contract follows the code. The BFF is **cookie-only**; login returns
+  `{ user }` with `permissions` and **no token** (as CS-10 and CS-11
+  assert). The pre-existing contracts' "dual access" (bearer token) was
+  never implemented and is dropped from the auth contract. Hand testing
+  goes through the backend Swagger UI (:3002/docs, bearer).
+- Teammates' contracts are only flagged, not edited: user-service and
+  event-service `swagger.html` still promise bearer "dual access", which no
+  BFF route implements.
+- Backend internal APIs are documented in `openapi.yaml` (not in the
+  frontend pages).
+
+**Bug found and fixed**: the Sign out button (`UserMenu.vue`) calls
+nuxt-auth-utils' built-in `DELETE /api/_auth/session`, which only cleared
+the cookie. In live mode the backend session stayed valid, so a copied
+cookie kept working until expiry. Fix: new
+`frontend/server/plugins/revoke-backend-session.ts` hooks
+nuxt-auth-utils' `clear` event, so **every** sign-out path revokes the
+backend session. It uses the new `revokeBackendSession()` in
+`server/utils/backend.ts`, which is not `backendFetch`, to avoid a
+401 → clear → hook loop. `DELETE /api/auth` now just calls
+`clearUserSession()`. No change to `UserMenu.vue`.
+
+**Docs**
+- `services/auth-service/swagger.html` rewritten (v0.2.0, OpenAPI 3.1,
+  same page layout and nav as the team's other pages): 14 operations across
+  `/api/auth`, `/api/auth/me`, `/api/admin/*` and `/api/_auth/session`.
+- `services/auth-service/docs/openapi.yaml` v0.3.0: adds
+  `POST /internal/sessions/validate`. Also fixed two errors in my earlier
+  version: an unquoted comma split a parameter description, and `const`
+  isn't allowed in OpenAPI 3.0.
+- New `services/user-service/docs/openapi.yaml`: all internal routes plus
+  /health.
+- `auth-setup.md` gets an "API documentation" section. MT-03 now also
+  checks revocation.
+
+**Verified**: all three specs pass a strict OpenAPI validator. Route
+lists match the code exactly (no undocumented routes, no phantom
+routes). Live contract check: 29 BFF calls and 14 internal calls, every
+status documented and every body matching its schema. `swagger.html`
+renders 14 operations in Chromium. Real Sign out button → backend
+session revoked; a cookie copied before sign-out is replayed → 401;
+disabled-user forced logout still works with no hook loop. Team tests
+75 pass / 20 known failures (unchanged); `nuxt typecheck` clean.
+
+**Needs a rebuild**: `docs/openapi.yaml` is copied into the auth-service
+image, so run `docker compose up -d --build` to see it at :3002/docs.
+
 ### 2026-09-30 — Fix: empty NUXT_SESSION_PASSWORD broke login
 
 `frontend/.env.example` shipped `NUXT_SESSION_PASSWORD=` (empty), and the

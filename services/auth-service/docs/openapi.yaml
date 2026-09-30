@@ -1,7 +1,7 @@
-openapi: 3.0.3
+  openapi: 3.0.3
 info:
   title: ConnectSphere auth-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Login, logout, "who am I", and the tech support admin API.
 
@@ -24,12 +24,19 @@ tags:
   - name: Admin - permissions
   - name: Admin - settings
   - name: Admin - audit
+  - name: Internal
+    description: Service-to-service only. Not routed by Kong; needs the x-internal-api-key header.
 
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
+    internalApiKey:
+      type: apiKey
+      in: header
+      name: x-internal-api-key
+      description: Shared secret between services (INTERNAL_API_KEY). Only services inside the Docker network know it.
   schemas:
     Role:
       type: string
@@ -151,7 +158,7 @@ paths:
       summary: List users (25 per page). Needs users.view
       security: [{ bearerAuth: [] }]
       parameters:
-        - { name: search, in: query, schema: { type: string }, description: Matches email, first or last name }
+        - { name: search, in: query, schema: { type: string }, description: "Matches email, first or last name" }
         - { name: role, in: query, schema: { $ref: '#/components/schemas/Role' } }
         - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
       responses:
@@ -340,3 +347,43 @@ paths:
                   total: { type: integer }
         '401': { $ref: '#/components/responses/Unauthorised' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /internal/sessions/validate:
+    post:
+      tags: [Internal]
+      summary: Check a caller's session token (for other services' RBAC)
+      description: |
+        How another service (e.g. event-service) checks who is calling: forward the
+        caller's Bearer token here, then check `permissions` for the permission
+        your route needs. Same validity rules as /auth/me (expired, idle,
+        revoked and disabled all fail).
+      security: [{ internalApiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, description: The caller's session token (without "Bearer ") }
+      responses:
+        '200':
+          description: Valid session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean, enum: [true] }
+                  user: { $ref: '#/components/schemas/User' }
+                  permissions: { $ref: '#/components/schemas/Permissions' }
+                  expiresAt: { type: string, format: date-time }
+        '401':
+          description: Missing, invalid, expired, idle, revoked or disabled
+          content:
+            application/json:
+              schema: { type: object, properties: { valid: { type: boolean, enum: [false] } } }
+        '403':
+          description: Missing or wrong x-internal-api-key
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }

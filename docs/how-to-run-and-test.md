@@ -136,7 +136,7 @@ differs, note what you saw.
 |---|---|---|
 | MT-01 | On /login, enter `sarah.tan@nexuslabs.sg` with a wrong password | "Invalid credentials". Same message for an unknown email (try `nobody@x.com`) |
 | MT-02 | Log in as `sarah.tan@nexuslabs.sg` | Lands on **Your events** (empty list in live mode) |
-| MT-03 | Click the initials (top right) | Shows Sarah Tan, `EVENT_ORGANISER`, her email. **Sign out** returns to /login |
+| MT-03 | Click the initials (top right), then **Sign out** | Shows Sarah Tan, `EVENT_ORGANISER`, her email. Sign out returns to /login. In pgAdmin, `auth_db.sessions`: her newest session now has `revokedAt` set |
 | MT-04 | Log in as `aisha.rahman@connectsphere.sg` | Lands on **Review queue** |
 | MT-05 | Log in as `hafiz.ismail@connectsphere.sg` (also try Venue Staff and Attendee) | Shows "Signed in as …" but stays on /login. **Correct for now**: the access matrix says these roles have no interface yet |
 | MT-06 | Signed out, go to http://localhost:3000/ | Redirected to /login |

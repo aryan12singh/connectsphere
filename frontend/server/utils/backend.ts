@@ -51,6 +51,28 @@ export async function backendFetch<T>(
 }
 
 /**
+ * Ends the backend session behind a token (auth-service POST /auth/logout,
+ * which sets `revokedAt`). Never throws: an already-expired token or an
+ * unreachable backend must not stop the user logging out locally.
+ * Deliberately not built on backendFetch, which clears the cookie on a
+ * 401 and would re-trigger the logout hook.
+ */
+export async function revokeBackendSession(event: H3Event, token: string): Promise<void> {
+  const { apiBaseUrl } = useRuntimeConfig(event)
+  try {
+    await ofetch('/auth/logout', {
+      baseURL: apiBaseUrl,
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 5_000,
+    })
+  }
+  catch {
+    // Already expired/revoked, or backend down: nothing more to do.
+  }
+}
+
+/**
  * The backend session token for the current request. Throws 401 if there is
  * no login. The token lives in the session's `secure` part: server-only.
  */
