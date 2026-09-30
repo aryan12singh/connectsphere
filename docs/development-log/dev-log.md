@@ -55,6 +55,70 @@ consistent. Add a new dated entry at the top of "Entries" each time.
 
 ## Entries
 
+### 2026-09-30 — Fix: empty NUXT_SESSION_PASSWORD broke login
+
+`frontend/.env.example` shipped `NUXT_SESSION_PASSWORD=` (empty), and the
+run guide said it could stay empty. An empty value makes nuxt-auth-utils
+fail to seal the cookie: every login returns 500 "Empty password" (the
+login page shows "Invalid credentials"). If the line is absent, it
+auto-generates a secret. Fixed `.env.example` (line commented out, with a
+warning) and the guide, and added a troubleshooting row. Reproduced both
+ways before and after. Missed earlier because every test run set the
+variable explicitly.
+
+### 2026-09-28 (repo check) — Repo audit, clean-clone run, run guide
+
+Audited the committed repo (latest commit `d478b83`) against the final
+package, then ran it from scratch.
+
+**Result**
+- Every delivered file is present and identical to the tested version. No
+  teammate frontend or test file changed since. `.env` and `node_modules`
+  are not committed.
+- Clean-clone run: fresh `npm install`, new database via the repo's
+  `init-databases.sh`, migrations, `backend/seed_data` 01/02, services, and
+  Nuxt in live mode all work. Team tests: 75 pass / 20 known failures
+  (identical to baseline). `nuxt typecheck` clean. `docker compose config`
+  valid.
+- Browser walkthrough and replay of the manual cases MT-12 to MT-23 pass.
+
+**Fixed in this pass**
+- `.gitattributes`: forces LF for `*.sh`, Dockerfiles, yml, sql. A CRLF
+  `init-databases.sh` (default Git on Windows) would stop Postgres creating
+  the databases.
+- `services/*/package-lock.json` added. Dockerfiles use `npm ci`, so builds
+  are reproducible.
+- Swagger: the same-origin server (3002) is now listed first, so "Try it
+  out" works from /docs without CORS errors.
+- New `docs/how-to-run-and-test.md`: PowerShell-safe start-up (seed via
+  `docker compose cp` instead of `<`, which PowerShell lacks) and 26 manual
+  test cases (DoD item 2).
+- README: Run section plus links (DoD items 5 and 6). `auth-setup.md`
+  install-from-zip steps replaced by a pointer to the run guide.
+
+**Findings needing a team decision** (not changed):
+1. `backend/seed_data/access_list (1).xlsx` is committed with **plaintext
+   passwords** for 100 accounts (commit `386863c`). No seed uses it.
+2. `docs/erd/schema-updated.prisma` still describes "Pattern 2" (user-service
+   verifies bcrypt passwords via `/internal/users/verify`; auth-service
+   returns `{token}` only). What's built is hybrid Keycloak, plus
+   `users.isActive`, nullable `passwordHash`, `sessions.lastUsedAt`,
+   `role_permissions`, `auth_settings` and `audit_logs`. DoD item 6 needs
+   the contract/ERD updated.
+3. DoD item 2 (Sprint 2): **no automated unit tests yet for
+   user-service/auth-service**, and no test records under
+   `tests/records/<story>/` for the auth work. There is also no CI config
+   (`.github/` absent).
+4. Access matrix: the tech support admin API is built but not in the matrix.
+   "Internal provisioning" is still listed as an open question there, but
+   the build assumes tech support creates accounts (Shadow's decision).
+   The matrix's own findings #1 (`POST /api/events` has no role check) and
+   #2 (`GET /api/users/[id]` has no scoping) are still open in the frontend
+   BFF.
+5. Tech support / venue staff / attendee see "Signed in as…" and stay on
+   /login. This matches the matrix (no interface yet) but is confusing; it
+   needs a landing page decision.
+
 ### 2026-09-28 (frontend) — Auth wired into the Nuxt frontend
 
 The team's `frontend/` is **Nuxt 4 + TypeScript + shadcn-vue, using a BFF
