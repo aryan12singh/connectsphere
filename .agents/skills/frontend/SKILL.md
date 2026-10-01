@@ -40,11 +40,19 @@ npx shadcn-vue@latest add @shadcn/button @shadcn/card @shadcn/input @shadcn/chec
 
 Replace the example list with the smallest set required. Review generated files.
 
+## Component-driven development
+
+Build from stable components outward. Before page code, inventory existing shadcn-vue primitives, reusable project patterns, feature components, and page composition. Define each feature component's responsibility, props, events, slots, visible states, responsive behavior, and accessibility semantics.
+
+Develop the smallest meaningful component in isolation through RED–GREEN–REFACTOR, testing its public behavior rather than internal markup or Tailwind classes. Compose verified components into feature sections, then add page-level integration tests. Keep route pages focused on routing, data loading, and orchestration.
+
+Prefer composition and explicit variants over duplicated markup or empty wrappers. Choose boundaries by cohesive responsibility, repeated patterns, meaningful state, or independent behavior—not merely because Figma contains a frame or visual box.
+
 ## Implementation contract
 
-1. Inventory copy, frame sizes, assets, layout, states, and responsive changes.
-2. Write and run focused tests first. Confirm RED fails because the required behavior is absent, not because test setup is broken.
-3. Compose Nuxt/Vue from preconfigured shadcn-vue primitives where their semantics match; otherwise use semantic HTML.
+1. Inventory copy, frame sizes, assets, layout, states, responsive changes, and component boundaries.
+2. Write and run focused component tests first. Confirm RED fails because the required behavior is absent, not because test setup is broken.
+3. Implement components from primitives to feature sections to page composition, using preconfigured shadcn-vue primitives where their semantics match and semantic HTML otherwise.
 4. Style with existing semantic variables and Tailwind utilities such as `bg-background`, `bg-card`, `text-foreground`, `text-muted-foreground`, `border-border`, `bg-primary`, and `text-primary-foreground`. Do not duplicate theme colors with raw hex values or manual dark-mode overrides.
 5. Use one responsive implementation for equivalent desktop/mobile frames unless their structures genuinely differ.
 6. Preserve accessibility: headings, labels, keyboard behavior, focus states, ARIA names, input types, and autocomplete.
