@@ -9,14 +9,14 @@
 </head>
 <body>
   <nav><a href="../user-service/swagger.html">User service API</a><a href="../event-service/swagger.html">Event service API</a><strong>ConnectSphere Auth Service — BFF Contract</strong></nav>
-  <aside>Backend contract. Browsers use the sealed cookie; API clients and hand execution use bearer tokens. These pages do not run backend services.</aside>
+  <aside>Frontend (BFF) contract, v0.3. Protected routes use the sealed session cookie only; the token is never returned to the browser. To try calls by hand, use the backend Swagger UI at http://localhost:3002/docs. These pages do not run backend services.</aside>
   <div id="swagger-ui"></div>
   <script id="openapi-spec" type="application/json">{
   "openapi": "3.1.0",
   "info": {
     "title": "ConnectSphere Auth Service — BFF Contract",
-    "version": "0.1.0",
-    "description": "Dual access: protected operations accept the sealed session cookie OR a bearer token (either satisfies auth). Login returns the user view plus the opaque token; logout revokes whichever credential is presented. Roles are the five Prisma UserRole values; unknown roles are denied, never defaulted. Hand execution: POST /api/auth first, then paste the returned token as bearer (cookie jar works too, but HttpOnly values cannot be pasted by hand)."
+    "version": "0.3.0",
+    "description": "Routes the Nuxt frontend calls for attendee sign-up, login, session and tech-support administration. **Cookie only**: every protected route is authorised by the sealed `nuxt-session` cookie set at login. The backend session token lives in the cookie's server-only part and is never returned to the browser (CS-10 / CS-11 assert that login bodies contain no token).\n\n**Modes** (`NUXT_AUTH_MODE` in frontend/.env): `mock` (default) logs in the mock users in server/utils/mockUserDb.ts, e.g. organiser@example.com; `live` logs in through auth-service + Keycloak with the seed users, e.g. sarah.tan@nexuslabs.sg / Sarah@CS01!. Mock users use Password123!; each seed user has their own password (row comments in backend/seed_data/01_user_db.sql).\n\n**Access control**: pages and buttons use `permissions` (see `usePermissions().can()`); the backend re-checks every call. Roles are the five Prisma UserRole values; unknown roles are denied at login.\n\n**Hand execution**: this page documents the contract and does not run services. To try calls by hand, log in on the website and open GET routes in the same browser, or use the backend Swagger UI at http://localhost:3002/docs (bearer token from its POST /auth/login)."
   },
   "servers": [
     {
@@ -26,15 +26,26 @@
   "tags": [
     {
       "name": "auth",
-      "description": "Session lifecycle backed by the Prisma Session model (tokenHash stored, raw token presented for revocation)."
+      "description": "Session lifecycle. Backed by auth_db.sessions (only the SHA-256 tokenHash is stored)."
+    },
+    {
+      "name": "admin",
+      "description": "Tech support administration, proxied to auth-service /admin/*. Live mode only."
+    },
+    {
+      "name": "nuxt-auth-utils",
+      "description": "Built-in routes used by useUserSession(). Listed so frontend developers know what they return."
     }
   ],
   "paths": {
     "/api/auth": {
       "post": {
         "operationId": "login",
-        "summary": "Authenticate with email and password",
-        "tags": ["auth"],
+        "summary": "Log in with email and password",
+        "tags": [
+          "auth"
+        ],
+        "description": "Sets the sealed session cookie and returns the user view. Every failure (wrong password, unknown email, locked or disabled account) returns the same 401 text, so account existence is not leaked. Live mode: after too many wrong passwords Keycloak locks the account temporarily (rules set by tech support in /api/admin/settings).",
         "requestBody": {
           "required": true,
           "content": {
@@ -47,7 +58,15 @@
         },
         "responses": {
           "200": {
-            "description": "Authenticated; sealed session cookie set; returns the user view plus the opaque token",
+            "description": "Logged in. `Set-Cookie: nuxt-session=...` (HttpOnly). No token in the body.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Sealed session cookie",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -57,37 +76,70 @@
             }
           },
           "400": {
-            "description": "Missing credentials"
+            "description": "400 Email or password missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 400,
+                  "statusMessage": "Email and password are required",
+                  "message": "Email and password are required"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Invalid credentials (same text for bad email vs bad password)"
+            "description": "Invalid credentials. Mock mode text: \"Invalid credentials\"; live mode text: \"Invalid email or password\"",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "403": {
-            "description": "Account role missing or not recognised"
+            "description": "403 Account role missing or not one of the five roles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 403,
+                  "statusMessage": "Account not authorised",
+                  "message": "Account not authorised"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Live mode: more than 10 login attempts per minute from this client (Kong rate limit)"
+          },
+          "503": {
+            "description": "Live mode: Kong, auth-service or Keycloak unreachable or still starting"
           }
         }
       },
       "delete": {
-        "parameters": [
+        "operationId": "logout",
+        "summary": "Log out",
+        "tags": [
+          "auth"
+        ],
+        "security": [
           {
-            "name": "Authorization",
-            "in": "header",
-            "required": false,
-            "description": "Hand-execution field: paste Bearer <opaque-token> here instead of the Authorize dialog. Same semantics; an invalid bearer takes precedence over a valid cookie (401).",
-            "schema": {
-              "type": "string",
-              "example": "Bearer mock-token-u-organiser"
-            }
+            "sessionCookie": []
           }
         ],
-        "operationId": "logout",
-        "summary": "Revoke the current session",
-        "tags": ["auth"],
-        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
-        "description": "Revokes whichever credential is presented (sets revokedAt); replaying it afterwards yields 401. An invalid bearer takes precedence over a valid cookie. Succeeds even with no credentials.",
+        "description": "Clears the session cookie. Live mode: also revokes the backend session (auth_db.sessions.revokedAt), so a copy of the cookie stops working. The built-in DELETE /api/_auth/session (used by useUserSession().clear() and the Sign out button) has the same effect. Always succeeds, even with no cookie or an unreachable backend.",
         "responses": {
           "200": {
-            "description": "Session revoked",
+            "description": "Logged out",
             "content": {
               "application/json": {
                 "schema": {
@@ -95,11 +147,1161 @@
                 }
               }
             }
-          },
-          "401": {
-            "description": "Invalid bearer token"
           }
         }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "me",
+        "summary": "Check the session and refresh role and permissions",
+        "tags": [
+          "auth"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Live mode: asks auth-service whether the session is still valid (not expired, idle-timed-out, revoked or disabled) and rewrites the cookie with the current role and permissions, so changes by tech support apply without logging in again. Called once per page load by app/plugins/verify-session.client.ts. Mock mode: returns the session user as-is.",
+        "responses": {
+          "200": {
+            "description": "Session valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "user"
+                  ],
+                  "properties": {
+                    "user": {
+                      "$ref": "#/components/schemas/SessionUser"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in, or the backend session has ended. In live mode the cookie is cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Live mode: backend unreachable (the user stays logged in)"
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "operationId": "register",
+        "summary": "Attendee sign-up (public)",
+        "tags": [
+          "auth"
+        ],
+        "description": "Used by app/pages/signup.vue. Creates an ATTENDEE account that can log in straight away; staff accounts are created by tech support. Only email, firstName, lastName, company and password are forwarded, so a `role` in the body is dropped (auth-service also forces ATTENDEE). No cookie is set: the page goes to /login?registered=1 and the user signs in. Live mode only.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "firstName",
+                  "lastName",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 254
+                  },
+                  "firstName": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "company": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "description": "Optional"
+                  },
+                  "password": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "description": "Must meet GET /api/auth/password-policy"
+                  }
+                }
+              },
+              "example": {
+                "email": "new.attendee@example.com",
+                "firstName": "New",
+                "lastName": "Attendee",
+                "password": "Str0ng!Pass"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Account created. No session cookie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string",
+                          "const": "ATTENDEE"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400 Missing or invalid field, or password does not meet the rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 400,
+                  "statusMessage": "Password does not meet the password rules",
+                  "message": "Password does not meet the password rules"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409 Email already used",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 409,
+                  "statusMessage": "A user with this email already exists",
+                  "message": "A user with this email already exists"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 5 sign-ups per minute from this client (Kong rate limit)"
+          },
+          "501": {
+            "description": "501 Mock mode (no user store to add to)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 501,
+                  "statusMessage": "Sign-up needs NUXT_AUTH_MODE=live",
+                  "message": "Sign-up needs NUXT_AUTH_MODE=live"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Kong, auth-service, user-service or Keycloak unreachable. Nothing is created."
+          }
+        }
+      }
+    },
+    "/api/auth/password-policy": {
+      "get": {
+        "operationId": "getPasswordPolicy",
+        "summary": "Current password rules (public)",
+        "tags": [
+          "auth"
+        ],
+        "description": "The sign-up page shows these rules and ticks them off as the user types. Set by tech support in /api/admin/settings; Keycloak enforces the same rules. Mock mode returns the defaults below.",
+        "responses": {
+          "200": {
+            "description": "Password rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "minLength": {
+                      "type": "integer"
+                    },
+                    "requireUppercase": {
+                      "type": "boolean"
+                    },
+                    "requireLowercase": {
+                      "type": "boolean"
+                    },
+                    "requireDigit": {
+                      "type": "boolean"
+                    },
+                    "requireSpecial": {
+                      "type": "boolean"
+                    },
+                    "notEmail": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  }
+                },
+                "example": {
+                  "minLength": 8,
+                  "requireUppercase": true,
+                  "requireLowercase": true,
+                  "requireDigit": true,
+                  "requireSpecial": true,
+                  "notEmail": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/_auth/session": {
+      "get": {
+        "operationId": "getSession",
+        "summary": "Read the session (nuxt-auth-utils built-in)",
+        "tags": [
+          "nuxt-auth-utils"
+        ],
+        "description": "What useUserSession().fetch() reads. Reads the cookie only; does not contact the backend. The server-only part (the token) is never included.",
+        "responses": {
+          "200": {
+            "description": "Session contents; `user` is absent when logged out",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "user": {
+                      "$ref": "#/components/schemas/SessionUser"
+                    },
+                    "loggedInAt": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "clearSession",
+        "summary": "Clear the session (nuxt-auth-utils built-in)",
+        "tags": [
+          "nuxt-auth-utils"
+        ],
+        "description": "What useUserSession().clear() calls (the Sign out button). Same effect as DELETE /api/auth, including backend revocation in live mode.",
+        "responses": {
+          "200": {
+            "description": "Cleared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "loggedOut": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "operationId": "listUsers",
+        "summary": "List users, 25 per page (needs users.view)",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Filter by text and/or role. Never includes passwordHash.\n\nRequired permission: `users.view`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
+        "responses": {
+          "200": {
+            "description": "A page of users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsersPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in, or the backend session has ended (the cookie is cleared)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Logged in, but the role lacks the permission this route needs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 403,
+                  "statusMessage": "You do not have permission to do this",
+                  "message": "You do not have permission to do this"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Mock mode (NUXT_AUTH_MODE=mock): the admin API needs live mode"
+          },
+          "503": {
+            "description": "Live mode: Kong or auth-service unreachable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Matches email, first or last name (case-insensitive)"
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Role"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createUser",
+        "summary": "Create a user (needs users.manage)",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Creates the Keycloak login and the user-service profile. The user can log in immediately with the password given, which must meet the current password rules. If the profile step fails, the Keycloak account is removed again. Note: the backend answers 201; the BFF proxy returns 200.\n\nRequired permission: `users.manage`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
+        "responses": {
+          "200": {
+            "description": "Created user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400 Invalid input or password too weak",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 400,
+                  "statusMessage": "Password does not meet the password rules",
+                  "message": "Password does not meet the password rules"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409 Email already used",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 409,
+                  "statusMessage": "A user with this email already exists",
+                  "message": "A user with this email already exists"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in, or the backend session has ended (the cookie is cleared)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Logged in, but the role lacks the permission this route needs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 403,
+                  "statusMessage": "You do not have permission to do this",
+                  "message": "You do not have permission to do this"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Mock mode (NUXT_AUTH_MODE=mock): the admin API needs live mode"
+          },
+          "503": {
+            "description": "Live mode: Kong or auth-service unreachable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewUser"
+              },
+              "example": {
+                "email": "new.staff@connectsphere.sg",
+                "firstName": "New",
+                "lastName": "Staff",
+                "role": "VENUE_STAFF",
+                "company": "Marina Convention Centre",
+                "password": "LongerPass1!"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/{id}/role": {
+      "patch": {
+        "operationId": "changeUserRole",
+        "summary": "Change a user's role (needs users.manage)",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Takes effect on the user's next request. You cannot change your own role (so at least one tech support account always remains).\n\nRequired permission: `users.manage`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
+        "responses": {
+          "200": {
+            "description": "Updated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400 Invalid role, or changing your own role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 400,
+                  "statusMessage": "You cannot change your own role",
+                  "message": "You cannot change your own role"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404 Unknown user id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 404,
+                  "statusMessage": "User not found",
+                  "message": "User not found"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in, or the backend session has ended (the cookie is cleared)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Logged in, but the role lacks the permission this route needs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 403,
+                  "statusMessage": "You do not have permission to do this",
+                  "message": "You do not have permission to do this"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Mock mode (NUXT_AUTH_MODE=mock): the admin API needs live mode"
+          },
+          "503": {
+            "description": "Live mode: Kong or auth-service unreachable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "$ref": "#/components/schemas/Role"
+                  }
+                }
+              },
+              "example": {
+                "role": "EVENT_COORDINATOR"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "User id (user_db users.id)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/users/{id}/status": {
+      "patch": {
+        "operationId": "setUserActive",
+        "summary": "Disable or re-enable an account (needs users.manage)",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Disabling blocks login (in Keycloak) and ends all the user's open sessions. You cannot disable yourself.\n\nRequired permission: `users.manage`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
+        "responses": {
+          "200": {
+            "description": "Updated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400 Missing isActive, or disabling yourself",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 400,
+                  "statusMessage": "You cannot disable your own account",
+                  "message": "You cannot disable your own account"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404 Unknown user id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 404,
+                  "statusMessage": "User not found",
+                  "message": "User not found"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in, or the backend session has ended (the cookie is cleared)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Logged in, but the role lacks the permission this route needs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 403,
+                  "statusMessage": "You do not have permission to do this",
+                  "message": "You do not have permission to do this"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Mock mode (NUXT_AUTH_MODE=mock): the admin API needs live mode"
+          },
+          "503": {
+            "description": "Live mode: Kong or auth-service unreachable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "isActive"
+                ],
+                "properties": {
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "example": {
+                "isActive": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "User id (user_db users.id)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/permissions": {
+      "get": {
+        "operationId": "getPermissionMatrix",
+        "summary": "Permission catalogue and each role's permissions (needs permissions.manage)",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Everything the permissions screen needs: all permissions with descriptions, what each role has, and which permissions can never be removed from a role.\n\nRequired permission: `permissions.manage`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
+        "responses": {
+          "200": {
+            "description": "Permission matrix",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionMatrix"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in, or the backend session has ended (the cookie is cleared)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Logged in, but the role lacks the permission this route needs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 403,
+                  "statusMessage": "You do not have permission to do this",
+                  "message": "You do not have permission to do this"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Mock mode (NUXT_AUTH_MODE=mock): the admin API needs live mode"
+          },
+          "503": {
+            "description": "Live mode: Kong or auth-service unreachable"
+          }
+        }
+      }
+    },
+    "/api/admin/roles/{role}/permissions": {
+      "put": {
+        "operationId": "setRolePermissions",
+        "summary": "Replace a role's permissions (needs permissions.manage)",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Sends the complete list for the role. Protected permissions (tech support keeps users.manage and permissions.manage) are always kept even if left out. Takes effect on each user's next request.\n\nRequired permission: `permissions.manage`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
+        "responses": {
+          "200": {
+            "description": "The role's permissions after saving",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "$ref": "#/components/schemas/Role"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400 Not a list, or unknown permission names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 400,
+                  "statusMessage": "Unknown permissions: nuke.everything",
+                  "message": "Unknown permissions: nuke.everything"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404 Unknown role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 404,
+                  "statusMessage": "Unknown role",
+                  "message": "Unknown role"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in, or the backend session has ended (the cookie is cleared)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Logged in, but the role lacks the permission this route needs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 403,
+                  "statusMessage": "You do not have permission to do this",
+                  "message": "You do not have permission to do this"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Mock mode (NUXT_AUTH_MODE=mock): the admin API needs live mode"
+          },
+          "503": {
+            "description": "Live mode: Kong or auth-service unreachable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "permissions"
+                ],
+                "properties": {
+                  "permissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "example": {
+                "permissions": [
+                  "event_requests.review",
+                  "events.view",
+                  "events.confirm"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "role",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Role"
+            }
+          }
+        ]
+      }
+    },
+    "/api/admin/settings": {
+      "get": {
+        "operationId": "getSettings",
+        "summary": "Current login and password settings (needs settings.manage)",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "\n\nRequired permission: `settings.manage`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
+        "responses": {
+          "200": {
+            "description": "Settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in, or the backend session has ended (the cookie is cleared)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Logged in, but the role lacks the permission this route needs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 403,
+                  "statusMessage": "You do not have permission to do this",
+                  "message": "You do not have permission to do this"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Mock mode (NUXT_AUTH_MODE=mock): the admin API needs live mode"
+          },
+          "503": {
+            "description": "Live mode: Kong or auth-service unreachable"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateSettings",
+        "summary": "Change some settings (needs settings.manage)",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Send only the fields to change. Session length applies to logins made after the change; idle timeout applies to every session immediately; lockout and password rules are copied to Keycloak — if that fails, nothing is saved (503).\n\nRequired permission: `settings.manage`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
+        "responses": {
+          "200": {
+            "description": "Settings after saving",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "One or more values out of range; `data.details` lists each problem",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 400,
+                  "statusMessage": "Some settings are invalid",
+                  "message": "Some settings are invalid",
+                  "data": {
+                    "error": "Some settings are invalid",
+                    "details": [
+                      "Session length (hours) must be a whole number from 1 to 720"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in, or the backend session has ended (the cookie is cleared)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Logged in, but the role lacks the permission this route needs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 403,
+                  "statusMessage": "You do not have permission to do this",
+                  "message": "You do not have permission to do this"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Mock mode (NUXT_AUTH_MODE=mock): the admin API needs live mode"
+          },
+          "503": {
+            "description": "Live mode: Kong or auth-service unreachable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthSettingsChange"
+              },
+              "example": {
+                "sessionTtlHours": 12,
+                "idleTimeoutMinutes": 30
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/audit-logs": {
+      "get": {
+        "operationId": "getAuditLog",
+        "summary": "Admin actions and sign-ups, newest first, 50 per page (needs audit.view)",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "USER_REGISTERED entries are attendee sign-ups; their actor is the new user.\n\nRequired permission: `audit.view`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
+        "responses": {
+          "200": {
+            "description": "A page of audit entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not logged in, or the backend session has ended (the cookie is cleared)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Logged in, but the role lacks the permission this route needs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 403,
+                  "statusMessage": "You do not have permission to do this",
+                  "message": "You do not have permission to do this"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Mock mode (NUXT_AUTH_MODE=mock): the admin API needs live mode"
+          },
+          "503": {
+            "description": "Live mode: Kong or auth-service unreachable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          }
+        ]
       }
     }
   },
@@ -109,12 +1311,7 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "nuxt-session",
-        "description": "Sealed session cookie (HttpOnly, SameSite=Lax; Secure in production). Absent, expired or revoked sessions yield 401 on protected routes."
-      },
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "description": "Hand-executable credential: Authorization: Bearer <opaque-token>. Same token and revocation semantics as the session cookie; an invalid bearer takes precedence over a valid cookie (401)."
+        "description": "Sealed session cookie set by POST /api/auth (HttpOnly, SameSite=Lax; Secure in production). Absent, expired, idle-timed-out or revoked sessions yield 401 on protected routes."
       }
     },
     "schemas": {
@@ -129,13 +1326,34 @@
           "TECHNICAL_SUPPORT_STAFF"
         ]
       },
+      "Permission": {
+        "type": "string",
+        "description": "Catalogue: services/auth-service/src/lib/permissions.js (GET /api/admin/permissions lists them with descriptions).",
+        "enum": [
+          "users.view",
+          "users.manage",
+          "permissions.manage",
+          "settings.manage",
+          "audit.view",
+          "event_requests.create",
+          "event_requests.review",
+          "events.view",
+          "events.confirm",
+          "venues.view",
+          "venues.manage",
+          "venue_bookings.create",
+          "venue_bookings.decide",
+          "attendance.register",
+          "messages.send"
+        ]
+      },
       "LoginRequest": {
         "type": "object",
-        "description": "Credentials payload for POST /api/auth.",
         "required": [
           "email",
           "password"
         ],
+        "description": "Credentials payload for POST /api/auth. Email is trimmed and matched case-insensitively.",
         "example": {
           "email": "organiser@example.com",
           "password": "Password123!"
@@ -143,22 +1361,25 @@
         "properties": {
           "email": {
             "type": "string",
-            "format": "email"
+            "format": "email",
+            "maxLength": 254
           },
           "password": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 128
           }
         }
       },
-      "User": {
+      "SessionUser": {
         "type": "object",
-        "description": "BFF view of Prisma User. passwordHash is never returned; name composes firstName and lastName.",
         "required": [
           "id",
           "email",
           "name",
-          "role"
+          "role",
+          "permissions"
         ],
+        "description": "The user as stored in the session and returned to the browser. passwordHash and the session token are never included.",
         "properties": {
           "id": {
             "type": "string"
@@ -168,33 +1389,46 @@
             "format": "email"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "firstName + ' ' + lastName"
           },
           "role": {
             "$ref": "#/components/schemas/Role"
           },
-          "company": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Organisation display name; mirrors Prisma User.company."
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            },
+            "description": "Current permissions of the role; for showing/hiding UI only"
           }
         }
       },
       "LoginResponse": {
         "type": "object",
-        "description": "User view plus the opaque session token (present it back as bearer or cookie).",
         "required": [
-          "user",
-          "token"
+          "user"
         ],
+        "description": "User view only. The token is deliberately absent (kept server-side in the sealed cookie).",
         "properties": {
           "user": {
-            "$ref": "#/components/schemas/User"
-          },
-          "token": {
-            "type": "string"
+            "$ref": "#/components/schemas/SessionUser"
+          }
+        },
+        "example": {
+          "user": {
+            "id": "a1000000-0000-4000-8000-000000000005",
+            "email": "aisha.rahman@connectsphere.sg",
+            "name": "Aisha Rahman",
+            "role": "EVENT_COORDINATOR",
+            "permissions": [
+              "event_requests.review",
+              "events.confirm",
+              "events.view",
+              "messages.send",
+              "venue_bookings.create",
+              "venues.view"
+            ]
           }
         }
       },
@@ -206,6 +1440,314 @@
         "properties": {
           "ok": {
             "type": "boolean"
+          }
+        }
+      },
+      "AdminUser": {
+        "type": "object",
+        "description": "user-service profile as returned by the admin API. Never includes passwordHash.",
+        "required": [
+          "id",
+          "email",
+          "firstName",
+          "lastName",
+          "role",
+          "isActive",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "company": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "false = disabled, cannot log in"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "NewUser": {
+        "type": "object",
+        "required": [
+          "email",
+          "firstName",
+          "lastName",
+          "role",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "firstName": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "lastName": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "company": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Initial password; must meet the current password rules (GET /api/admin/settings). Not temporary."
+          }
+        }
+      },
+      "UsersPage": {
+        "type": "object",
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminUser"
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer",
+            "const": 25
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "PermissionMatrix": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "$ref": "#/components/schemas/Permission"
+                },
+                "description": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "roles": {
+            "type": "object",
+            "description": "Role → its permissions",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/Permission"
+              }
+            }
+          },
+          "protected": {
+            "type": "object",
+            "description": "Role → permissions that can never be removed from it",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/Permission"
+              }
+            }
+          }
+        }
+      },
+      "AuthSettings": {
+        "type": "object",
+        "description": "Business rules tech support can change without a code change (auth_db.auth_settings).",
+        "properties": {
+          "sessionTtlHours": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720,
+            "description": "How long a login lasts. Default 24"
+          },
+          "idleTimeoutMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1440,
+            "description": "Log out after this much inactivity; 0 = off (default)"
+          },
+          "lockoutMaxFailures": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "Wrong passwords before lockout. Default 5"
+          },
+          "lockoutWaitMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60,
+            "description": "First lockout wait. Default 1"
+          },
+          "lockoutMaxWaitMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440,
+            "description": "Longest lockout wait; must be ≥ lockoutWaitMinutes. Default 15"
+          },
+          "passwordMinLength": {
+            "type": "integer",
+            "minimum": 8,
+            "maximum": 128,
+            "description": "Default 8"
+          },
+          "passwordRequireUppercase": {
+            "type": "boolean"
+          },
+          "passwordRequireLowercase": {
+            "type": "boolean"
+          },
+          "passwordRequireDigit": {
+            "type": "boolean"
+          },
+          "passwordRequireSpecial": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "updatedById": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "readOnly": true
+          }
+        }
+      },
+      "AuthSettingsChange": {
+        "description": "Any subset of AuthSettings (except the read-only fields). Unknown fields are rejected.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AuthSettings"
+          }
+        ]
+      },
+      "AuditPage": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "actorId": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "USER_CREATED",
+                    "USER_REGISTERED",
+                    "USER_ROLE_CHANGED",
+                    "USER_DISABLED",
+                    "USER_ENABLED",
+                    "ROLE_PERMISSIONS_CHANGED",
+                    "SETTINGS_UPDATED"
+                  ]
+                },
+                "targetId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "details": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer",
+            "const": 50
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Nuxt error shape. Show `statusMessage` to the user; `data.details` (settings only) lists each invalid field.",
+        "properties": {
+          "error": {
+            "type": "boolean"
+          },
+          "statusCode": {
+            "type": "integer"
+          },
+          "statusMessage": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "error": {
+                "type": "string"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }

@@ -1,6 +1,17 @@
-version: "3.9"
+# ConnectSphere local stack.
+# Start everything that is built:   docker compose -f infra/docker-compose.yml up --build
+#
+# Services that don't have code yet (event, venue, booking, attendance,
+# messaging, notification, orchestrator) are listed at the bottom with
+# `profiles: ["not-built-yet"]`, so a normal `up` skips them. When a service
+# gets its Dockerfile and code:
+#   1. delete its `profiles:` line
+#   2. add it to kong's depends_on
+#   3. add its database to postgres/init-databases.sh if it isn't there
 
 services:
+  # ── Infrastructure ────────────────────────────────────────────────────
+
   postgres:
     image: postgres:16
     restart: unless-stopped
@@ -11,7 +22,14 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Creates one database per service, the first time the volume is created.
       - ./postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh
+    # Lets the services wait until Postgres actually accepts connections.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U connectsphere"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   pgadmin:
     image: dpage/pgadmin4
@@ -20,7 +38,7 @@ services:
       PGADMIN_DEFAULT_EMAIL: admin@connectsphere.dev
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
-      - "5050:80"
+      - "5050:80" # open http://localhost:5050, add server host "postgres", user/pass connectsphere
     depends_on:
       - postgres
 
@@ -28,9 +46,36 @@ services:
     image: rabbitmq:3-management
     restart: unless-stopped
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "5672:5672" # AMQP (services connect here)
+      - "15672:15672" # management UI: http://localhost:15672 (guest / guest)
 
+  # Keycloak checks passwords and locks accounts after repeated failures.
+  # It stores everything in Postgres (keycloak_db), so accounts created at
+  # runtime (sign-up, tech support) survive `docker compose down`.
+  # `down -v` wipes keycloak_db together with user_db, keeping them in step.
+  # The realm file (users, client, service account, lockout rules) is
+  # imported only when keycloak_db is empty, i.e. the first start after a
+  # fresh volume. Admin console: http://localhost:8080 (admin / admin)
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin # dev only
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin # dev only
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_db
+      KC_DB_USERNAME: connectsphere
+      KC_DB_PASSWORD: connectsphere
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/connectsphere-realm.json:/opt/keycloak/data/import/connectsphere-realm.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # API gateway — the only public entry point.
   kong:
     image: kong:3.6
     restart: unless-stopped
@@ -42,73 +87,149 @@ services:
     volumes:
       - ../gateway/kong/kong.yml:/kong/kong.yml
     ports:
-      - "8000:8000" # proxy — this is what the frontend and Swagger UI hit
-      - "8001:8001" # admin API
+      - "8000:8000" # proxy — what the frontend calls
+      - "8001:8001" # Kong admin API (dev only)
+    # Only services that are built. Add each one as it gets code.
     depends_on:
+      - auth-service
       - user-service
-      - event-service
-      - venue-service
-      - booking-service
-      - attendance-service
-      - messaging-service
-      - notification-service
-      - orchestrator-service
+
+  # ── Built services ────────────────────────────────────────────────────
 
   user-service:
     build: ../services/user-service
+    restart: unless-stopped
     environment:
+      PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/user_db
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
+    ports:
+      - "3001:3000" # local debugging only — Kong does not route to user-service
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+
+  auth-service:
+    build: ../services/auth-service
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/auth_db
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: connectsphere
+      KEYCLOAK_CLIENT_ID: auth-service
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-dev-auth-service-secret}
+      USER_SERVICE_URL: http://user-service:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
+      # Session length, lockout and password rules are NOT set here —
+      # tech support changes them at runtime (PUT /admin/settings).
+    ports:
+      - "3002:3000" # local debugging + Swagger UI at http://localhost:3002/docs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      user-service:
+        condition: service_started
+
+  # ── Not built yet (skipped by a normal `up`, see top of file) ─────────
+  # Every domain service gets AUTH_SERVICE_URL + INTERNAL_API_KEY so it can
+  # check callers via auth-service's /internal/sessions/validate (RBAC).
 
   event-service:
+    profiles: ["not-built-yet"]
     build: ../services/event-service
+    restart: unless-stopped
     environment:
+      PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/event_db
+      AUTH_SERVICE_URL: http://auth-service:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   venue-service:
+    profiles: ["not-built-yet"]
     build: ../services/venue-service
+    restart: unless-stopped
     environment:
+      PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/venue_db
+      AUTH_SERVICE_URL: http://auth-service:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   booking-service:
+    profiles: ["not-built-yet"]
     build: ../services/booking-service
+    restart: unless-stopped
     environment:
+      PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/booking_db
+      AUTH_SERVICE_URL: http://auth-service:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   attendance-service:
+    profiles: ["not-built-yet"]
     build: ../services/attendance-service
+    restart: unless-stopped
     environment:
+      PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/attendance_db
+      AUTH_SERVICE_URL: http://auth-service:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   messaging-service:
+    profiles: ["not-built-yet"]
     build: ../services/messaging-service
+    restart: unless-stopped
     environment:
+      PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/messaging_db
+      AUTH_SERVICE_URL: http://auth-service:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
+  # Consumes domain events from RabbitMQ and records/sends notifications.
   notification-service:
+    profiles: ["not-built-yet"]
     build: ../services/notification-service
+    restart: unless-stopped
     environment:
+      PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/notification_db
       RABBITMQ_URL: amqp://rabbitmq:5672
+      AUTH_SERVICE_URL: http://auth-service:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     depends_on:
-      - postgres
-      - rabbitmq
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
 
+  # Runs the multi-service flows (sagas): event approval, venue booking,
+  # event confirmation. Calls each domain service's API over HTTP.
   orchestrator-service:
+    profiles: ["not-built-yet"]
     build: ../services/orchestrator-service
+    restart: unless-stopped
     environment:
+      PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/orchestrator_db
+      AUTH_SERVICE_URL: http://auth-service:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
       USER_SERVICE_URL: http://user-service:3000
       EVENT_SERVICE_URL: http://event-service:3000
       VENUE_SERVICE_URL: http://venue-service:3000
@@ -117,12 +238,18 @@ services:
       MESSAGING_SERVICE_URL: http://messaging-service:3000
       NOTIFICATION_SERVICE_URL: http://notification-service:3000
     depends_on:
-      - postgres
-      - user-service
-      - event-service
-      - venue-service
-      - booking-service
-      - notification-service
+      postgres:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      event-service:
+        condition: service_started
+      venue-service:
+        condition: service_started
+      booking-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
 
 volumes:
   pgdata:

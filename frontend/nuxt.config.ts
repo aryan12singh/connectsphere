@@ -21,4 +21,18 @@ export default defineNuxtConfig({
      */
     componentDir: '@/components/ui',
   },
+  /**
+   * Server-only settings (never sent to the browser). Override each one with
+   * an env var in frontend/.env — Nuxt maps them automatically:
+   *   apiBaseUrl → NUXT_API_BASE_URL
+   *   authMode   → NUXT_AUTH_MODE
+   */
+  runtimeConfig: {
+    // Where the BFF reaches the backend: Kong. In Docker this becomes http://kong:8000.
+    apiBaseUrl: 'http://localhost:8000',
+    // 'mock' = login against server/utils/mockUserDb.ts (no backend needed;
+    //          matches the event mocks and existing tests).
+    // 'live' = login through the real auth-service (needs the Docker stack).
+    authMode: 'mock',
+  },
 })

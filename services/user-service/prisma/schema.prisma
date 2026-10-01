@@ -1,0 +1,46 @@
+// ─────────────────────────────────────────────────────────────────────────
+// user-service — owns user profiles and roles (user_db).
+//
+// Matches the columns in the seed file 01_user_db.sql, so the seed loads
+// straight into the tables Prisma creates.
+//
+// Passwords: Keycloak is the source of truth for passwords (hybrid auth).
+// `passwordHash` is kept only because the seed contract has it — the login
+// flow never reads it. Decided 2026-09-28: keep it, unused. It is optional
+// so users created by tech support don't need a fake value.
+// ─────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client" // Rust-free client: no engine binary to download, works on Alpine
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // -> user_db
+}
+
+// The five roles. Fixed (decided 2026-09-28): tech support can move users
+// between roles and change what each role may do, but not add new roles.
+enum UserRole {
+  EVENT_ORGANISER
+  EVENT_COORDINATOR
+  VENUE_STAFF
+  TECHNICAL_SUPPORT_STAFF
+  ATTENDEE
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String? // legacy/unused for login — Keycloak checks passwords
+  firstName    String
+  lastName     String
+  role         UserRole
+  company      String? // organisation the user belongs to; null for most attendees
+  isActive     Boolean  @default(true) // false = disabled by tech support, cannot log in
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("users")
+}

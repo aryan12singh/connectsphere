@@ -1,0 +1,367 @@
+{
+  "realm": "connectsphere",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "passwordPolicy": "length(8) and upperCase(1) and lowerCase(1) and digits(1) and specialChars(1) and notUsername",
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "maxDeltaTimeSeconds": 43200,
+  "quickLoginCheckMilliSeconds": 1000,
+  "minimumQuickLoginWaitSeconds": 60,
+  "clients": [
+    {
+      "clientId": "auth-service",
+      "name": "ConnectSphere auth-service",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dev-auth-service-secret",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "username": "sarah.tan@nexuslabs.sg",
+      "email": "sarah.tan@nexuslabs.sg",
+      "firstName": "Sarah",
+      "lastName": "Tan",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Sarah@CS01!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "username": "daniel.lim@brightpath.edu.sg",
+      "email": "daniel.lim@brightpath.edu.sg",
+      "firstName": "Daniel",
+      "lastName": "Lim",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Daniel@CS02!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "username": "priya.raman@greenleaf.org.sg",
+      "email": "priya.raman@greenleaf.org.sg",
+      "firstName": "Priya",
+      "lastName": "Raman",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Priya@CS03!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "username": "marcus.wong@orbitfintech.com",
+      "email": "marcus.wong@orbitfintech.com",
+      "firstName": "Marcus",
+      "lastName": "Wong",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Marcus@CS04!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "username": "aisha.rahman@connectsphere.sg",
+      "email": "aisha.rahman@connectsphere.sg",
+      "firstName": "Aisha",
+      "lastName": "Rahman",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Aisha@CS05!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000006",
+      "username": "kevin.ong@connectsphere.sg",
+      "email": "kevin.ong@connectsphere.sg",
+      "firstName": "Kevin",
+      "lastName": "Ong",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Kevin@CS06!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000007",
+      "username": "meiling.chua@connectsphere.sg",
+      "email": "meiling.chua@connectsphere.sg",
+      "firstName": "Mei Ling",
+      "lastName": "Chua",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "MeiLing@CS07!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000008",
+      "username": "ravi.kumar@marinaconvention.sg",
+      "email": "ravi.kumar@marinaconvention.sg",
+      "firstName": "Ravi",
+      "lastName": "Kumar",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Ravi@CS08!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000009",
+      "username": "grace.teo@harbourfronthall.sg",
+      "email": "grace.teo@harbourfronthall.sg",
+      "firstName": "Grace",
+      "lastName": "Teo",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Grace@CS09!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000010",
+      "username": "jonathan.yeo@onenorthhub.sg",
+      "email": "jonathan.yeo@onenorthhub.sg",
+      "firstName": "Jonathan",
+      "lastName": "Yeo",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Jonathan@CS10!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000011",
+      "username": "hafiz.ismail@connectsphere.sg",
+      "email": "hafiz.ismail@connectsphere.sg",
+      "firstName": "Hafiz",
+      "lastName": "Ismail",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Hafiz@CS11!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000012",
+      "username": "chloe.ng@connectsphere.sg",
+      "email": "chloe.ng@connectsphere.sg",
+      "firstName": "Chloe",
+      "lastName": "Ng",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Chloe@CS12!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000013",
+      "username": "ethan.goh@gmail.com",
+      "email": "ethan.goh@gmail.com",
+      "firstName": "Ethan",
+      "lastName": "Goh",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Ethan@CS13!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000014",
+      "username": "nur.aisyah@outlook.com",
+      "email": "nur.aisyah@outlook.com",
+      "firstName": "Nur",
+      "lastName": "Aisyah",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Nur@CS14!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000015",
+      "username": "ben.koh@kohdesign.sg",
+      "email": "ben.koh@kohdesign.sg",
+      "firstName": "Benjamin",
+      "lastName": "Koh",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Benjamin@CS15!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000016",
+      "username": "lakshmi.pillai@gmail.com",
+      "email": "lakshmi.pillai@gmail.com",
+      "firstName": "Lakshmi",
+      "lastName": "Pillai",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Lakshmi@CS16!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000017",
+      "username": "ryan.tay@dbs-mail.com",
+      "email": "ryan.tay@dbs-mail.com",
+      "firstName": "Ryan",
+      "lastName": "Tay",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Ryan@CS17!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000018",
+      "username": "hannah.seah@yahoo.com",
+      "email": "hannah.seah@yahoo.com",
+      "firstName": "Hannah",
+      "lastName": "Seah",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Hannah@CS18!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000019",
+      "username": "weijie.low@lowlogistics.sg",
+      "email": "weijie.low@lowlogistics.sg",
+      "firstName": "Wei Jie",
+      "lastName": "Low",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "WeiJie@CS19!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000020",
+      "username": "olivia.fernandez@gmail.com",
+      "email": "olivia.fernandez@gmail.com",
+      "firstName": "Olivia",
+      "lastName": "Fernandez",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Olivia@CS20!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "service-account-auth-service",
+      "enabled": true,
+      "serviceAccountClientId": "auth-service",
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "manage-users",
+          "manage-realm"
+        ]
+      }
+    }
+  ]
+}
