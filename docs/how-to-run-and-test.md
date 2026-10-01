@@ -19,6 +19,20 @@ You need:
 - **Git**. Clone the repo normally. `.gitattributes` keeps the shell script's
   line endings correct on Windows.
 
+### A2. Starting from scratch (skip on a brand-new clone)
+
+If you have run the stack before and want a clean start (or something is in
+a confusing state), wipe the old containers and **all** data first. This
+deletes every database, including Keycloak's accounts and anyone who signed up:
+
+```powershell
+docker compose -f infra/docker-compose.yml down -v
+```
+
+Then check `frontend/.env`, if it exists: there must be **no** line
+`NUXT_SESSION_PASSWORD=` with nothing after it (delete it if there is).
+Continue with Part B; you will redo B2 (seed data) and Part C.
+
 ---
 
 ## Part B — Start the backend
@@ -55,21 +69,23 @@ docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -
 docker compose -f infra/docker-compose.yml restart keycloak
 ```
 
-**After any `up --build` that rebuilds a service**, restart Kong. It keeps
-sending requests to the old container, and logins fail with a 502 until you do:
-
-```powershell
-docker compose -f infra/docker-compose.yml restart kong
-```
-
 To watch the two services start:
 
 ```powershell
 docker compose -f infra/docker-compose.yml logs -f auth-service user-service
 ```
 
-Wait for `auth-service listening on port 3000` and
+Wait for `auth-service listening on port 3000` (3000 is its port inside the
+container; you reach it on 3002) and
 `Keycloak lockout and password rules synced from auth_db`, then press Ctrl+C.
+The second line can take a minute while Keycloak starts.
+
+**Then restart Kong. Do this after every `up --build`.** Kong keeps sending
+requests to the old containers, and logins fail with a 502 until you do:
+
+```powershell
+docker compose -f infra/docker-compose.yml restart kong
+```
 
 ### B2. Load the seed data (once)
 
