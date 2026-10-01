@@ -50,9 +50,12 @@ services:
       - "15672:15672" # management UI: http://localhost:15672 (guest / guest)
 
   # Keycloak checks passwords and locks accounts after repeated failures.
-  # On first start it imports the realm (users, client, service account,
-  # lockout rules) from keycloak/connectsphere-realm.json.
-  # Admin console: http://localhost:8080 (admin / admin)
+  # It stores everything in Postgres (keycloak_db), so accounts created at
+  # runtime (sign-up, tech support) survive `docker compose down`.
+  # `down -v` wipes keycloak_db together with user_db, keeping them in step.
+  # The realm file (users, client, service account, lockout rules) is
+  # imported only when keycloak_db is empty, i.e. the first start after a
+  # fresh volume. Admin console: http://localhost:8080 (admin / admin)
   keycloak:
     image: quay.io/keycloak/keycloak:26.3
     restart: unless-stopped
@@ -60,10 +63,17 @@ services:
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin # dev only
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin # dev only
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_db
+      KC_DB_USERNAME: connectsphere
+      KC_DB_PASSWORD: connectsphere
     ports:
       - "8080:8080"
     volumes:
       - ./keycloak/connectsphere-realm.json:/opt/keycloak/data/import/connectsphere-realm.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   # API gateway — the only public entry point.
   kong:

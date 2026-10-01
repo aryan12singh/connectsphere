@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { GalleryVerticalEndIcon } from '@lucide/vue'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -23,6 +23,14 @@ const password = ref('')
 const isSubmitting = ref(false)
 const successMessage = ref('')
 const errorMessage = ref('')
+
+// Coming from the sign-up page (/login?registered=1): confirm it worked.
+const route = useRoute()
+const registeredMessage = computed(() =>
+  route.query.registered === '1' && !successMessage.value && !errorMessage.value
+    ? 'Account created. Please sign in.'
+    : '',
+)
 
 useHead({
   title: 'Sign in | ConnectSphere',
@@ -162,6 +170,9 @@ async function handleSubmit() {
       </CardContent>
 
       <CardFooter class="flex flex-col gap-4">
+        <p v-if="registeredMessage" role="status" class="text-center text-sm text-foreground">
+          {{ registeredMessage }}
+        </p>
         <p v-if="successMessage" role="status" class="text-center text-sm text-foreground">
           {{ successMessage }}
         </p>
@@ -172,7 +183,10 @@ async function handleSubmit() {
           {{ isSubmitting ? 'Signing in…' : 'Sign in' }}
         </Button>
         <p class="text-center text-sm text-muted-foreground">
-          Don’t have an account? <span class="text-foreground">Contact your Event Coordinator.</span>
+          New attendee?
+          <NuxtLink to="/signup" class="font-medium text-foreground underline-offset-4 hover:underline">Create an account</NuxtLink>
+          <br>
+          Staff accounts are set up by Technical Support.
         </p>
       </CardFooter>
     </Card>

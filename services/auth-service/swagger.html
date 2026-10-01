@@ -9,14 +9,14 @@
 </head>
 <body>
   <nav><a href="../user-service/swagger.html">User service API</a><a href="../event-service/swagger.html">Event service API</a><strong>ConnectSphere Auth Service — BFF Contract</strong></nav>
-  <aside>Frontend (BFF) contract, v0.2. Protected routes use the sealed session cookie only; the token is never returned to the browser. To try calls by hand, use the backend Swagger UI at http://localhost:3002/docs. These pages do not run backend services.</aside>
+  <aside>Frontend (BFF) contract, v0.3. Protected routes use the sealed session cookie only; the token is never returned to the browser. To try calls by hand, use the backend Swagger UI at http://localhost:3002/docs. These pages do not run backend services.</aside>
   <div id="swagger-ui"></div>
   <script id="openapi-spec" type="application/json">{
   "openapi": "3.1.0",
   "info": {
     "title": "ConnectSphere Auth Service — BFF Contract",
-    "version": "0.2.0",
-    "description": "Routes the Nuxt frontend calls for login, session and tech-support administration. **Cookie only**: every protected route is authorised by the sealed `nuxt-session` cookie set at login. The backend session token lives in the cookie's server-only part and is never returned to the browser (CS-10 / CS-11 assert that login bodies contain no token).\n\n**Modes** (`NUXT_AUTH_MODE` in frontend/.env): `mock` (default) logs in the mock users in server/utils/mockUserDb.ts, e.g. organiser@example.com; `live` logs in through auth-service + Keycloak with the seed users, e.g. sarah.tan@nexuslabs.sg. All seed and mock passwords: Password123!.\n\n**Access control**: pages and buttons use `permissions` (see `usePermissions().can()`); the backend re-checks every call. Roles are the five Prisma UserRole values; unknown roles are denied at login.\n\n**Hand execution**: this page documents the contract and does not run services. To try calls by hand, log in on the website and open GET routes in the same browser, or use the backend Swagger UI at http://localhost:3002/docs (bearer token from its POST /auth/login)."
+    "version": "0.3.0",
+    "description": "Routes the Nuxt frontend calls for attendee sign-up, login, session and tech-support administration. **Cookie only**: every protected route is authorised by the sealed `nuxt-session` cookie set at login. The backend session token lives in the cookie's server-only part and is never returned to the browser (CS-10 / CS-11 assert that login bodies contain no token).\n\n**Modes** (`NUXT_AUTH_MODE` in frontend/.env): `mock` (default) logs in the mock users in server/utils/mockUserDb.ts, e.g. organiser@example.com; `live` logs in through auth-service + Keycloak with the seed users, e.g. sarah.tan@nexuslabs.sg / Sarah@CS01!. Mock users use Password123!; each seed user has their own password (row comments in backend/seed_data/01_user_db.sql).\n\n**Access control**: pages and buttons use `permissions` (see `usePermissions().can()`); the backend re-checks every call. Roles are the five Prisma UserRole values; unknown roles are denied at login.\n\n**Hand execution**: this page documents the contract and does not run services. To try calls by hand, log in on the website and open GET routes in the same browser, or use the backend Swagger UI at http://localhost:3002/docs (bearer token from its POST /auth/login)."
   },
   "servers": [
     {
@@ -195,6 +195,194 @@
           },
           "503": {
             "description": "Live mode: backend unreachable (the user stays logged in)"
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "operationId": "register",
+        "summary": "Attendee sign-up (public)",
+        "tags": [
+          "auth"
+        ],
+        "description": "Used by app/pages/signup.vue. Creates an ATTENDEE account that can log in straight away; staff accounts are created by tech support. Only email, firstName, lastName, company and password are forwarded, so a `role` in the body is dropped (auth-service also forces ATTENDEE). No cookie is set: the page goes to /login?registered=1 and the user signs in. Live mode only.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "firstName",
+                  "lastName",
+                  "password"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 254
+                  },
+                  "firstName": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "company": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "description": "Optional"
+                  },
+                  "password": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "description": "Must meet GET /api/auth/password-policy"
+                  }
+                }
+              },
+              "example": {
+                "email": "new.attendee@example.com",
+                "firstName": "New",
+                "lastName": "Attendee",
+                "password": "Str0ng!Pass"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Account created. No session cookie.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string",
+                          "const": "ATTENDEE"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400 Missing or invalid field, or password does not meet the rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 400,
+                  "statusMessage": "Password does not meet the password rules",
+                  "message": "Password does not meet the password rules"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409 Email already used",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 409,
+                  "statusMessage": "A user with this email already exists",
+                  "message": "A user with this email already exists"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 5 sign-ups per minute from this client (Kong rate limit)"
+          },
+          "501": {
+            "description": "501 Mock mode (no user store to add to)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": true,
+                  "statusCode": 501,
+                  "statusMessage": "Sign-up needs NUXT_AUTH_MODE=live",
+                  "message": "Sign-up needs NUXT_AUTH_MODE=live"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Kong, auth-service, user-service or Keycloak unreachable. Nothing is created."
+          }
+        }
+      }
+    },
+    "/api/auth/password-policy": {
+      "get": {
+        "operationId": "getPasswordPolicy",
+        "summary": "Current password rules (public)",
+        "tags": [
+          "auth"
+        ],
+        "description": "The sign-up page shows these rules and ticks them off as the user types. Set by tech support in /api/admin/settings; Keycloak enforces the same rules. Mock mode returns the defaults below.",
+        "responses": {
+          "200": {
+            "description": "Password rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "minLength": {
+                      "type": "integer"
+                    },
+                    "requireUppercase": {
+                      "type": "boolean"
+                    },
+                    "requireLowercase": {
+                      "type": "boolean"
+                    },
+                    "requireDigit": {
+                      "type": "boolean"
+                    },
+                    "requireSpecial": {
+                      "type": "boolean"
+                    },
+                    "notEmail": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  }
+                },
+                "example": {
+                  "minLength": 8,
+                  "requireUppercase": true,
+                  "requireLowercase": true,
+                  "requireDigit": true,
+                  "requireSpecial": true,
+                  "notEmail": true
+                }
+              }
+            }
           }
         }
       }
@@ -1049,7 +1237,7 @@
     "/api/admin/audit-logs": {
       "get": {
         "operationId": "getAuditLog",
-        "summary": "Admin actions, newest first, 50 per page (needs audit.view)",
+        "summary": "Admin actions and sign-ups, newest first, 50 per page (needs audit.view)",
         "tags": [
           "admin"
         ],
@@ -1058,7 +1246,7 @@
             "sessionCookie": []
           }
         ],
-        "description": "\n\nRequired permission: `audit.view`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
+        "description": "USER_REGISTERED entries are attendee sign-ups; their actor is the new user.\n\nRequired permission: `audit.view`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
         "responses": {
           "200": {
             "description": "A page of audit entries",
@@ -1492,6 +1680,7 @@
                   "type": "string",
                   "enum": [
                     "USER_CREATED",
+                    "USER_REGISTERED",
                     "USER_ROLE_CHANGED",
                     "USER_DISABLED",
                     "USER_ENABLED",

@@ -4,6 +4,9 @@ const keycloak = require('../clients/keycloak');
 const userService = require('../clients/userService');
 const sessionService = require('../services/session.service');
 const permissionService = require('../services/permission.service');
+const accountService = require('../services/account.service');
+const settingsService = require('../services/settings.service');
+const audit = require('../services/audit.service');
 const { requireAuth } = require('../middleware/requireAuth');
 
 const router = express.Router();
@@ -69,6 +72,45 @@ router.post('/logout', requireAuth, async (req, res) => {
 // these to decide which screens and buttons to show).
 router.get('/me', requireAuth, (req, res) => {
   res.json({ user: req.user, permissions: req.permissions, expiresAt: req.session.expiresAt });
+});
+
+// POST /auth/register   body: { email, firstName, lastName, company?, password }
+// Self sign-up (decided 2026-10-01): creates an ATTENDEE that can log in
+// straight away. The role is fixed here — anything sent in the body is
+// ignored — so nobody can sign themselves up as staff. Staff accounts are
+// created by tech support (POST /admin/users).
+// Kong rate-limits this route, like login.
+router.post('/register', async (req, res) => {
+  const { email, firstName, lastName, company, password } = req.body || {};
+  const checked = accountService.validateNewAccount({ email, firstName, lastName, company, password, role: 'ATTENDEE' });
+  if (checked.error) {
+    return res.status(400).json({ error: checked.error });
+  }
+
+  // Errors such as a weak password (400) or an email already used (409)
+  // come back from createAccount with a readable message.
+  const user = await accountService.createAccount(checked.profile, checked.password);
+  // The new user is the "actor": nobody else was involved.
+  await audit.record(user.id, audit.ACTIONS.USER_REGISTERED, user.id, { email: user.email, role: user.role, via: 'sign-up' });
+
+  // No session is created: the user goes to the login page next.
+  res.status(201).json({ user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role } });
+});
+
+// GET /auth/password-policy
+// The current password rules, so the sign-up page can show them before the
+// user types. Public: the rules are not secret. Set by tech support in
+// PUT /admin/settings.
+router.get('/password-policy', async (req, res) => {
+  const s = await settingsService.getSettings();
+  res.json({
+    minLength: s.passwordMinLength,
+    requireUppercase: s.passwordRequireUppercase,
+    requireLowercase: s.passwordRequireLowercase,
+    requireDigit: s.passwordRequireDigit,
+    requireSpecial: s.passwordRequireSpecial,
+    notEmail: true, // Keycloak also rejects a password equal to the email
+  });
 });
 
 module.exports = router;

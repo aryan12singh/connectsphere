@@ -2,10 +2,11 @@
 
 What this adds:
 
-- **auth-service**: login, logout and "who am I", permission checks, and the
+- **auth-service**: attendee sign-up, login, logout and "who am I", permission checks, and the
   admin API (users, role permissions, settings, audit log).
 - **user-service**: user profiles and roles.
 - **Keycloak**: checks passwords and locks accounts after repeated wrong passwords.
+  Stores its accounts in Postgres (`keycloak_db`), so they survive restarts.
 - **Kong**: sits in front of everything.
 - **Nuxt frontend wiring** (in `frontend/`): the BFF login and logout talk to
   auth-service, a `usePermissions()` composable, a page permission check, and
@@ -37,15 +38,19 @@ What's where in the repo:
 | `backend/seed_data/` | Seed SQL per database (01 user, 02 auth, ...). Copies of 01/02 also sit in each service's `prisma/seed/` |
 | `frontend/` (auth parts) | See section 7 |
 
-**If you ran an earlier version of this stack**, do this once:
+**If you ran an earlier version of this stack**, the simplest fix is
+`docker compose -f infra/docker-compose.yml down -v`, then follow the run
+guide from Part B. To keep your data instead, create the databases your
+Postgres volume is missing (the init script only runs on an empty volume):
 
 ```bash
-# Keycloak only imports the realm file when the realm doesn't exist yet.
-docker compose -f infra/docker-compose.yml rm -sf keycloak
-docker compose -f infra/docker-compose.yml up -d keycloak
+# Keycloak now keeps its data in Postgres (since 2026-10-01). On first start
+# it imports infra/keycloak/connectsphere-realm.json into the empty keycloak_db.
+docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d postgres -c "CREATE DATABASE keycloak_db;"
+docker compose -f infra/docker-compose.yml restart keycloak
 
 # Only if your Postgres volume predates auth_db:
-docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -c "CREATE DATABASE auth_db;"
+docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d postgres -c "CREATE DATABASE auth_db;"
 docker compose -f infra/docker-compose.yml restart auth-service
 ```
 
@@ -58,12 +63,34 @@ When a not-yet-built service gets code:
 
 | Who reads it | File | What it covers |
 |---|---|---|
-| Frontend developers | `services/auth-service/swagger.html` (open the file in a browser) | The Nuxt `/api/*` routes: login, logout, `/api/auth/me`, the `/api/admin/*` proxy and the built-in `/api/_auth/session` |
-| Backend developers | `services/auth-service/docs/openapi.yaml`, served at http://localhost:3002/docs | auth-service behind Kong, plus `POST /internal/sessions/validate` for other services' permission checks |
+| Frontend developers | `services/auth-service/swagger.html` (open the file in a browser) | The Nuxt `/api/*` routes: sign-up, password rules, login, logout, `/api/auth/me`, the `/api/admin/*` proxy and the built-in `/api/_auth/session` |
+| Backend developers | `services/auth-service/docs/openapi.yaml`, served at http://localhost:3002/docs | auth-service behind Kong (incl. `POST /auth/register`, `GET /auth/password-policy`), plus `POST /internal/sessions/validate` for other services' permission checks |
 | Backend developers | `services/user-service/docs/openapi.yaml` | user-service's internal routes (not reachable from the browser) |
 
 Update the matching file whenever a route, request or response changes
 (Definition of Done, item 6).
+
+## 4b. Attendee sign-up
+
+Rules (decided 2026-10-01):
+
+- Anyone can sign up at `/signup`, but only as an **ATTENDEE**. The role is
+  fixed by auth-service; a `role` sent in the request is ignored. Staff
+  accounts are still created by tech support.
+- The account works immediately (no email verification yet). After sign-up
+  the user goes back to `/login` and signs in; sign-up never logs in.
+- The password must meet the current rules (section 5). The page shows them
+  from `GET /api/auth/password-policy`; Keycloak enforces them.
+- Kong allows 5 sign-ups a minute per calling IP. Through the website the
+  caller is the Nuxt server, so for now that is 5 a minute for the whole site
+  (the 10/minute login limit works the same way). Fine for development; before
+  real users, have Kong count the browser's IP instead. A used email gives 409
+  "A user with this email already exists" — this does tell a visitor that
+  the email has an account; the rate limit keeps that slow to abuse.
+- Each sign-up is written to the audit log as `USER_REGISTERED`.
+- Same code path as tech support's "create user" (`account.service.js`):
+  Keycloak login first, then the profile; if the profile fails, the Keycloak
+  login is deleted again.
 
 ## 5. What tech support can change
 
@@ -133,10 +160,14 @@ calls Kong on the browser's behalf, so the browser never talks to Kong.
 | `server/api/auth.post.ts` | replaced | Login: real auth-service in live mode, mock users in mock mode. Token goes in `secure` |
 | `server/api/auth.delete.ts` | replaced | Logout: also ends the backend session in live mode |
 | `server/api/auth/me.get.ts` | new | Checks the backend session and refreshes role + permissions |
+| `server/api/auth/register.post.ts` | new | Attendee sign-up (live mode only). Forwards only email, names, company, password |
+| `server/api/auth/password-policy.get.ts` | new | Current password rules for the sign-up form |
+| `app/pages/signup.vue` | new | Sign-up page: live password-rule checklist, then back to /login |
+| `app/pages/login.vue` | changed | "Create an account" link, and "Account created" message after sign-up |
 | `server/api/admin/[...path].ts` | new | Proxies `/api/admin/*` to auth-service `/admin/*` (live mode only) |
 | `app/types/session.d.ts` | replaced | Adds `permissions` to the user and `token` to the server-only session |
 | `app/types/page-meta.d.ts` | new | Allows `definePageMeta({ permission: '...' })` |
-| `app/middleware/auth.global.ts` | replaced | Adds the page permission check. Your login check and role gate are unchanged |
+| `app/middleware/auth.global.ts` | replaced | `/login` and `/signup` are public. Adds the page permission check. Your login check and role gate are unchanged |
 | `app/plugins/verify-session.client.ts` | new | Once per page load, confirms the backend session is still alive; logs out if not |
 | `app/composables/usePermissions.ts` | new | `can('users.manage')`, `canAny(...)` |
 | `app/composables/useAdminApi.ts` | new | Typed calls for the admin screens |
@@ -147,7 +178,7 @@ calls Kong on the browser's behalf, so the browser never talks to Kong.
   such as `organiser@example.com`, the event mocks, and your existing tests.
   No backend needed. The admin API returns 501 in this mode.
 - `NUXT_AUTH_MODE=live`. Real login with the seed users (e.g.
-  `sarah.tan@nexuslabs.sg` / `Password123!`). Needs the Docker stack and
+  `sarah.tan@nexuslabs.sg` / `Sarah@CS01!`; each seed user has their own password, listed in `backend/seed_data/01_user_db.sql`). Needs the Docker stack and
   `NUXT_API_BASE_URL=http://localhost:8000`.
 
   Note: the event pages still use mock data keyed to mock user IDs, so real
@@ -155,7 +186,8 @@ calls Kong on the browser's behalf, so the browser never talks to Kong.
 
 **Your tests:** with these files your `tests/specs` give the same result as
 before (75 pass, and the same 20 CS-11/CS-30 failures that exist without
-them). No test needed changing.
+them), plus 7 passing sign-up tests in `tests/specs/signup.spec.ts`. No
+existing test needed changing.
 
 **Using it in components and pages** (both composables are auto-imported by Nuxt):
 

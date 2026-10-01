@@ -38,10 +38,16 @@ export async function backendFetch<T>(
     if (error instanceof FetchError && error.statusCode) {
       if (error.statusCode === 401 && options.token)
         await clearUserSession(event)
-      const data = error.data as { error?: string, details?: string[] } | undefined
+      // 502/503/504 come from Kong when the service behind it is down,
+      // restarting, or was rebuilt (restart Kong). Say so plainly.
+      if ([502, 503, 504].includes(error.statusCode)) {
+        throw createError({ statusCode: 503, statusMessage: 'The ConnectSphere service is unavailable. Please try again shortly.' })
+      }
+      // Our services answer { error }, Kong answers { message }.
+      const data = error.data as { error?: string, message?: string, details?: string[] } | undefined
       throw createError({
         statusCode: error.statusCode,
-        statusMessage: data?.error ?? 'Request failed',
+        statusMessage: data?.error ?? data?.message ?? 'Request failed',
         data,
       })
     }

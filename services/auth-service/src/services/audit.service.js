@@ -5,6 +5,7 @@ const prisma = require('../db');
 // Standard action names, so the log is easy to filter.
 const ACTIONS = Object.freeze({
   USER_CREATED: 'USER_CREATED',
+  USER_REGISTERED: 'USER_REGISTERED', // self sign-up
   USER_ROLE_CHANGED: 'USER_ROLE_CHANGED',
   USER_DISABLED: 'USER_DISABLED',
   USER_ENABLED: 'USER_ENABLED',

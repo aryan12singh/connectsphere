@@ -1,9 +1,9 @@
-  openapi: 3.0.3
+openapi: 3.0.3
 info:
   title: ConnectSphere auth-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
-    Login, logout, "who am I", and the tech support admin API.
+    Attendee sign-up, login, logout, "who am I", and the tech support admin API.
 
     - Passwords are checked by Keycloak; this service issues its own session tokens.
     - Send the token on every request as `Authorization: Bearer <token>`.
@@ -105,7 +105,7 @@ paths:
               required: [email, password]
               properties:
                 email: { type: string, format: email, maxLength: 254, example: hafiz.ismail@connectsphere.sg }
-                password: { type: string, maxLength: 128, example: Password123! }
+                password: { type: string, maxLength: 128, example: Hafiz@CS11! }
       responses:
         '200':
           description: Logged in
@@ -124,6 +124,69 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
         '429': { description: Too many login attempts from this client (Kong rate limit) }
         '503': { $ref: '#/components/responses/Unavailable' }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Attendee self sign-up (no login needed)
+      description: |
+        Creates an ATTENDEE account that can log in straight away. The role is
+        always ATTENDEE; a `role` in the body is ignored. Staff accounts are
+        created by tech support (POST /admin/users). No session is created:
+        call /auth/login afterwards. Kong limits this route to 5 calls/minute.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, firstName, lastName, password]
+              properties:
+                email: { type: string, format: email, maxLength: 254, example: new.attendee@example.com }
+                firstName: { type: string, maxLength: 100, example: New }
+                lastName: { type: string, maxLength: 100, example: Attendee }
+                company: { type: string, maxLength: 200, nullable: true }
+                password: { type: string, maxLength: 128, example: Str0ng!Pass, description: Must meet GET /auth/password-policy }
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      email: { type: string }
+                      firstName: { type: string }
+                      lastName: { type: string }
+                      role: { type: string, enum: [ATTENDEE] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { description: Email already used, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '429': { description: Too many sign-up attempts from this client (Kong rate limit) }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /auth/password-policy:
+    get:
+      tags: [Auth]
+      summary: Current password rules (public, for the sign-up form)
+      description: Set by tech support in PUT /admin/settings. Keycloak enforces the same rules.
+      responses:
+        '200':
+          description: The rules a new password must meet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  minLength: { type: integer, example: 8 }
+                  requireUppercase: { type: boolean }
+                  requireLowercase: { type: boolean }
+                  requireDigit: { type: boolean }
+                  requireSpecial: { type: boolean }
+                  notEmail: { type: boolean, enum: [true], description: Always on }
 
   /auth/logout:
     post:
@@ -320,7 +383,7 @@ paths:
   /admin/audit-logs:
     get:
       tags: [Admin - audit]
-      summary: Admin actions, newest first (50 per page). Needs audit.view
+      summary: Admin actions and attendee sign-ups (USER_REGISTERED), newest first (50 per page). Needs audit.view
       security: [{ bearerAuth: [] }]
       parameters: [{ name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }]
       responses:

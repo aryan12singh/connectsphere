@@ -14,17 +14,10 @@ const sessionService = require('../services/session.service');
 const permissionService = require('../services/permission.service');
 const settingsService = require('../services/settings.service');
 const audit = require('../services/audit.service');
+const accountService = require('../services/account.service');
 
 const router = express.Router();
 router.use(requireAuth); // every admin route needs a login
-
-// Simple email shape check. Keycloak and user-service check again.
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Is `value` a non-empty string no longer than `max`?
-function isText(value, max) {
-  return typeof value === 'string' && value.trim().length > 0 && value.length <= max;
-}
 
 // ── Users ────────────────────────────────────────────────────────────────
 
@@ -37,48 +30,15 @@ router.get('/users', requirePermission('users.view'), async (req, res) => {
 // POST /admin/users   body: { email, firstName, lastName, role, company?, password }
 // Creates the login (Keycloak) and the profile (user-service). The user can
 // log in straight away with the password tech support set.
+// Same rules as self sign-up: see services/account.service.js.
 router.post('/users', requirePermission('users.manage'), async (req, res) => {
-  const { email, firstName, lastName, role, company, password } = req.body || {};
-
-  if (!isText(email, 254) || !EMAIL_PATTERN.test(email.trim())) {
-    return res.status(400).json({ error: 'A valid email is required' });
-  }
-  if (!isText(firstName, 100) || !isText(lastName, 100)) {
-    return res.status(400).json({ error: 'First and last name are required (max 100 characters)' });
-  }
-  if (!ROLES.includes(role)) {
-    return res.status(400).json({ error: `Role must be one of: ${ROLES.join(', ')}` });
-  }
-  if (company !== undefined && company !== null && !isText(company, 200)) {
-    return res.status(400).json({ error: 'Company must be text (max 200 characters)' });
-  }
-  if (typeof password !== 'string' || password.length === 0 || password.length > 128) {
-    return res.status(400).json({ error: 'An initial password is required (max 128 characters)' });
+  const checked = accountService.validateNewAccount(req.body);
+  if (checked.error) {
+    return res.status(400).json({ error: checked.error });
   }
 
-  const profile = {
-    email: email.trim().toLowerCase(),
-    firstName: firstName.trim(),
-    lastName: lastName.trim(),
-    role,
-    company: company ? company.trim() : null,
-  };
-
-  // Step 1: Keycloak account. Fails early on a weak password or a used email.
-  const keycloakId = await keycloakAdmin.createUser({ ...profile, password });
-
-  // Step 2: user-service profile. If this fails, undo step 1 so we never
-  // leave a Keycloak login with no ConnectSphere profile behind it.
-  let user;
-  try {
-    user = await userService.createUser(profile);
-  } catch (err) {
-    await keycloakAdmin.deleteUser(keycloakId).catch((undoErr) =>
-      console.error(`Could not undo Keycloak user ${keycloakId}:`, undoErr.message));
-    throw err;
-  }
-
-  await audit.record(req.user.id, audit.ACTIONS.USER_CREATED, user.id, { email: user.email, role: user.role });
+  const user = await accountService.createAccount(checked.profile, checked.password);
+  await audit.record(req.user.id, audit.ACTIONS.USER_CREATED, user.id, { email: user.email, role: user.role, via: 'admin' });
   res.status(201).json(user);
 });
 
