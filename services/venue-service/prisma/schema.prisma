@@ -1,0 +1,80 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum VenueType {
+  PHYSICAL
+  VIRTUAL
+  HYBRID
+}
+
+enum VenueLayout {
+  THEATRE
+  CLASSROOM
+  CABARET
+}
+
+enum VenueWeekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+model Venue {
+  id                 String              @id @default(uuid())
+  name               String
+  address            String
+  capacity           Int
+  venueType          VenueType           @default(PHYSICAL)
+  supportedLayouts   VenueLayout[]
+  facilities         String[]
+  accessibilityTags  String[]
+  timeZone           String              @default("Asia/Singapore")
+  isActive            Boolean             @default(true)
+  managedById        String
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  operatingHours     VenueOperatingHour[]
+  history            VenueHistory[]
+
+  @@index([isActive])
+  @@map("venues")
+}
+
+model VenueOperatingHour {
+  id        String        @id @default(uuid())
+  venueId  String
+  venue    Venue         @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  weekday  VenueWeekday
+  isClosed Boolean       @default(false)
+  opensAt  String?
+  closesAt String?
+
+  @@unique([venueId, weekday])
+  @@map("venue_operating_hours")
+}
+
+model VenueHistory {
+  id          String   @id @default(uuid())
+  venueId     String
+  venue       Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  actorId     String
+  actorRole   String
+  action      String
+  reason      String
+  changes     Json
+  occurredAt  DateTime @default(now())
+
+  @@index([venueId, occurredAt])
+  @@map("venue_history")
+}

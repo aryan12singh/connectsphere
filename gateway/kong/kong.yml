@@ -22,7 +22,7 @@ plugins:
     config:
       origins: ["http://localhost:5173"] # Vite dev server
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-      headers: ["Authorization", "Content-Type"]
+      headers: ["Authorization", "Content-Type", "Idempotency-Key"]
       max_age: 3600
 
 services:

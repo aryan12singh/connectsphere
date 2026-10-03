@@ -36,15 +36,15 @@ docker compose -f infra/docker-compose.yml ps
 ```
 
 You should see `postgres`, `pgadmin`, `rabbitmq`, `keycloak`, `kong`,
-`user-service` and `auth-service` running.
+`user-service`, `auth-service`, `venue-service` and `booking-service` running.
 
 Keycloak takes about 30–60 seconds to be ready. Until then, logins return
 "temporarily unavailable".
 
-To watch the two services start:
+To watch the authentication, venue and booking services start:
 
 ```powershell
-docker compose -f infra/docker-compose.yml logs -f auth-service user-service
+docker compose -f infra/docker-compose.yml logs -f auth-service user-service venue-service booking-service
 ```
 
 Wait for `auth-service listening on port 3000` and
@@ -52,9 +52,9 @@ Wait for `auth-service listening on port 3000` and
 
 ### B2. Load the seed data (once)
 
-The tables are created automatically when the services start. Then load the
-seed rows. `docker compose cp` works in both PowerShell and bash (PowerShell
-has no `<` redirect):
+The user and auth tables are created by their migrations when the services
+start. Then load the seed rows. `docker compose cp` works in both PowerShell
+and bash (PowerShell has no `<` redirect):
 
 ```powershell
 docker compose -f infra/docker-compose.yml cp backend/seed_data/01_user_db.sql postgres:/tmp/01_user_db.sql
@@ -65,10 +65,36 @@ docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -
 
 Each should end with `COMMIT`. Running them twice is safe.
 
-Only the user and auth seeds are loaded for now: the other six databases
-have no service (and so no tables) yet.
+The venue and booking seed files are also available:
 
-### B3. Useful addresses
+```powershell
+docker compose -f infra/docker-compose.yml cp backend/seed_data/03_venue_db.sql postgres:/tmp/03_venue_db.sql
+docker compose -f infra/docker-compose.yml cp backend/seed_data/04_booking_db.sql postgres:/tmp/04_booking_db.sql
+docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d venue_db -f /tmp/03_venue_db.sql
+docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d booking_db -f /tmp/04_booking_db.sql
+```
+
+Run those two commands after the venue and booking Prisma migrations have
+created their tables. Compose now runs both services with `DATA_MODE=prisma`,
+so requests and history are persisted in `venue_db` and `booking_db` just as
+auth and user data are persisted in their service-owned databases. The seed
+files are idempotent and can be rerun after a database reset.
+
+The remaining databases are reserved for services still marked
+`not-built-yet` in the compose file.
+
+### B3. Postman collections
+
+Import the collection for the service you want to exercise:
+
+- `services/booking-service/postman/booking-service.postman_collection.json` — logs in through Kong, then covers booking creation, idempotent retry, retrieval, cancellation, history and availability.
+- `services/venue-service/postman/venue-service.postman_collection.json` — logs in through Kong as an Event Coordinator and Venue Staff, then covers venue options, listing, CRUD, operating-hours replacement, history and empty-hours validation.
+
+The booking collection defaults to the seeded coordinator and venue. The event
+collection defaults to the mock BFF credentials (`organiser@example.com` and
+`coordinator@example.com`).
+
+### B4. Useful addresses
 
 | What | Address | Login |
 |---|---|---|
