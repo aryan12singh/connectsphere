@@ -3,10 +3,11 @@ const { requireAuth, requireAnyPermission } = require('../auth');
 const store = require('../store');
 const { STATUSES, validateBooking, text } = require('../validation');
 const { isStaff, statusForCreate, canCreateStatus, canReplace } = require('../policy');
+const { availabilityRange, filterAvailability } = require('../availability');
 
 const router = express.Router();
 const auth = requireAuth();
-const createPermission = requireAnyPermission('venue_bookings.create');
+const createPermission = requireAnyPermission('venue_bookings.create', 'venue_bookings.decide');
 const bookingAccess = requireAnyPermission('venue_bookings.create', 'venue_bookings.decide');
 
 function validationError(res, fields) {
@@ -43,7 +44,12 @@ router.get('/history', auth, bookingAccess, async (req, res) => {
 });
 
 router.get('/availability', auth, bookingAccess, async (req, res) => {
-  const values = (await store.listBookings()).filter((booking) => !req.query.venueId || booking.venueId === req.query.venueId);
+  const errors = availabilityRange(req.query);
+  if (Object.keys(errors).length) return validationError(res, errors);
+  const values = filterAvailability(
+    (await store.listBookings()).filter((booking) => !req.query.venueId || booking.venueId === req.query.venueId),
+    req.query,
+  );
   return res.json({ items: values, conflictDetection: 'client-only' });
 });
 

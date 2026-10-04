@@ -55,6 +55,9 @@ test('CS-booking-POL-04: a coordinator may cancel their own TENTATIVELY_HELD boo
 
   assert.equal(coordinatorCanCancel(booking, actor, 'CANCELLED'), true);
   assert.deepEqual(canReplace(booking, actor, 'CANCELLED'), { allowed: true });
+  assert.deepEqual(canReplace(booking, actor, 'TENTATIVELY_HELD'), { allowed: true });
+  assert.deepEqual(canReplace({ ...booking, status: 'CANCELLED' }, actor, 'TENTATIVELY_HELD'), { allowed: true });
+  assert.deepEqual(canReplace({ ...booking, status: 'CANCELLED' }, actor, 'CANCELLED'), { allowed: true });
 });
 
 test('CS-booking-POL-05: a coordinator cannot change another actor’s booking', () => {
@@ -64,7 +67,7 @@ test('CS-booking-POL-05: a coordinator cannot change another actor’s booking',
   assert.equal(coordinatorCanCancel(booking, actor, 'CANCELLED'), false);
   assert.deepEqual(canReplace(booking, actor, 'CANCELLED'), {
     allowed: false,
-    message: 'Coordinators may only cancel their own tentative bookings',
+    message: 'Coordinators may only edit their own tentative or cancelled bookings to tentative or cancelled',
   });
 });
 
@@ -75,7 +78,7 @@ test('CS-booking-POL-06: a coordinator cannot edit a booking to CONFIRMED', () =
   assert.equal(coordinatorCanCancel(booking, actor, 'CONFIRMED'), false);
   assert.deepEqual(canReplace(booking, actor, 'CONFIRMED'), {
     allowed: false,
-    message: 'Coordinators may only cancel their own tentative bookings',
+    message: 'Coordinators may only edit their own tentative or cancelled bookings to tentative or cancelled',
   });
 });
 

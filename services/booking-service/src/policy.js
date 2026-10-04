@@ -19,10 +19,16 @@ function coordinatorCanCancel(booking, actor, nextStatus) {
     && nextStatus === 'CANCELLED';
 }
 
+function coordinatorCanEdit(booking, actor, nextStatus) {
+  return booking?.requestedById === actor?.id
+    && ['TENTATIVELY_HELD', 'CANCELLED'].includes(booking?.status)
+    && ['TENTATIVELY_HELD', 'CANCELLED'].includes(nextStatus);
+}
+
 function canReplace(booking, actor, nextStatus) {
   if (isStaff(actor)) return { allowed: true };
-  if (!coordinatorCanCancel(booking, actor, nextStatus)) {
-    return { allowed: false, message: 'Coordinators may only cancel their own tentative bookings' };
+  if (!coordinatorCanEdit(booking, actor, nextStatus)) {
+    return { allowed: false, message: 'Coordinators may only edit their own tentative or cancelled bookings to tentative or cancelled' };
   }
   return { allowed: true };
 }
@@ -33,5 +39,6 @@ module.exports = {
   statusForCreate,
   canCreateStatus,
   coordinatorCanCancel,
+  coordinatorCanEdit,
   canReplace,
 };

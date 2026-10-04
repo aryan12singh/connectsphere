@@ -37,6 +37,19 @@ export default defineEventHandler(async (event) => {
   const user = session.user as { id?: unknown, role?: unknown } | undefined
   if (!user || typeof user.id !== 'string')
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+
+  const query = getQuery(event)
+  if (query.scope === 'booking') {
+    if (user.role === 'VENUE_STAFF')
+      return createEventsResponse(listRequestRecords())
+
+    if (user.role !== 'EVENT_COORDINATOR')
+      return { events: [] }
+
+    // Coordinator booking options remain assignment-scoped.
+    return createEventsResponse(listRequestRecords().filter(record => record.coordinatorId === user.id))
+  }
+
   if (user.role !== 'EVENT_ORGANISER')
     return { events: [] }
   return createEventsResponse(listRequestRecords().filter(record => record.organiserId === user.id))
