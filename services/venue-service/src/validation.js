@@ -1,6 +1,7 @@
 const VENUE_TYPES = ['PHYSICAL', 'VIRTUAL', 'HYBRID'];
 const LAYOUTS = ['THEATRE', 'CLASSROOM', 'CABARET'];
 const WEEKDAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+const config = require('./config');
 
 function text(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -19,9 +20,15 @@ function validateVenue(body, partial = false) {
   }
   if (body?.name !== undefined && !text(body.name)) errors.name = ['Name is required'];
   if (body?.address !== undefined && !text(body.address) && body.venueType !== 'VIRTUAL') errors.address = ['Address is required for non-virtual venues'];
-  if (body?.capacity !== undefined && (!Number.isInteger(body.capacity) || body.capacity <= 0)) errors.capacity = ['Capacity must be a positive integer'];
+  if (body?.capacity === null && body.venueType !== 'VIRTUAL') errors.capacity = ['Capacity must be a positive integer'];
+  if (body?.capacity !== undefined && body?.capacity !== null && (!Number.isInteger(body.capacity) || body.capacity <= 0)) errors.capacity = ['Capacity must be a positive integer'];
+  if (body?.capacity !== undefined && body?.capacity !== null && Number.isInteger(body.capacity) && body.capacity > config.maxVenueCapacity) {
+    errors.capacity = [`Capacity must not exceed ${config.maxVenueCapacity}`];
+  }
   if (body?.venueType !== undefined && !VENUE_TYPES.includes(body.venueType)) errors.venueType = ['Unknown venue type'];
-  if (body?.supportedLayouts !== undefined && (!Array.isArray(body.supportedLayouts) || array(body.supportedLayouts).some((item) => !LAYOUTS.includes(item)))) errors.supportedLayouts = ['Supported layouts contain an unknown value'];
+  if (body?.supportedLayouts !== undefined && (!Array.isArray(body.supportedLayouts) || body.supportedLayouts.some((item) => typeof item !== 'string' || !item.trim() || !LAYOUTS.includes(item.trim())))) errors.supportedLayouts = ['Supported layouts contain an unknown value'];
+  if (body?.facilities !== undefined && (!Array.isArray(body.facilities) || body.facilities.some((item) => typeof item !== 'string' || !item.trim()))) errors.facilities = ['Facilities must contain only non-empty strings'];
+  if (body?.accessibilityTags !== undefined && (!Array.isArray(body.accessibilityTags) || body.accessibilityTags.some((item) => typeof item !== 'string' || !item.trim()))) errors.accessibilityTags = ['Accessibility tags must contain only non-empty strings'];
   if (body?.timeZone !== undefined && !text(body.timeZone)) errors.timeZone = ['Time zone is required'];
   if (body?.managedById !== undefined && !text(body.managedById)) errors.managedById = ['A venue staff manager is required'];
   if (body?.reason !== undefined && !text(body.reason)) errors.reason = ['Reason is required'];
@@ -42,7 +49,7 @@ function normaliseHours(hours) {
 function normaliseVenue(body) {
   return {
     name: text(body.name),
-    address: text(body.address),
+    address: text(body.address) || null,
     capacity: body.capacity,
     venueType: body.venueType,
     supportedLayouts: array(body.supportedLayouts),
@@ -68,6 +75,8 @@ function validateHours(body) {
       errors[`operatingHours.${index}.time`] = ['Open and close times must use HH:mm'];
     }
   }
+  const weekdays = body.map((item) => item?.weekday).filter(Boolean);
+  if (new Set(weekdays).size !== weekdays.length) errors.operatingHours = ['Each weekday may appear only once'];
   return errors;
 }
 

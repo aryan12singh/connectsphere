@@ -229,7 +229,20 @@ function listVenues() {
     .then((items) => items.map(toApiVenue));
 }
 
+function deleteVenue(idValue) {
+  if (isMemory) {
+    if (!state.venues.has(idValue)) return false;
+    state.venues.delete(idValue);
+    state.history = state.history.filter((entry) => entry.venueId !== idValue);
+    return true;
+  }
+  return prisma.venue.delete({ where: { id: idValue } }).then(() => true).catch((error) => {
+    if (error?.code === 'P2025') return false;
+    throw error;
+  });
+}
+
 module.exports = {
   state, reset, createVenue, replaceVenue, setOperatingHours, listHistory,
-  getVenue, listVenues, isMemory,
+  getVenue, listVenues, deleteVenue, isMemory,
 };

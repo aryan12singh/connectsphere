@@ -45,11 +45,18 @@ function requireAuth() {
   };
 }
 
-function requirePermission(permission) {
+function requireAnyPermission(...permissions) {
   return (req, res, next) => {
-    if (!req.actor.permissions.includes(permission)) return res.status(403).json({ error: 'You do not have permission to do this' });
+    if (!permissions.some((permission) => req.actor.permissions.includes(permission))) {
+      return res.status(403).json({ error: 'You do not have permission to do this' });
+    }
     return next();
   };
 }
 
-module.exports = { ROLE_PERMISSIONS, resolveActor, requireAuth, requirePermission };
+function internalOnly(req, res, next) {
+  if (req.get('x-internal-api-key') !== config.internalApiKey) return res.status(403).json({ error: 'Forbidden' });
+  return next();
+}
+
+module.exports = { ROLE_PERMISSIONS, resolveActor, requireAuth, requireAnyPermission, internalOnly };

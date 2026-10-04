@@ -33,8 +33,8 @@ enum VenueWeekday {
 model Venue {
   id                 String              @id @default(uuid())
   name               String
-  address            String
-  capacity           Int
+  address            String?
+  capacity           Int?
   venueType          VenueType           @default(PHYSICAL)
   supportedLayouts   VenueLayout[]
   facilities         String[]

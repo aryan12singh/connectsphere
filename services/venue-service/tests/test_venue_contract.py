@@ -1,10 +1,39 @@
 import json
 import os
 import subprocess
+import threading
 import time
 import unittest
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.error import HTTPError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+
+
+class FakeBookingLinkHandler(BaseHTTPRequestHandler):
+    blocking_ids = set()
+    unavailable = False
+
+    def do_GET(self):
+        if self.unavailable:
+            self.send_response(503)
+            self.end_headers()
+            return
+        venue_id = urlparse(self.path).path.rstrip('/').split('/')[-1]
+        payload = {
+            "venueId": venue_id,
+            "blockingCount": 1 if venue_id in self.blocking_ids else 0,
+            "statuses": ["TENTATIVELY_HELD", "CONFIRMED"],
+        }
+        encoded = json.dumps(payload).encode()
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def log_message(self, *_args):
+        return
 
 
 class VenueServiceContractTest(unittest.TestCase):
@@ -18,8 +47,14 @@ class VenueServiceContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.port = int(os.environ.get("VENUE_TEST_PORT", "43101"))
+        cls.booking_server = HTTPServer(("127.0.0.1", 0), FakeBookingLinkHandler)
+        cls.booking_thread = threading.Thread(target=cls.booking_server.serve_forever, daemon=True)
+        cls.booking_thread.start()
         env = os.environ.copy()
-        env.update({"PORT": str(cls.port), "NODE_ENV": "test", "DATA_MODE": "memory"})
+        env.update({
+            "PORT": str(cls.port), "NODE_ENV": "test", "DATA_MODE": "memory",
+            "BOOKING_SERVICE_URL": f"http://127.0.0.1:{cls.booking_server.server_port}",
+        })
         cls.process = subprocess.Popen(
             ["node", "src/server.js"],
             cwd=os.path.join(os.path.dirname(__file__), ".."),
@@ -41,6 +76,8 @@ class VenueServiceContractTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.process.terminate()
         cls.process.wait(timeout=5)
+        cls.booking_server.shutdown()
+        cls.booking_thread.join(timeout=5)
 
     def request(self, method, path, body=None, role="VENUE_STAFF", user_id="venue-1"):
         headers = {
@@ -116,6 +153,59 @@ class VenueServiceContractTest(unittest.TestCase):
         )
         self.assertEqual(status, 403)
         self.assertIn("permission", body["error"].lower())
+
+    def test_capacity_above_ten_thousand_is_rejected_without_persistence(self):
+        status, body = self.request("POST", "/venues", self.venue_payload(capacity=10001))
+        self.assertEqual(status, 422)
+        self.assertIn("capacity", body["error"]["fields"])
+
+    def test_any_venue_type_can_be_deleted_when_no_blocking_booking_exists(self):
+        payload = self.venue_payload(venueType="VIRTUAL")
+        payload.pop("address")
+        payload.pop("capacity")
+        status, venue = self.request("POST", "/venues", payload)
+        self.assertEqual(status, 201)
+        status, body = self.request("DELETE", f"/venues/{venue['id']}")
+        self.assertEqual(status, 204)
+        self.assertEqual(body, {})
+        status, _ = self.request("GET", f"/venues/{venue['id']}")
+        self.assertEqual(status, 404)
+
+    def test_delete_is_rejected_when_current_or_future_booking_blocks_the_venue(self):
+        status, venue = self.request("POST", "/venues", self.venue_payload())
+        self.assertEqual(status, 201)
+        FakeBookingLinkHandler.blocking_ids.add(venue["id"])
+        try:
+            status, body = self.request("DELETE", f"/venues/{venue['id']}")
+            self.assertEqual(status, 409)
+            self.assertEqual(body["error"]["code"], "VENUE_HAS_BLOCKING_BOOKINGS")
+            self.assertEqual(body["blockingCount"], 1)
+            status, _ = self.request("GET", f"/venues/{venue['id']}")
+            self.assertEqual(status, 200)
+        finally:
+            FakeBookingLinkHandler.blocking_ids.discard(venue["id"])
+
+    def test_event_coordinator_cannot_delete_a_venue(self):
+        status, venue = self.request("POST", "/venues", self.venue_payload())
+        self.assertEqual(status, 201)
+        status, body = self.request(
+            "DELETE", f"/venues/{venue['id']}", role="EVENT_COORDINATOR", user_id="coordinator-1",
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("permission", body["error"].lower())
+
+    def test_delete_fails_closed_when_booking_lookup_is_unavailable(self):
+        status, venue = self.request("POST", "/venues", self.venue_payload())
+        self.assertEqual(status, 201)
+        FakeBookingLinkHandler.unavailable = True
+        try:
+            status, body = self.request("DELETE", f"/venues/{venue['id']}")
+            self.assertEqual(status, 503)
+            self.assertEqual(body["error"]["code"], "BOOKING_SERVICE_UNAVAILABLE")
+        finally:
+            FakeBookingLinkHandler.unavailable = False
+        status, _ = self.request("GET", f"/venues/{venue['id']}")
+        self.assertEqual(status, 200)
 
 
 if __name__ == "__main__":

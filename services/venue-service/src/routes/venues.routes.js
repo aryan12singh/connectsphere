@@ -1,12 +1,13 @@
 const express = require('express');
-const { requireAuth, requirePermission, internalOnly } = require('../auth');
+const { requireAuth, requireAnyPermission, internalOnly } = require('../auth');
 const store = require('../store');
+const bookingClient = require('../bookingClient');
 const { VENUE_TYPES, LAYOUTS, text, validateVenue, normaliseVenue, validateHours } = require('../validation');
 
 const router = express.Router();
 const auth = requireAuth();
-const view = requirePermission('venues.view');
-const manage = requirePermission('venues.manage');
+const view = requireAnyPermission('venues.view');
+const manage = requireAnyPermission('venues.manage');
 
 function validationError(res, fields) {
   return res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: 'Request contains invalid fields', fields } });
@@ -68,6 +69,31 @@ router.put('/:id', auth, manage, async (req, res) => {
   const errors = validateVenue(req.body || {});
   if (Object.keys(errors).length) return validationError(res, errors);
   return res.json(await store.replaceVenue(venue.id, normaliseVenue(req.body), req.actor));
+});
+
+router.delete('/:id', auth, manage, async (req, res) => {
+  const venue = await store.getVenue(req.params.id);
+  if (!venue) return res.status(404).json({ error: 'Venue not found' });
+  let blockingCount;
+  try {
+    blockingCount = await bookingClient.blockingBookingCount(venue.id);
+  } catch (error) {
+    console.error(error);
+    return res.status(503).json({ error: { code: 'BOOKING_SERVICE_UNAVAILABLE', message: 'Unable to verify linked bookings' } });
+  }
+  if (blockingCount > 0) {
+    return res.status(409).json({
+      error: {
+        code: 'VENUE_HAS_BLOCKING_BOOKINGS',
+        message: 'Venue has current or future tentative or confirmed bookings',
+        fields: { venueId: ['Venue cannot be deleted while blocking bookings exist'] },
+      },
+      venueId: venue.id,
+      blockingCount,
+    });
+  }
+  const deleted = await store.deleteVenue(venue.id);
+  return deleted ? res.status(204).end() : res.status(404).json({ error: 'Venue not found' });
 });
 
 router.get('/:id/internal', internalOnly, async (req, res) => {

@@ -97,3 +97,16 @@ test('CS-venue-DATA-05: unknown venue IDs do not create or update records', () =
   assert.equal(store.setOperatingHours('missing-venue', [], ACTOR, 'No venue'), null);
   assert.deepEqual(store.listHistory('missing-venue'), []);
 });
+
+test('CS-venue-DATA-06: deleting any venue removes the venue and its owned records', () => {
+  const virtual = store.createVenue(venueInput({
+    venueType: 'VIRTUAL',
+    address: undefined,
+    capacity: undefined,
+  }), ACTOR);
+
+  assert.equal(store.deleteVenue(virtual.id), true);
+  assert.equal(store.getVenue(virtual.id), null);
+  assert.deepEqual(store.listHistory(virtual.id), []);
+  assert.equal(store.deleteVenue(virtual.id), false);
+});

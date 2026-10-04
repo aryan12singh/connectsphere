@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { validateVenue, normaliseVenue, validateHours } = require('../../src/validation');
 
 const REQUIRED_PHYSICAL_FIELDS = [
@@ -53,6 +55,27 @@ test('CS-venue-VAL-02c: a virtual venue may provide an empty address because it 
   assert.deepEqual(errors, {});
 });
 
+test('CS-venue-VAL-02d: a virtual venue may explicitly provide null physical fields', () => {
+  const errors = validateVenue(validPhysicalVenue({
+    venueType: 'VIRTUAL',
+    address: null,
+    capacity: null,
+  }));
+
+  assert.deepEqual(errors, {});
+});
+
+test('CS-venue-DATA-01c: omitted virtual physical fields normalize to nullable values', () => {
+  const normalized = normaliseVenue(validPhysicalVenue({
+    venueType: 'VIRTUAL',
+    address: undefined,
+    capacity: undefined,
+  }));
+
+  assert.equal(normalized.address, null);
+  assert.equal(normalized.capacity, undefined);
+});
+
 test('CS-venue-VAL-02b: a supplied virtual capacity must still be a positive integer', () => {
   const errors = validateVenue(validPhysicalVenue({
     venueType: 'VIRTUAL',
@@ -71,6 +94,31 @@ test('CS-venue-VAL-03: physical capacity must be positive and layouts must use t
 
   assert.deepEqual(errors.capacity, ['Capacity must be a positive integer']);
   assert.deepEqual(errors.supportedLayouts, ['Supported layouts contain an unknown value']);
+});
+
+test('CS-venue-VAL-03b: capacity above the configured maximum is rejected', () => {
+  const errors = validateVenue(validPhysicalVenue({ capacity: 10001 }));
+
+  assert.deepEqual(errors, { capacity: ['Capacity must not exceed 10000'] });
+});
+
+test('CS-venue-VAL-03a: capacity lower and upper boundaries are accepted', () => {
+  assert.deepEqual(validateVenue(validPhysicalVenue({ capacity: 1 })), {});
+  assert.deepEqual(validateVenue(validPhysicalVenue({ capacity: 10000 })), {});
+});
+
+test('CS-venue-VAL-03c: capacity maximum is read from service configuration', () => {
+  const result = spawnSync(process.execPath, ['-e', `
+    const { validateVenue } = require('./src/validation');
+    const body = ${JSON.stringify(validPhysicalVenue({ capacity: 501 }))};
+    process.stdout.write(JSON.stringify(validateVenue(body)));
+  `], {
+    cwd: path.resolve(__dirname, '../..'),
+    env: { ...process.env, DATA_MODE: 'memory', NODE_ENV: 'test', MAX_VENUE_CAPACITY: '500' },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0);
+  assert.deepEqual(JSON.parse(result.stdout), { capacity: ['Capacity must not exceed 500'] });
 });
 
 test('CS-venue-VAL-04: a blank change reason is invalid even when venue details are valid', () => {
@@ -97,6 +145,18 @@ test('CS-venue-VAL-04b: invalid supplied venue values receive field-level guidan
     timeZone: ['Time zone is required'],
     managedById: ['A venue staff manager is required'],
   });
+});
+
+test('CS-venue-VAL-04c: array fields reject non-string entries instead of silently dropping them', () => {
+  const errors = validateVenue(validPhysicalVenue({
+    supportedLayouts: ['THEATRE', 42],
+    facilities: ['PROJECTOR', null],
+    accessibilityTags: ['WHEELCHAIR_ACCESS', {}],
+  }));
+
+  assert.deepEqual(errors.supportedLayouts, ['Supported layouts contain an unknown value']);
+  assert.deepEqual(errors.facilities, ['Facilities must contain only non-empty strings']);
+  assert.deepEqual(errors.accessibilityTags, ['Accessibility tags must contain only non-empty strings']);
 });
 
 test('CS-venue-VAL-09: POST and PUT venue payloads reject empty operating hours', () => {

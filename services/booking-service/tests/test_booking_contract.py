@@ -169,6 +169,39 @@ class BookingServiceContractTest(unittest.TestCase):
         self.assertEqual(status, 403)
         self.assertNotIn("title", body)
 
+    def test_users_without_booking_permissions_cannot_read_booking_routes(self):
+        status, body = self.request(
+            "GET", "/venue-bookings", role="TECHNICAL_SUPPORT_STAFF", user_id="support-1",
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("permission", body["error"].lower())
+
+    def test_internal_venue_link_lookup_requires_private_service_header(self):
+        booking = self.create_booking(
+            "booking-internal-links", venueId="venue-links",
+            startAt="2026-12-20T01:00:00.000Z", endAt="2026-12-20T02:00:00.000Z",
+        )
+        status, booking = self.request(
+            "PUT", f"/venue-bookings/{booking['id']}",
+            {**booking, "status": "CONFIRMED", "reason": "Confirmed for internal lookup"},
+            role="VENUE_STAFF", user_id="staff-links",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(booking["venueId"], "venue-links")
+
+        with self.assertRaises(HTTPError) as context:
+            urlopen(Request(f"http://127.0.0.1:{self.port}/internal/venue-links/venue-links"), timeout=3)
+        self.assertEqual(context.exception.code, 403)
+        context.exception.close()
+
+        response = urlopen(Request(
+            f"http://127.0.0.1:{self.port}/internal/venue-links/venue-links",
+            headers={"x-internal-api-key": "change-me-dev-internal-key"},
+        ), timeout=3)
+        body = json.loads(response.read())
+        self.assertEqual(body["blockingCount"], 1)
+        self.assertEqual(body["statuses"], ["TENTATIVELY_HELD", "CONFIRMED"])
+
 
 if __name__ == "__main__":
     unittest.main()

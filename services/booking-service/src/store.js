@@ -230,7 +230,24 @@ function listHistory(venueId) {
   }).then((items) => items.map(toApiActivity));
 }
 
+function countBlockingBookings(venueId, at = new Date()) {
+  const statuses = new Set(['TENTATIVELY_HELD', 'CONFIRMED']);
+  const instant = at instanceof Date ? at : new Date(at);
+  if (isMemory) {
+    return [...state.bookings.values()].filter((booking) => statuses.has(booking.status)
+      && booking.venueId === venueId
+      && new Date(booking.endAt || booking.requestedEnd) >= instant).length;
+  }
+  return prisma.venueBookingRequest.count({
+    where: {
+      venueId,
+      status: { in: [...statuses] },
+      requestedEnd: { gte: instant },
+    },
+  });
+}
+
 module.exports = {
   state, reset, fingerprint, createBooking, replaceBooking, appendActivity,
-  findIdempotency, getBooking, listBookings, listHistory, isMemory,
+  findIdempotency, getBooking, listBookings, listHistory, countBlockingBookings, isMemory,
 };

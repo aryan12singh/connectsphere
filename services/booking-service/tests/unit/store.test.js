@@ -112,3 +112,34 @@ test('CS-booking-DATA-05: resetting the service clears records and idempotency s
   assert.deepEqual(store.listHistory('venue-1'), []);
   assert.deepEqual([...store.state.idempotency], []);
 });
+
+test('CS-booking-DATA-06: blocking venue links include current and future tentative or confirmed bookings only', () => {
+  const now = new Date('2026-10-04T00:00:00.000Z');
+  store.createBooking(bookingInput({
+    venueId: 'venue-blocked',
+    status: 'TENTATIVELY_HELD',
+    startAt: '2026-10-04T01:00:00.000Z',
+    endAt: '2026-10-04T02:00:00.000Z',
+  }), COORDINATOR, 'blocking-current');
+  store.createBooking(bookingInput({
+    venueId: 'venue-blocked',
+    status: 'CONFIRMED',
+    startAt: '2026-12-04T01:00:00.000Z',
+    endAt: '2026-12-04T02:00:00.000Z',
+  }), STAFF, 'blocking-future');
+  store.createBooking(bookingInput({
+    venueId: 'venue-blocked',
+    status: 'CANCELLED',
+    startAt: '2026-12-04T01:00:00.000Z',
+    endAt: '2026-12-04T02:00:00.000Z',
+  }), COORDINATOR, 'non-blocking-cancelled');
+  store.createBooking(bookingInput({
+    venueId: 'venue-blocked',
+    status: 'CONFIRMED',
+    startAt: '2026-09-01T01:00:00.000Z',
+    endAt: '2026-09-01T02:00:00.000Z',
+  }), STAFF, 'non-blocking-ended');
+
+  assert.equal(store.countBlockingBookings('venue-blocked', now), 2);
+  assert.equal(store.countBlockingBookings('other-venue', now), 0);
+});

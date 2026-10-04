@@ -1,12 +1,13 @@
 const express = require('express');
-const { requireAuth, requirePermission } = require('../auth');
+const { requireAuth, requireAnyPermission } = require('../auth');
 const store = require('../store');
 const { STATUSES, validateBooking, text } = require('../validation');
 const { isStaff, statusForCreate, canCreateStatus, canReplace } = require('../policy');
 
 const router = express.Router();
 const auth = requireAuth();
-const createPermission = requirePermission('venue_bookings.create');
+const createPermission = requireAnyPermission('venue_bookings.create');
+const bookingAccess = requireAnyPermission('venue_bookings.create', 'venue_bookings.decide');
 
 function validationError(res, fields) {
   return res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: 'Request contains invalid fields', fields } });
@@ -25,7 +26,7 @@ function normalise(body, actor, forceTentative = false) {
   };
 }
 
-router.get('/', auth, async (req, res) => {
+router.get('/', auth, bookingAccess, async (req, res) => {
   const values = (await store.listBookings()).filter((booking) => {
     if (!isStaff(req.actor) && booking.requestedById !== req.actor.id) return false;
     if (req.query.venueId && booking.venueId !== req.query.venueId) return false;
@@ -36,12 +37,12 @@ router.get('/', auth, async (req, res) => {
   return res.json({ items: values, total: values.length });
 });
 
-router.get('/history', auth, async (req, res) => {
+router.get('/history', auth, bookingAccess, async (req, res) => {
   if (!req.query.venueId) return validationError(res, { venueId: ['Venue is required'] });
   return res.json({ venueId: req.query.venueId, items: await store.listHistory(req.query.venueId) });
 });
 
-router.get('/availability', auth, async (req, res) => {
+router.get('/availability', auth, bookingAccess, async (req, res) => {
   const values = (await store.listBookings()).filter((booking) => !req.query.venueId || booking.venueId === req.query.venueId);
   return res.json({ items: values, conflictDetection: 'client-only' });
 });
@@ -72,14 +73,14 @@ router.post('/', auth, createPermission, async (req, res) => {
   return res.status(201).json(await store.createBooking(input, req.actor, key));
 });
 
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', auth, bookingAccess, async (req, res) => {
   const booking = await store.getBooking(req.params.id);
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
   if (!isStaff(req.actor) && booking.requestedById !== req.actor.id) return res.status(403).json({ error: 'You do not have access to this booking' });
   return res.json(booking);
 });
 
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', auth, bookingAccess, async (req, res) => {
   const booking = await store.getBooking(req.params.id);
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
   const body = req.body || {};

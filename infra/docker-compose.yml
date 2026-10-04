@@ -137,6 +137,7 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/event_db
       AUTH_SERVICE_URL: http://auth-service:3000
+      BOOKING_SERVICE_URL: http://booking-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     depends_on:
       postgres:
@@ -150,6 +151,7 @@ services:
     environment:
       PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/venue_db
+      MAX_VENUE_CAPACITY: ${MAX_VENUE_CAPACITY:-10000}
       AUTH_SERVICE_URL: http://auth-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
       DATA_MODE: prisma
