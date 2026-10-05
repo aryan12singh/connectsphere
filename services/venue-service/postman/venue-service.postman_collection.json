@@ -1,0 +1,216 @@
+{
+  "info": {
+    "name": "ConnectSphere — Auth + Venue Service",
+    "description": "Importable Postman collection for the auth-service login and venue-service API through Kong. Venue reads use an Event Coordinator token; venue writes use a Venue Staff token. Set DATA_MODE=prisma and load the venue seed data before running the requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "gatewayUrl", "value": "http://localhost:8000" },
+    { "key": "coordinatorEmail", "value": "aisha.rahman@connectsphere.sg" },
+    { "key": "venueStaffEmail", "value": "ravi.kumar@marinaconvention.sg" },
+    { "key": "password", "value": "Password123!" },
+    { "key": "coordinatorToken", "value": "" },
+    { "key": "venueStaffToken", "value": "" },
+    { "key": "venueId", "value": "b3000000-0000-4000-8000-000000000001" },
+    { "key": "createdVenueId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login as event coordinator",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('coordinator login succeeds', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const body = pm.response.json();",
+                  "pm.expect(body.token).to.be.a('string').and.not.empty;",
+                  "pm.expect(body.user.role).to.eql('EVENT_COORDINATOR');",
+                  "pm.collectionVariables.set('coordinatorToken', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{coordinatorEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{gatewayUrl}}/auth/login", "host": [ "{{gatewayUrl}}" ], "path": [ "auth", "login" ] }
+          }
+        },
+        {
+          "name": "Login as venue staff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('venue staff login succeeds', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "const body = pm.response.json();",
+                  "pm.expect(body.token).to.be.a('string').and.not.empty;",
+                  "pm.expect(body.user.role).to.eql('VENUE_STAFF');",
+                  "pm.collectionVariables.set('venueStaffToken', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{venueStaffEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{gatewayUrl}}/auth/login", "host": [ "{{gatewayUrl}}" ], "path": [ "auth", "login" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Venue service",
+      "item": [
+        {
+          "name": "List venue form options (coordinator)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{coordinatorToken}}" } ],
+            "url": { "raw": "{{gatewayUrl}}/venues/options", "host": [ "{{gatewayUrl}}" ], "path": [ "venues", "options" ] }
+          }
+        },
+        {
+          "name": "List venues (coordinator)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{coordinatorToken}}" } ],
+            "url": { "raw": "{{gatewayUrl}}/venues?search=Marina", "host": [ "{{gatewayUrl}}" ], "path": [ "venues" ], "query": [ { "key": "search", "value": "Marina" } ] }
+          }
+        },
+        {
+          "name": "Get venue (coordinator)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{coordinatorToken}}" } ],
+            "url": { "raw": "{{gatewayUrl}}/venues/{{venueId}}", "host": [ "{{gatewayUrl}}" ], "path": [ "venues", "{{venueId}}" ] }
+          }
+        },
+        {
+          "name": "Create venue (venue staff)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('venue created', function () { pm.expect(pm.response.code).to.eql(201); });",
+                  "const body = pm.response.json();",
+                  "pm.expect(body.id).to.be.a('string').and.not.empty;",
+                  "pm.expect(body.operatingHours).to.be.an('array').that.is.not.empty;",
+                  "pm.collectionVariables.set('createdVenueId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{venueStaffToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Venue Smoke Test\",\n  \"address\": \"99 Test Street\",\n  \"capacity\": 120,\n  \"venueType\": \"PHYSICAL\",\n  \"supportedLayouts\": [\"THEATRE\"],\n  \"facilities\": [\"PROJECTOR\", \"WIFI\"],\n  \"accessibilityTags\": [\"WHEELCHAIR_ACCESS\"],\n  \"timeZone\": \"Asia/Singapore\",\n  \"isActive\": true,\n  \"managedById\": \"a1000000-0000-4000-8000-000000000008\",\n  \"reason\": \"Create venue from Postman smoke test\",\n  \"operatingHours\": [\n    { \"weekday\": \"MONDAY\", \"isClosed\": false, \"opensAt\": \"09:00\", \"closesAt\": \"18:00\" }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{gatewayUrl}}/venues", "host": [ "{{gatewayUrl}}" ], "path": [ "venues" ] }
+          }
+        },
+        {
+          "name": "Get operating hours (coordinator)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{coordinatorToken}}" } ],
+            "url": { "raw": "{{gatewayUrl}}/venues/{{venueId}}/operating-hours", "host": [ "{{gatewayUrl}}" ], "path": [ "venues", "{{venueId}}", "operating-hours" ] }
+          }
+        },
+        {
+          "name": "Replace operating hours (venue staff)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{venueStaffToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Updated hours from Postman smoke test\",\n  \"items\": [\n    { \"weekday\": \"MONDAY\", \"isClosed\": false, \"opensAt\": \"08:00\", \"closesAt\": \"20:00\" },\n    { \"weekday\": \"SUNDAY\", \"isClosed\": true }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{gatewayUrl}}/venues/{{venueId}}/operating-hours", "host": [ "{{gatewayUrl}}" ], "path": [ "venues", "{{venueId}}", "operating-hours" ] }
+          }
+        },
+        {
+          "name": "Replace venue (venue staff)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{venueStaffToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Marina Convention Centre (updated)\",\n  \"address\": \"18 Bayfront Link\",\n  \"capacity\": 820,\n  \"venueType\": \"PHYSICAL\",\n  \"supportedLayouts\": [\"THEATRE\", \"CLASSROOM\"],\n  \"facilities\": [\"PROJECTOR\", \"PA_SYSTEM\", \"WIFI\"],\n  \"accessibilityTags\": [\"WHEELCHAIR_ACCESS\", \"HEARING_LOOP\"],\n  \"timeZone\": \"Asia/Singapore\",\n  \"isActive\": true,\n  \"managedById\": \"a1000000-0000-4000-8000-000000000008\",\n  \"reason\": \"Update venue capacity from Postman smoke test\",\n  \"operatingHours\": [\n    { \"weekday\": \"MONDAY\", \"isClosed\": false, \"opensAt\": \"08:00\", \"closesAt\": \"22:00\" }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{gatewayUrl}}/venues/{{venueId}}", "host": [ "{{gatewayUrl}}" ], "path": [ "venues", "{{venueId}}" ] }
+          }
+        },
+        {
+          "name": "List venue history (coordinator)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{coordinatorToken}}" } ],
+            "url": { "raw": "{{gatewayUrl}}/venues/{{venueId}}/history", "host": [ "{{gatewayUrl}}" ], "path": [ "venues", "{{venueId}}", "history" ] }
+          }
+        },
+        {
+          "name": "Reject empty operating hours (validation check)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('empty operating hours are rejected', function () { pm.expect(pm.response.code).to.eql(422); });",
+                  "pm.expect(pm.response.json().error.fields.operatingHours[0]).to.eql('At least one operating hour is required');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{venueStaffToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Marina Convention Centre\",\n  \"address\": \"18 Bayfront Link\",\n  \"capacity\": 800,\n  \"venueType\": \"PHYSICAL\",\n  \"supportedLayouts\": [\"THEATRE\"],\n  \"facilities\": [\"PROJECTOR\"],\n  \"accessibilityTags\": [],\n  \"timeZone\": \"Asia/Singapore\",\n  \"managedById\": \"a1000000-0000-4000-8000-000000000008\",\n  \"reason\": \"Validation smoke test\",\n  \"operatingHours\": []\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{gatewayUrl}}/venues/{{venueId}}", "host": [ "{{gatewayUrl}}" ], "path": [ "venues", "{{venueId}}" ] }
+          }
+        }
+      ]
+    }
+  ]
+}

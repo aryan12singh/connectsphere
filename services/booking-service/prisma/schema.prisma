@@ -1,0 +1,63 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BookingStatus {
+  AVAILABLE
+  TENTATIVELY_HELD
+  CONFIRMED
+  BLOCKED
+  UNAVAILABLE
+  REJECTED
+  CANCELLED
+}
+
+model VenueBookingRequest {
+  id                String             @id @default(uuid())
+  eventId           String?
+  venueId           String
+  requestedById     String
+  title             String
+  reason            String
+  requestedStart    DateTime
+  requestedEnd      DateTime
+  timeZone          String             @default("Asia/Singapore")
+  status            BookingStatus      @default(TENTATIVELY_HELD)
+  idempotencyKey    String
+  statusChangedById String?
+  statusChangedRole String?
+  statusChangedAt   DateTime?
+  statusReason      String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  activity          VenueBookingActivity[]
+
+  @@unique([requestedById, idempotencyKey])
+  @@index([venueId, requestedStart, requestedEnd])
+  @@index([venueId, status])
+  @@map("venue_booking_requests")
+}
+
+model VenueBookingActivity {
+  id          String               @id @default(uuid())
+  bookingId   String
+  booking     VenueBookingRequest @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  actorId     String
+  actorRole   String
+  action      String
+  fromStatus  BookingStatus?
+  toStatus    BookingStatus?
+  reason      String
+  changes     Json
+  occurredAt  DateTime             @default(now())
+
+  @@index([bookingId, occurredAt])
+  @@index([actorId, occurredAt])
+  @@map("venue_booking_activity")
+}

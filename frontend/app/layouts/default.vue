@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { GalleryVerticalEndIcon } from '@lucide/vue'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
+import AppErrorAlert from '@/components/shared/AppErrorAlert.vue'
 import { Switch } from '@/components/ui/switch'
 
 const THEME_STORAGE_KEY = 'connectsphere-theme'
 
 const route = useRoute()
 const isDark = ref(false)
+const isVenueRoute = computed(() => route.path === '/venue' || route.path.startsWith('/venue/'))
 
 function applyTheme(dark: boolean) {
   document.documentElement.classList.toggle('dark', dark)
@@ -48,11 +50,17 @@ watch(isDark, (dark) => {
           <NuxtLink
             to="/"
             :aria-current="route.path === '/' ? 'page' : undefined"
-            class="font-medium text-foreground underline decoration-2 underline-offset-[6px]"
+            :class="route.path === '/' ? 'font-medium text-foreground underline decoration-2 underline-offset-[6px]' : 'font-medium text-muted-foreground hover:text-foreground'"
           >
             Events
           </NuxtLink>
-          <span class="text-muted-foreground">Venues</span>
+          <NuxtLink
+            to="/venue"
+            :aria-current="isVenueRoute ? 'page' : undefined"
+            :class="isVenueRoute ? 'font-medium text-foreground underline decoration-2 underline-offset-[6px]' : 'font-medium text-muted-foreground hover:text-foreground'"
+          >
+            Venues
+          </NuxtLink>
           <span class="text-muted-foreground">Equipment</span>
         </nav>
       </div>
@@ -77,5 +85,6 @@ watch(isDark, (dark) => {
     </header>
 
     <slot />
+    <AppErrorAlert />
   </div>
 </template>

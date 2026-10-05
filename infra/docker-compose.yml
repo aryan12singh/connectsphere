@@ -1,7 +1,7 @@
 # ConnectSphere local stack.
 # Start everything that is built:   docker compose -f infra/docker-compose.yml up --build
 #
-# Services that don't have code yet (event, venue, booking, attendance,
+# Services that don't have code yet (event, attendance,
 # messaging, notification, orchestrator) are listed at the bottom with
 # `profiles: ["not-built-yet"]`, so a normal `up` skips them. When a service
 # gets its Dockerfile and code:
@@ -93,6 +93,8 @@ services:
     depends_on:
       - auth-service
       - user-service
+      - venue-service
+      - booking-service
 
   # ── Built services ────────────────────────────────────────────────────
 
@@ -133,7 +135,7 @@ services:
       user-service:
         condition: service_started
 
-  # ── Not built yet (skipped by a normal `up`, see top of file) ─────────
+  # ── Domain services ───────────────────────────────────────────────────
   # Every domain service gets AUTH_SERVICE_URL + INTERNAL_API_KEY so it can
   # check callers via auth-service's /internal/sessions/validate (RBAC).
 
@@ -145,36 +147,48 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/event_db
       AUTH_SERVICE_URL: http://auth-service:3000
+      BOOKING_SERVICE_URL: http://booking-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     depends_on:
       postgres:
         condition: service_healthy
 
   venue-service:
-    profiles: ["not-built-yet"]
-    build: ../services/venue-service
+    build:
+      context: ../services
+      dockerfile: venue-service/Dockerfile
     restart: unless-stopped
     environment:
       PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/venue_db
+      MAX_VENUE_CAPACITY: ${MAX_VENUE_CAPACITY:-10000}
       AUTH_SERVICE_URL: http://auth-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
+      DATA_MODE: prisma
+      ROLE_PERMISSIONS_PATH: /app/utils/role-permissions.js
     depends_on:
       postgres:
         condition: service_healthy
+      auth-service:
+        condition: service_started
 
   booking-service:
-    profiles: ["not-built-yet"]
-    build: ../services/booking-service
+    build:
+      context: ../services
+      dockerfile: booking-service/Dockerfile
     restart: unless-stopped
     environment:
       PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/booking_db
       AUTH_SERVICE_URL: http://auth-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
+      DATA_MODE: prisma
+      ROLE_PERMISSIONS_PATH: /app/utils/role-permissions.js
     depends_on:
       postgres:
         condition: service_healthy
+      auth-service:
+        condition: service_started
 
   attendance-service:
     profiles: ["not-built-yet"]

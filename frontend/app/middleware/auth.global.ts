@@ -33,10 +33,17 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return
   }
 
-  // Role gate: only organisers (Your events) and coordinators (review queue)
-  // may use the app for now. Role is server-issued session data, and every
-  // BFF route enforces the same rule — this is only the interface redirect.
+  // Venue staff land in the venue workspace when the default dashboard route
+  // is requested. The role is server-issued session data; BFF routes enforce
+  // the actual authorization independently of this interface redirect.
   const role = user.value?.role
+  if (role === 'VENUE_STAFF') {
+    if (to.path === '/')
+      return navigateTo('/venue')
+    return
+  }
+
+  // Organisers use the event dashboard and coordinators use the review queue.
   if (role !== 'EVENT_ORGANISER' && role !== 'EVENT_COORDINATOR')
     return navigateTo('/login')
 })

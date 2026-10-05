@@ -1,0 +1,2 @@
+ALTER TABLE "venues" ALTER COLUMN "address" DROP NOT NULL;
+ALTER TABLE "venues" ALTER COLUMN "capacity" DROP NOT NULL;

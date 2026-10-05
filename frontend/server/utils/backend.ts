@@ -20,6 +20,7 @@ export async function backendFetch<T>(
     body?: unknown
     query?: Record<string, unknown>
     token?: string
+    headers?: Record<string, string>
   } = {},
 ): Promise<T> {
   const { apiBaseUrl } = useRuntimeConfig(event)
@@ -30,7 +31,10 @@ export async function backendFetch<T>(
       method: options.method ?? 'GET',
       body: options.body as Record<string, unknown> | undefined,
       query: options.query,
-      headers: options.token ? { Authorization: `Bearer ${options.token}` } : undefined,
+      headers: {
+        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+        ...(options.headers ?? {}),
+      },
       timeout: 10_000,
     })
   }
@@ -38,16 +42,16 @@ export async function backendFetch<T>(
     if (error instanceof FetchError && error.statusCode) {
       if (error.statusCode === 401 && options.token)
         await clearUserSession(event)
-      // 502/503/504 come from Kong when the service behind it is down,
-      // restarting, or was rebuilt (restart Kong). Say so plainly.
-      if ([502, 503, 504].includes(error.statusCode)) {
-        throw createError({ statusCode: 503, statusMessage: 'The ConnectSphere service is unavailable. Please try again shortly.' })
-      }
-      // Our services answer { error }, Kong answers { message }.
-      const data = error.data as { error?: string, message?: string, details?: string[] } | undefined
+      const data = error.data as {
+        error?: string | { message?: string }
+        details?: string[]
+      } | undefined
+      const serviceMessage = typeof data?.error === 'string'
+        ? data.error
+        : data?.error?.message
       throw createError({
         statusCode: error.statusCode,
-        statusMessage: data?.error ?? data?.message ?? 'Request failed',
+        statusMessage: serviceMessage ?? 'Request failed',
         data,
       })
     }
