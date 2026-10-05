@@ -19,6 +19,20 @@ You need:
 - **Git**. Clone the repo normally. `.gitattributes` keeps the shell script's
   line endings correct on Windows.
 
+### A2. Starting from scratch (skip on a brand-new clone)
+
+If you have run the stack before and want a clean start (or something is in
+a confusing state), wipe the old containers and **all** data first. This
+deletes every database, including Keycloak's accounts and anyone who signed up:
+
+```powershell
+docker compose -f infra/docker-compose.yml down -v
+```
+
+Then check `frontend/.env`, if it exists: there must be **no** line
+`NUXT_SESSION_PASSWORD=` with nothing after it (delete it if there is).
+Continue with Part B; you will redo B2 (seed data) and Part C.
+
 ---
 
 ## Part B — Start the backend
@@ -55,6 +69,41 @@ Wait for `auth-service listening on port 3000` and
 The user and auth tables are created by their migrations when the services
 start. Then load the seed rows. `docker compose cp` works in both PowerShell
 and bash (PowerShell has no `<` redirect):
+Keycloak keeps its accounts in Postgres (`keycloak_db`), so accounts made by
+sign-up or by tech support survive `down`/`up` and rebuilds. It imports
+`infra/keycloak/connectsphere-realm.json` only when `keycloak_db` is empty.
+
+**Upgrading from an older version of this repo (before 2026-10-01)?** Your
+Postgres volume has no `keycloak_db` yet (the init script only runs on an empty
+volume), and Keycloak will keep restarting. Either wipe everything with
+`down -v` and redo B2, or keep your data and create it once:
+
+```powershell
+docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d postgres -c "CREATE DATABASE keycloak_db"
+docker compose -f infra/docker-compose.yml restart keycloak
+```
+
+To watch the two services start:
+
+```powershell
+docker compose -f infra/docker-compose.yml logs -f auth-service user-service
+```
+
+Wait for `auth-service listening on port 3000` (3000 is its port inside the
+container; you reach it on 3002) and
+`Keycloak lockout and password rules synced from auth_db`, then press Ctrl+C.
+The second line can take a minute while Keycloak starts.
+
+**Then restart Kong. Do this after every `up --build`.** Kong keeps sending
+requests to the old containers, and logins fail with a 502 until you do:
+
+```powershell
+docker compose -f infra/docker-compose.yml restart kong
+```
+
+The tables are created automatically when the services start. Then load the
+seed rows. `docker compose cp` works in both PowerShell and bash (PowerShell
+has no `<` redirect):
 
 ```powershell
 docker compose -f infra/docker-compose.yml cp backend/seed_data/01_user_db.sql postgres:/tmp/01_user_db.sql
@@ -139,15 +188,28 @@ npm run dev
 Open http://localhost:3000. The first load of each page takes a few seconds
 while Nuxt compiles it.
 
-### Seed users (live mode). Password for all: `Password123!`
+### Seed users (live mode)
 
-| Role | Email |
-|---|---|
-| Event Organiser | sarah.tan@nexuslabs.sg, daniel.lim@brightpath.edu.sg |
-| Event Coordinator | aisha.rahman@connectsphere.sg, kevin.ong@connectsphere.sg |
-| Venue Staff | ravi.kumar@marinaconvention.sg |
-| Technical Support | hafiz.ismail@connectsphere.sg, chloe.ng@connectsphere.sg |
-| Attendee | ethan.goh@gmail.com |
+Each seed user has their own password. The full list is in the row comments of
+`backend/seed_data/01_user_db.sql`. The ones used in the test cases:
+
+| Role | Email | Password |
+|---|---|---|
+| Event Organiser | sarah.tan@nexuslabs.sg | `Sarah@CS01!` |
+| Event Organiser | daniel.lim@brightpath.edu.sg | `Daniel@CS02!` |
+| Event Coordinator | aisha.rahman@connectsphere.sg | `Aisha@CS05!` |
+| Event Coordinator | kevin.ong@connectsphere.sg | `Kevin@CS06!` |
+| Venue Staff | ravi.kumar@marinaconvention.sg | `Ravi@CS08!` |
+| Technical Support | hafiz.ismail@connectsphere.sg | `Hafiz@CS11!` |
+| Technical Support | chloe.ng@connectsphere.sg | `Chloe@CS12!` |
+| Attendee | ethan.goh@gmail.com | `Ethan@CS13!` |
+
+Mock mode users (`organiser@example.com` and so on) still use `Password123!`.
+
+Passwords are checked by **Keycloak**, which gets them from
+`infra/keycloak/connectsphere-realm.json`. The `passwordHash` column in
+`user_db` is not used for login. If you change a seed password, change it in
+the realm file too, then reset `keycloak_db` (Part E).
 
 ---
 
@@ -160,13 +222,27 @@ differs, note what you saw.
 
 | # | Steps | Expected |
 |---|---|---|
-| MT-01 | On /login, enter `sarah.tan@nexuslabs.sg` with a wrong password | "Invalid credentials". Same message for an unknown email (try `nobody@x.com`) |
+| MT-01 | On /login, enter `sarah.tan@nexuslabs.sg` with a wrong password (her real one is `Sarah@CS01!`) | "Invalid credentials". Same message for an unknown email (try `nobody@x.com`) |
 | MT-02 | Log in as `sarah.tan@nexuslabs.sg` | Lands on **Your events** (empty list in live mode) |
 | MT-03 | Click the initials (top right), then **Sign out** | Shows Sarah Tan, `EVENT_ORGANISER`, her email. Sign out returns to /login. In pgAdmin, `auth_db.sessions`: her newest session now has `revokedAt` set |
 | MT-04 | Log in as `aisha.rahman@connectsphere.sg` | Lands on **Review queue** |
 | MT-05 | Log in as `hafiz.ismail@connectsphere.sg` (also try Venue Staff and Attendee) | Shows "Signed in as …" but stays on /login. **Correct for now**: the access matrix says these roles have no interface yet |
 | MT-06 | Signed out, go to http://localhost:3000/ | Redirected to /login |
 | MT-07 | Log in as Aisha, then refresh the page | Still logged in |
+
+### Attendee sign-up (website)
+
+| # | Steps | Expected |
+|---|---|---|
+| MT-27 | On /login click **Create an account** | Opens /signup. Works while logged out |
+| MT-28 | Click **Create account** with the form empty | Each empty field says what is missing; nothing is sent |
+| MT-29 | Type a password slowly, e.g. `abc` → `Abcdefg1!` | The rules under the field tick (✓) one by one. A different confirm password gives "The passwords do not match." |
+| MT-30 | Sign up as `test.attendee@example.com`, any names, password `Str0ng!Pass` | Goes to /login with "Account created. Please sign in." In pgAdmin: `user_db.users` has the row with role **ATTENDEE**; `auth_db.audit_logs` has a `USER_REGISTERED` entry |
+| MT-31 | Sign up again with the same email, then with `sarah.tan@nexuslabs.sg` | "A user with this email already exists" both times |
+| MT-32 | Log in as `test.attendee@example.com` / `Str0ng!Pass` | "Signed in as …", stays on /login (attendees have no interface yet, like MT-05) |
+| MT-33 | In Swagger (3002), `POST /auth/register` with `"role": "TECHNICAL_SUPPORT_STAFF"` in the body | 201 and the new user's role is still **ATTENDEE** |
+| MT-34 | As Hafiz, `PUT /admin/settings` `{ "passwordMinLength": 12 }`, then reload /signup | The first rule now says "At least 12 characters", and an 8-character password is refused. Set it back to 8 |
+| MT-35 | `docker compose -f infra/docker-compose.yml restart keycloak`, wait a minute, log in as `test.attendee@example.com` | Still works: Keycloak kept the account in Postgres |
 
 ### Security rules (website)
 
@@ -183,7 +259,7 @@ Check that the server dropdown at the top shows `http://localhost:3002`.
 **Get a token (needed for MT-10 onwards):**
 
 1. Expand `POST /auth/login` → **Try it out**.
-2. Body: `{ "email": "hafiz.ismail@connectsphere.sg", "password": "Password123!" }` → **Execute**.
+2. Body: `{ "email": "hafiz.ismail@connectsphere.sg", "password": "Hafiz@CS11!" }` → **Execute**.
 3. Copy the `token` value from the response.
 4. Click **Authorize** (top right), paste the token, then Authorize → Close.
 
@@ -205,7 +281,7 @@ Check that the server dropdown at the top shows `http://localhost:3002`.
 
 | # | Steps | Expected |
 |---|---|---|
-| MT-21 | Log in via Swagger as `aisha.rahman@connectsphere.sg`, Authorize with her token, `GET /admin/users` | **403** "You do not have permission to do this" |
+| MT-21 | Log in via Swagger as `aisha.rahman@connectsphere.sg` / `Aisha@CS05!`, Authorize with her token, `GET /admin/users` | **403** "You do not have permission to do this" |
 | MT-22 | As Hafiz again, `PUT /admin/roles/EVENT_COORDINATOR/permissions` with the current coordinator list **plus** `"users.view"` (see `GET /admin/permissions`) | 200. As Aisha, `GET /admin/users` now works. Put the list back afterwards |
 | MT-23 | As Hafiz, `PUT /admin/roles/TECHNICAL_SUPPORT_STAFF/permissions` with `{ "permissions": [] }` | 200, but `users.manage` and `permissions.manage` are still there (protected) |
 
@@ -220,7 +296,7 @@ Check that the server dropdown at the top shows `http://localhost:3002`.
 
 | # | Steps | Expected |
 |---|---|---|
-| MT-26 | `cd frontend` then `npm test` | **75 passed, 20 failed.** The 20 are known and unrelated to auth: 19 CS-11 tests call routes not built yet, and 1 CS-30 test expects a disabled "Change coordinator" button. Any *other* failure is a regression |
+| MT-26 | `cd frontend` then `npm test` | **82 passed, 20 failed** (the 82 include 7 sign-up tests in `tests/specs/signup.spec.ts`). The 20 are known and unrelated to auth: 19 CS-11 tests call routes not built yet, and 1 CS-30 test expects a disabled "Change coordinator" button. Any *other* failure is a regression |
 
 ---
 
@@ -231,10 +307,16 @@ docker compose -f infra/docker-compose.yml down        # stop, keep data
 docker compose -f infra/docker-compose.yml down -v     # stop and WIPE all data (then redo B2)
 ```
 
-After `down -v`, Keycloak also starts fresh from `infra/keycloak/connectsphere-realm.json`.
+After `down -v`, Keycloak also starts fresh from `infra/keycloak/connectsphere-realm.json`,
+and every signed-up or admin-created account is gone (redo B2 for the seed users).
 
 | Symptom | Fix |
 |---|---|
+| Website login fails; dev tools show **502** from Kong | Kong still points at an old container after a rebuild: `docker compose -f infra/docker-compose.yml restart kong` |
+| Seed user login fails but mock works | Seed users each have their own password now (Part C table), not `Password123!`. Keycloak must have the current realm file. It only imports it into an empty `keycloak_db`, so after the realm file changes, either `down -v` (wipes everything), or reset just Keycloak: `docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d postgres -c "DROP DATABASE keycloak_db WITH (FORCE)" -c "CREATE DATABASE keycloak_db"` then `restart keycloak`. That also deletes the logins of signed-up users (their `user_db` rows stay, but they can no longer log in) |
+| Keycloak keeps restarting; its log says `database "keycloak_db" does not exist` | Your Postgres volume is older than this change. See the "Upgrading" note in Part B1 |
+| Sign-up says "Sign-up needs NUXT_AUTH_MODE=live" | Sign-up creates real accounts, so it only works in live mode |
+| Sign-up says "Too many sign-up attempts" | Kong allows 5 sign-ups a minute (site-wide when going through the website). Wait a minute |
 | Website login says "The ConnectSphere service is unavailable" | Backend not running, or Keycloak still starting. Check Part B1 |
 | "Invalid credentials" for a seed user in live mode | Did B2 run? Is the account locked (MT-08)? Is `NUXT_AUTH_MODE=live`? |
 | Swagger "Try it out" fails with a network/CORS error | Pick `http://localhost:3002` in the server dropdown |

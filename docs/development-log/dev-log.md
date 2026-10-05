@@ -47,13 +47,129 @@ consistent. Add a new dated entry at the top of "Entries" each time.
 | Service | Database | Status |
 |---|---|---|
 | user-service | user_db | Built (internal: lookup, list, create, update role/active) |
-| auth-service | auth_db | Built (login, logout, me, internal validate, admin API) |
-| frontend (Nuxt BFF) | — | Team's app. Auth wired in: live/mock login, usePermissions, useAdminApi, admin proxy |
+| auth-service | auth_db | Built (attendee sign-up, login, logout, me, password policy, internal validate, admin API) |
+| frontend (Nuxt BFF) | — | Team's app. Auth wired in: live/mock login, /signup page, usePermissions, useAdminApi, admin proxy |
+| Keycloak | keycloak_db | Stores its accounts in Postgres (since 2026-10-01) |
 | event / venue / booking / attendance / messaging / notification / orchestrator | own db each | Not started |
 
 ---
 
 ## Entries
+
+### 2026-10-01 — Attendee self sign-up + Keycloak data kept in Postgres
+
+**Business rules (confirmed by Shadow)**
+- New users sign up on a page; **sign-up is for Attendees only**. Staff
+  accounts are still created by tech support.
+- The account **works immediately** (no email verification, no approval).
+- After sign-up the user is sent **back to the login page** (no auto-login).
+- Keycloak's storage moves into Postgres as part of this, so self-created
+  accounts survive restarts and rebuilds.
+
+**Backend**
+- `auth-service/src/services/account.service.js` (new): one place that
+  validates a new account and creates it (Keycloak login first, then the
+  user-service profile; if the profile fails, the Keycloak login is deleted).
+  Used by both `POST /admin/users` and the new `POST /auth/register`.
+- `POST /auth/register` (public): role is forced to `ATTENDEE` (a `role` in
+  the body is ignored), returns 201 `{ user }`, creates no session, audit
+  action `USER_REGISTERED` (actor = the new user).
+- `GET /auth/password-policy` (public): the current password rules from
+  `auth_settings`, for the sign-up form.
+- Kong: routes `auth-register` (POST, **5/minute**) and `auth-password-policy`.
+- Keycloak: `KC_DB=postgres`, database `keycloak_db` (added to
+  `init-databases.sh`), waits for Postgres to be healthy. It imports the realm
+  file **only when `keycloak_db` is empty**. Consequence: after a realm-file
+  change (e.g. seed passwords), reset `keycloak_db` or `down -v` — just
+  recreating the Keycloak container is no longer enough. Existing Postgres
+  volumes need `CREATE DATABASE keycloak_db` once (run guide, Part B1).
+
+**Frontend**
+- `server/api/auth/register.post.ts` (live mode only; mock returns 501):
+  forwards only email, firstName, lastName, company, password.
+- `server/api/auth/password-policy.get.ts` (mock returns the defaults).
+- `app/pages/signup.vue`: labelled fields, rule checklist that ticks as you
+  type (screen-reader text for met/not met), confirm-password check, server
+  message on error, 429 message, then `/login?registered=1`.
+- `app/pages/login.vue`: "Create an account" link and an "Account created.
+  Please sign in." message. `auth.global.ts`: `/signup` is public.
+
+**Contracts**: swagger.html v0.3.0 (BFF: `/api/auth/register`,
+`/api/auth/password-policy`, `USER_REGISTERED`); auth-service openapi.yaml
+v0.4.0 (`/auth/register`, `/auth/password-policy`). Both validated.
+
+**Verified**
+- `tests/specs/signup.spec.ts` (new, 7 tests): BFF 501 in mock mode; BFF drops
+  `role`/`isActive` and sets no cookie; page blocks mismatched passwords;
+  rules follow the server policy; success goes to `/login?registered=1`;
+  409 message shown; middleware lets `/signup` through. Full suite:
+  **82 passed, 20 failed** (the same 20 known CS-11/CS-30 failures).
+- Live (Postgres 16 + both services + Keycloak stand-in + Nuxt live, Playwright):
+  sign-up with a `role: TECHNICAL_SUPPORT_STAFF` body → ATTENDEE; duplicate
+  and seed emails → 409; weak password → 400 and nothing created; missing
+  names → 400; audit row written; new account logs in as ATTENDEE; policy
+  change (min 12) shows on the page; user-service down → 503 and the Keycloak
+  login is rolled back (no orphan).
+- **Not run here (no Docker in my environment):** real Keycloak on Postgres.
+  `docker compose config` is valid. Shadow to check MT-27 to MT-35.
+
+**Known trade-offs / flags for the team**
+- 409 "email already exists" tells a visitor an email has an account. Kept
+  for usability; the rate limit slows abuse.
+- Kong rate limits count the caller's IP. Through the website the caller is
+  the Nuxt server, so login (10/min) and sign-up (5/min) limits are
+  site-wide, not per visitor. Fine for dev; fix before real users (have Kong
+  use the forwarded browser IP).
+- Attendees still have no interface (stay on /login after logging in), per
+  the access matrix. Access matrix needs rows for sign-up and the admin API.
+- No story ID for sign-up yet: rename `signup.spec.ts` to `CS-<id>.spec.ts`
+  and add a test record when the story exists (DoD Sprint 2).
+- Deleting `keycloak_db` deletes signed-up users' logins but not their
+  `user_db` rows. There is no "re-sync" script yet.
+
+### 2026-10-01 — New seed data: every user has their own password
+
+The team updated `01_user_db.sql` and `02_auth_db.sql`:
+- **Users:** each has a unique dev password (listed in the row comment).
+  `passwordHash` is computed at load time with pgcrypto
+  `crypt(..., gen_salt('bf', 10))`, and the file runs
+  `CREATE EXTENSION IF NOT EXISTS pgcrypto` (fine: the `connectsphere`
+  user is a superuser in the container).
+- **Sessions:** seed tokens were renamed (e.g.
+  `seed-dev-token-02-aisha-rahman`). `tokenHash` is computed at load time
+  with `sha256()`.
+
+**Why code/config had to change:** Keycloak checks passwords, not
+`user_db.passwordHash`. The realm file still gave everyone `Password123!`,
+so every seed login would have failed. `infra/keycloak/connectsphere-realm.json`
+credentials are now generated from the seed file, and I checked that the SQL
+value and the comment agree for all 20. **Rule: when a seed password changes,
+update the realm file too, then reset `keycloak_db` (since 2026-10-01; see the sign-up entry).**
+
+**Also in this change**
+- Seeds copied to `backend/seed_data/` and `services/*/prisma/seed/`.
+- Run guide: a seed user table with passwords; MT-01/MT-21 and the Swagger
+  login step use the new passwords. New troubleshooting rows for the Kong
+  502 and for the seed-password mismatch. New step: **restart Kong after
+  any `up --build`** (it keeps the old container's address, so logins
+  502 until restarted; Shadow hit this after `down -v` and a rebuild).
+- `frontend/server/utils/backend.ts`: 502/503/504 from Kong now show "The
+  ConnectSphere service is unavailable…" instead of "Request failed".
+  Other errors fall back to Kong's `message` field.
+- Examples updated in swagger.html, openapi.yaml, `.env.example` and
+  auth-setup.md. Mock users keep `Password123!`.
+
+**Verified (fresh database, as after `down -v`)**
+- init script → migrations → new seeds load cleanly, and loading twice is
+  a no-op. The seed's own sanity queries pass.
+- 20/20 seed users log in with their own password; the old `Password123!`
+  is rejected.
+- New seed tokens: the active one is accepted; the expired and revoked
+  ones get 401.
+- Website live login works for Sarah, Aisha, Hafiz and Mei Ling.
+- A 502 from Kong shows the new message.
+- Team tests: 75 pass / 20 known failures (unchanged). Typecheck and all
+  three specs are clean.
 
 ### 2026-10-01 — API contracts updated; sign-out now revokes the backend session
 
@@ -392,8 +508,7 @@ real Keycloak in Docker:** realm import and the lockout timing.
 - `user_db.users.passwordHash`: **keep it, unused**. Keycloak holds passwords.
 
 **Still open**
-- Is Attendee self-registration in scope? (Not built. Accounts come from
-  the seed and Keycloak realm only.)
+- ~~Is Attendee self-registration in scope?~~ → yes, built 2026-10-01 (Attendees only).
 - ~~Adding new users~~ → resolved in the later entry (admin API).
 
 **Next up (not started)**: frontend login screen and admin screens using

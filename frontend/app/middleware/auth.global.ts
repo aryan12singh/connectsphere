@@ -1,5 +1,8 @@
+// Pages anyone can open without logging in.
+const PUBLIC_PAGES = ['/login', '/signup']
+
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (to.path === '/login')
+  if (PUBLIC_PAGES.includes(to.path))
     return
 
   const { loggedIn, user, fetch: refreshSession } = useUserSession()
