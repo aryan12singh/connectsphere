@@ -2,6 +2,8 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const { randomUUID } = require('node:crypto');
+const defaultPermissions = require('../../../utils/role-permissions');
+const permissionOverrides = new Map();
 const actors = {
  owner: {id:'test-owner',roles:['EVENT_ORGANISER'],organisationId:'org-a'},
  same: {id:'test-same',role:'EVENT_ORGANISER',organisationId:'org-a'},
@@ -24,7 +26,7 @@ before(async()=>{
   let text='';for await(const b of req) text+=b;
   if(req.headers['x-internal-api-key']!=='integration-key'){res.writeHead(403);return res.end('{}');}
   if(req.url==='/internal/sessions/validate'){
-   const token=JSON.parse(text).token;const user=actors[token];res.writeHead(user?200:401,{'content-type':'application/json'});res.end(JSON.stringify({valid:!!user,user,permissions:[]}));
+   const token=JSON.parse(text).token;const user=actors[token];res.writeHead(user?200:401,{'content-type':'application/json'});const permissions=permissionOverrides.has(token)?permissionOverrides.get(token):[...new Set((user?.roles||[user?.role]).flatMap(role=>defaultPermissions[role]||[]))];res.end(JSON.stringify({valid:!!user,user,permissions}));
   } else if(req.url==='/internal/coordinators'){
    res.writeHead(lookupFail?503:200,{'content-type':'application/json'});res.end(JSON.stringify({coordinators:noCoordinators?[]:directoryEntries??[{id:'test-coord',createdAt:'2020-01-01'},{id:'test-coord2',createdAt:'2021-01-01'}]}));
   } else {res.writeHead(404);res.end('{}');}
@@ -165,4 +167,52 @@ test('CS29/44: published Request and linked Event histories do not leak earlier 
  const approved=await call('POST',`/event-requests/${s.body.id}/decision`,{action:'APPROVE',version:s.body.version},who);assert.equal(approved.status,200);
  const same=await call('GET',`/events/${approved.body.eventId}/activity`,undefined,'same');assert.equal(same.status,200);assert.ok(same.body.items.length);assert.ok(same.body.items.every(a=>a.details.eventId===approved.body.eventId));assert.ok(!JSON.stringify(same.body).includes('DRAFT-PRIVATE-SECRET'));
  assert.equal((await call('GET',`/event-requests/${s.body.id}/activity`,undefined,'same')).status,403);
+});
+
+
+test('CS11/27/29: revoked create permission denies writes and durable replay without effects or spoofed grants',async()=>{
+ const key=randomUUID(),submitted=await create(valid,'owner',key),draft=await create({purpose:'Permission draft',saveAs:'draft'}),ret=await returned();
+ const before=await Promise.all([prisma.eventRequest.count(),prisma.activityLog.count(),prisma.coordinatorAssignment.count(),prisma.outbox.count(),prisma.idempotencyRecord.count()]);
+ permissionOverrides.set('owner',['events.view']);actors.owner.permissions=['event_requests.create','events.view'];
+ try{
+  assert.equal((await create({...valid,permissions:['event_requests.create']},'owner',randomUUID())).status,403);
+  assert.equal((await create(valid,'owner',key)).status,403);
+  for(const method of ['PUT','PATCH'])assert.equal((await call(method,`/event-requests/${draft.body.id}`,{purpose:'Forbidden edit',version:draft.body.version},'owner',randomUUID(),{'x-permissions':'event_requests.create'})).status,403);
+  assert.equal((await call('POST',`/event-requests/${draft.body.id}/submit`,{...valid,version:draft.body.version})).status,403);
+  assert.equal((await call('POST',`/event-requests/${ret.record.id}/resubmit`,{expectedAttendance:70,version:ret.record.version})).status,403);
+  assert.equal((await call('GET',`/event-requests/${submitted.body.id}`)).status,200);
+  assert.deepEqual(await Promise.all([prisma.eventRequest.count(),prisma.activityLog.count(),prisma.coordinatorAssignment.count(),prisma.outbox.count(),prisma.idempotencyRecord.count()]),before);
+ }finally{permissionOverrides.delete('owner');delete actors.owner.permissions;}
+});
+
+test('CS11/44: revoked view permission denies private lists, details, contacts and Request/Event history',async()=>{
+ const r=await create(),actor=r.body.currentCoordinatorId==='test-coord'?'coord':'coord2';
+ const approved=await call('POST',`/event-requests/${r.body.id}/decision`,{action:'APPROVE',version:r.body.version},actor);assert.equal(approved.status,200);
+ permissionOverrides.set('owner',['event_requests.create']);permissionOverrides.set(actor,['event_requests.review']);
+ try{
+  for(const route of ['/event-requests','/event-requests/drafts',`/event-requests/${r.body.id}`,`/event-requests/${r.body.id}/activity`,`/event-requests/${r.body.id}/coordinator`,'/events',`/events/${approved.body.eventId}/activity`])assert.equal((await call('GET',route)).status,403,route);
+  assert.equal((await call('GET',`/event-requests/${r.body.id}`,undefined,actor)).status,403);
+  assert.equal((await call('GET','/event-requests/review-queue',undefined,actor)).status,403);
+ }finally{permissionOverrides.delete('owner');permissionOverrides.delete(actor);}
+});
+
+test('CS27: revoked review permission denies queue and decisions while preserving authorised assigned reads',async()=>{
+ const r=await create(),actor=r.body.currentCoordinatorId==='test-coord'?'coord':'coord2';
+ const before=await Promise.all([prisma.activityLog.count(),prisma.outbox.count(),prisma.idempotencyRecord.count()]);
+ permissionOverrides.set(actor,['events.view']);
+ try{
+  assert.equal((await call('GET',`/event-requests/${r.body.id}`,undefined,actor)).status,200);
+  assert.equal((await call('GET','/event-requests/review-queue',undefined,actor)).status,403);
+  assert.equal((await call('POST',`/event-requests/${r.body.id}/decision`,{action:'RETURN',text:'Forbidden review',version:r.body.version},actor)).status,403);
+  const saved=await prisma.eventRequest.findUnique({where:{id:r.body.id}});assert.equal(saved.version,r.body.version);assert.equal(saved.status,'SUBMITTED');
+  assert.deepEqual(await Promise.all([prisma.activityLog.count(),prisma.outbox.count(),prisma.idempotencyRecord.count()]),before);
+ }finally{permissionOverrides.delete(actor);}
+});
+
+test('CS11: missing or malformed trusted permissions fail closed without role fallback or persistence',async()=>{
+ const before=await Promise.all([prisma.eventRequest.count(),prisma.activityLog.count(),prisma.outbox.count()]);
+ try{for(const permissions of [undefined,null,'event_requests.create',[42]]){
+  permissionOverrides.set('owner',permissions);assert.equal((await create()).status,503);
+ }}finally{permissionOverrides.delete('owner');}
+ assert.deepEqual(await Promise.all([prisma.eventRequest.count(),prisma.activityLog.count(),prisma.outbox.count()]),before);
 });

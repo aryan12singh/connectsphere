@@ -6,16 +6,18 @@ import { randomUUID } from 'node:crypto'
 import { vi } from 'vitest'
 import { createApp,createRouter,toWebHandler,defineEventHandler,createError,readBody,getQuery,getRouterParam,getHeader,getRequestURL,setResponseStatus,useSession } from 'h3'
 const require=createRequire(import.meta.url)
+const defaultPermissions=require('../../services/utils/role-permissions')
 const {Request,fetch:nodeFetch}=require('../../frontend/node_modules/undici')
 let gatewayAddress=''
 const password='synthetic-sealed-test-session-password-at-least-32-characters'
 export const valid={eventName:'BFF summit',purpose:'Learning',description:'Synthetic',proposedDate:'2028-11-20',startTime:'00:00',endTime:'02:00',timeZone:'Asia/Singapore',expectedAttendance:100,venueType:'physical',preferredLayout:'theatre',venueRequirements:'A hall',accessibilityNeeds:['wheelchair'],equipmentNeeds:['projector'],saveAs:'submit'}
 export async function eventHarness(){
  const prefix='bff-'+randomUUID()
+ const permissionOverrides=new Map<string,string[]>()
  const users:Record<string,any>={owner:{id:prefix+'-owner',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-bff'},other:{id:prefix+'-other',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-other'},coord:{id:prefix+'-coord',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR']},attendee:{id:prefix+'-attendee',role:'ATTENDEE',roles:['ATTENDEE']}}
  for(const [who,u] of Object.entries(users))Object.assign(u,{firstName:who,lastName:'Synthetic',email:who+'@example.test',name:who+' Synthetic',company:'Synthetic Org',isActive:true})
  const identity=createServer(async(req,res)=>{let text='';for await(const b of req)text+=b;const token=req.url?.startsWith('/auth')?(req.headers.authorization||'').slice(7):text?JSON.parse(text).token:undefined
-  const body=req.url==='/internal/coordinators'?{coordinators:[{id:users.coord.id,createdAt:'2020-01-01'}]}:req.url?.startsWith('/internal/users/')?Object.values(users).find(u=>u.id===decodeURIComponent(req.url!.split('/').at(-1)!)):req.url?.startsWith('/auth')?{user:users[token!],permissions:[]}:{valid:!!users[token!],user:users[token!],permissions:[]}
+  const body=req.url==='/internal/coordinators'?{coordinators:[{id:users.coord.id,createdAt:'2020-01-01'}]}:req.url?.startsWith('/internal/users/')?Object.values(users).find(u=>u.id===decodeURIComponent(req.url!.split('/').at(-1)!)):req.url?.startsWith('/auth')?{user:users[token!],permissions:permissionOverrides.get(token!)??[...new Set((users[token!]?.roles??[]).flatMap((role:string)=>defaultPermissions[role]??[]))]}:{valid:!!users[token!],user:users[token!],permissions:permissionOverrides.get(token!)??[...new Set((users[token!]?.roles??[]).flatMap((role:string)=>defaultPermissions[role]??[]))]}
   res.writeHead(body && (req.url?.includes('coordinators')||req.url?.includes('/users/')||users[token!])?200:401,{'content-type':'application/json'});res.end(JSON.stringify(body??{}))
  });await new Promise<void>(r=>identity.listen(0,'127.0.0.1',r))
  const identityUrl='http://127.0.0.1:'+(identity.address() as any).port
@@ -43,7 +45,7 @@ export async function eventHarness(){
  for(const [method,path,file] of routes){const handler=(await modules[`../../frontend/server/api/${file}.ts`]!() as any).default;(router as any)[method!](path,handler)}
  router.get('/test-session',defineEventHandler(async(event)=>{const who=String(getQuery(event).who);const s=await useSession(event,{password,name:'nuxt-session'});await s.update({user:users[who],secure:{token:who}});return {ok:true}}));app.use(router);const handle=toWebHandler(app)
  const cookies:Record<string,string>={};for(const who of Object.keys(users)){const r=await handle(new Request('http://localhost/test-session?who='+who));cookies[who]=(r.headers.get('set-cookie')||'').split(';')[0]!}
- return {users,db:require('../../services/event-service/src/db'),async call(method:string,path:string,body?:any,who:string|null='owner',key=randomUUID(),extra={}){
+ return {users,permissionOverrides,db:require('../../services/event-service/src/db'),async call(method:string,path:string,body?:any,who:string|null='owner',key=randomUUID(),extra={}){
   const r=await handle(new Request('http://localhost'+path,{method,headers:{'content-type':'application/json',...(who?{cookie:cookies[who]!}:{}),'Idempotency-Key':key,...extra},...(body!==undefined?{body:JSON.stringify(body)}:{})}));return {status:r.status,body:await r.json() as any}
  },async close(){vi.unstubAllGlobals();vi.doUnmock('../../frontend/server/utils/kongBff');await Promise.all([service,identity,gateway].map(s=>new Promise<void>(r=>s.close(()=>r()))));await require('../../services/event-service/src/db').$disconnect()}}
 }

@@ -85,3 +85,8 @@ erDiagram
 Outbox and IdempotencyRecord have logical references, not FK relations; the diagram names those references. The state guard remains the single source of transition rules. Request states are DRAFT→SUBMITTED→APPROVED or REJECTED, and SUBMITTED→RETURNED_FOR_AMENDMENT→SUBMITTED. Event ARRANGEMENT_PENDING displays Planning; request APPROVED alone is not a Confirmed Event.
 
 See [decisions and pending acceptance](event-workflow-decisions.md), [access matrix](access-matrix.md), [isolated run recipe](event-review-run.md), and the executable [event OpenAPI](../services/event-service/docs/openapi.yaml).
+
+
+### Effective permission enforcement — 7 October
+
+Event-service requires trusted auth-service capabilities as well as the documented role/record relationship. Request writes: `event_requests.create`; reads/history/contact/Event options: `events.view`; decisions: `event_requests.review`; queue: both view and review. Empty grants return403 before writes or replay; missing/malformed upstream capabilities return503. Neither a sealed frontend user profile nor a caller body/header supplies grants. Effective permissions are consumed from auth-service without role fallback or changes to its catalog.

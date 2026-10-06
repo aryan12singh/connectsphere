@@ -5,7 +5,7 @@ Use Docker Desktop, Python 3.9 or newer, curl and Bash (macOS/Linux, or WSL). Th
 Run the following blocks in the same Bash session, from a clean checkout containing the complete feature branch. The original backend-only checkpoint does not include this recipe or frontend changes. Pick the source revision supplied with the final handoff; an old remote checkpoint is insufficient.
 
 ```bash
-cs_review_project="csreview-aryan-$(date -u +%Y%m%d%H%M%S)"
+cs_review_project="csreview-aryan-ci-review-$(date -u +%Y%m%d%H%M%S)"
 cs_review_dir="$PWD/../$cs_review_project"
 cs_review_compose="$cs_review_dir/compose.json"
 cs_review_port_base=23000
@@ -65,12 +65,13 @@ docker run --rm "${cs_review_test_network[@]}" -v "$PWD:/app" -v "$cs_review_dir
   -e TEST_RUN_PHASE=GREEN -e TEST_RESULTS_JSON=/evidence/frontend-tests.json \
   node:22-bookworm npm run test:report
 docker run --rm -v "$PWD:/app" -w /app/frontend node:22-bookworm npm run typecheck
-# Real auth + built BFF/Kong + PG. Only disposable synthetic session expiry is changed.
+# Real auth + built BFF/Kong + PG; synthetic grants restore in finally and session expiry is changed.
 docker run --rm "${cs_review_test_network[@]}" -v "$PWD:/app" -v "$cs_review_dir:/evidence" -w /app/services/event-service \
   -e "AUTH_DATABASE_URL=postgresql://connectsphere:connectsphere@$cs_review_test_host:$cs_review_pg_port/auth_db" \
   -e "FRONTEND_BASE=http://$cs_review_test_host:$cs_review_port_base" \
   -e "KONG_BASE=http://$cs_review_test_host:$cs_review_kong_port" \
   -e SMOKE_EVIDENCE=/evidence/live-ids.json \
+  -e "CSE2E_PROJECT=$cs_review_project" -e CSE2E_COMPOSE_FILE=/evidence/compose.json \
   node:22-bookworm node tests/smoke/live.cjs
 docker compose -f "$cs_review_compose" restart event-service frontend
 curl --fail --retry 30 --retry-connrefused --retry-all-errors --retry-delay 2 \
@@ -85,7 +86,7 @@ docker run --rm "${cs_review_test_network[@]}" -v "$PWD:/app" -v "$cs_review_dir
   node:22-bookworm node tests/smoke/live.cjs --verify-restart
 ```
 
-`FRONTEND_BASE`, `KONG_BASE`, `AUTH_DATABASE_URL`, `DATABASE_URL` and `SMOKE_EVIDENCE` are the actual runner environment names. The full frontend regression suite also imports real venue-service validation/config, so its locked venue-service install above is required even when the backend containers have already built. The frontend suite's explicit mock auth uses a fixture identity server while exercising real H3/Express/PostgreSQL routes. The running frontend stays in live mode. The smoke separately exercises actual Keycloak/auth, BFF and Kong. The API rollback test installs/removes a trigger in this disposable event_db; use this isolated project for it.
+`FRONTEND_BASE`, `KONG_BASE`, `AUTH_DATABASE_URL`, `DATABASE_URL` and `SMOKE_EVIDENCE` plus `CSE2E_PROJECT` and `CSE2E_COMPOSE_FILE` are the actual runner environment names. The full smoke validates project, loopback endpoint and database port mappings before changing synthetic data; its permission proof temporarily removes three default grants and restores each in finally, with unchanged workflow counts. The full frontend regression suite also imports real venue-service validation/config, so its locked venue-service install above is required even when the backend containers have already built. The frontend suite's explicit mock auth uses a fixture identity server while exercising real H3/Express/PostgreSQL routes. The running frontend stays in live mode. The smoke separately exercises actual Keycloak/auth, BFF and Kong. The API rollback test installs/removes a trigger in this disposable event_db; use this isolated project for it.
 
 Save the source revision, start/end times, command, exit status and log for each check. `test:report` creates dated story records and retains failure results; missing legacy cases are recorded as Not Executed. Running tests creates generated records, so the checkout can become dirty after its initial clean-source snapshot. Passing automated checks is one evidence layer; execute the browser demo below and obtain independent review separately.
 

@@ -177,3 +177,26 @@ describe('CS-11 — TC-CS11-24 field labels target unique form controls', () => 
     }
   })
 })
+
+describe('CS-11 — TC-CS11-21 current trusted permissions', () => {
+  it('denies creation and replay after permission removal without trusting sealed user roles or body grants', async () => {
+    const key = crypto.randomUUID()
+    const saved = await api.call('POST', '/api/events', valid, 'owner', key)
+    expect(saved.status).toBe(201)
+    api.permissionOverrides.set('owner', ['events.view'])
+    try {
+      expect((await api.call('POST', '/api/events', valid, 'owner', key)).status).toBe(403)
+      expect((await api.call('POST', '/api/events', { ...valid, permissions: ['event_requests.create'] })).status).toBe(403)
+      expect((await api.call('GET', `/api/events/${saved.body.id}`)).status).toBe(200)
+    } finally { api.permissionOverrides.delete('owner') }
+  })
+  it('denies private request and history reads after view permission removal', async () => {
+    const saved = await api.call('POST', '/api/events', { purpose: 'Revoked view draft', saveAs: 'draft' })
+    expect(saved.status).toBe(201)
+    api.permissionOverrides.set('owner', ['event_requests.create'])
+    try {
+      expect((await api.call('GET', `/api/events/${saved.body.id}`)).status).toBe(403)
+      expect((await api.call('GET', `/api/events/${saved.body.id}/activity`)).status).toBe(403)
+    } finally { api.permissionOverrides.delete('owner') }
+  })
+})

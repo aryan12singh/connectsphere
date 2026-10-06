@@ -15,7 +15,9 @@ This implemented amendment supersedes conflicting Sprint1 event/request rows bel
 
 Historic Draft entries remain owner-only after publication; a Coordinator sees published values with prior Draft values marked private. Wider Event viewers receive only Event-scoped entries, filtered before cursor paging.
 
-Multi-role users receive applicable role rights while relationships remain mandatory. Authentication's broader permissions administration is unchanged; no self-provisioning/reassignment rights are added. Missing organisation denies same-org access. Completed/cancelled history uses the same rules. Unauthenticated/expired/revoked401; wrong actor403; right actor/wrong state or stale version409. No ordinary history update/delete route.
+All event routes additionally consume the top-level trusted auth-service permission array on every request. Request create/save/submit/resubmit require `event_requests.create`; Request/Event reads, history and contact require `events.view`; decisions require `event_requests.review`; the queue requires view and review. Empty permissions deny403; missing/malformed upstream permission data fails503. Cached replay, body/header grants and nested user permissions never bypass these checks. Role/relationship checks remain business constraints after the capability gate. Staff option projection requires view permission; Technical Support's current default catalog does not grant it, so this branch adds no such grant.
+
+Multi-role business checks use the verified roles array; effective capabilities are exactly those returned by auth-service, with no locally invented union or role fallback. Authentication's broader permissions administration is unchanged; no self-provisioning/reassignment rights are added. Missing organisation denies same-org access. Completed/cancelled history uses the same rules. Unauthenticated/expired/revoked401; wrong actor403; right actor/wrong state or stale version409. No ordinary history update/delete route.
 
 These rules are exercised by real PostgreSQL API tests, BFF fixtures and separate live-auth checks. Full instructor access and independent product acceptance remain manual review gates.
 

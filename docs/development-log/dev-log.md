@@ -1,3 +1,9 @@
+# 2026-10-07 — Trusted permissions and CI setup repairs
+
+Review caught event-service ignoring the trusted auth-service capabilities. New real-PG/BFF RED cases demonstrate permission removal and denied durable replay. The fix consumes the existing create/view/review catalog before record/business guards, with missing/malformed data failing closed. It leaves authentication defaults and broader CS-26 administration/secondary-role union with its owner. Local frontend111, Event129 and live11 pass; the live proof temporarily removes/restores three synthetic grants under validated isolated project/port guards and confirms unchanged workflow counts. See the [permission evidence](../sprint2/aryan-delivery/permission-hardening.md).
+
+Earlier publication runs also exposed masked Express5 bind errors, fixed-port HTTP setup and post-browser429. Startup/error handling, OS-assigned ports and bounded authentication-only backoff repair those cases, without workflow/CI reruns or removed assertions. [Run37515969069](https://github.com/aryan12singh/connectsphere/actions/runs/37515969069) is the successful pre-permission source result; the next source must establish its own remote evidence. Previous dated records and failures are retained.
+
 # 2026-10-07 — Green remote CI and complete branch evidence
 
 CS-11/27/29/44 now have green feature CI at application revision `b9e17606ac0ae1b8fd60ab8b0489ae6ce85eb4e7`: frontend 109/109 plus typecheck/build, Event 117/117, Venue 50/50, Booking 46/46, production desktop/mobile Chromium 22/22, real auth/API smoke 10/10 and same-ID/history restart 1/1 without reseeding. [Run 37510266839](https://github.com/aryan12singh/connectsphere/actions/runs/37510266839) and the [delivery dossier](../sprint2/aryan-delivery/README.md) preserve exact source, dated records, acceptance mapping and the finish plan.

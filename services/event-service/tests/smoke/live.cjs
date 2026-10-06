@@ -2,6 +2,7 @@
 // Reads only the checked-in demo credentials. Never prints tokens/cookies/passwords.
 const assert=require('node:assert/strict');
 const {loginWithBackoff}=require('./login-backoff.cjs');
+const {reviewAuthDatabase}=require('./review-database.cjs');
 const fs=require('node:fs');const path=require('node:path');const {randomUUID,createHash}=require('node:crypto');
 const front=process.env.FRONTEND_BASE||'http://host.docker.internal:13000';
 const kong=process.env.KONG_BASE||'http://host.docker.internal:18000';
@@ -23,6 +24,12 @@ async function check(name,run){checks++;try{await run();console.log('ok '+checks
   const ids=JSON.parse(fs.readFileSync(evidence));await login('owner',true);
   await check('same incomplete draft and full history survive application restart and new session',async()=>{const d=await call(front,'GET','/api/events/'+ids.draft);assert.equal(d.status,200);assert.equal(d.body.id,ids.draft);assert.equal(d.body.purpose,'Persistent live incomplete draft');assert.equal(d.body.status,'DRAFT');const h=await call(front,'GET',`/api/events/${ids.request}/activity`);assert.equal(h.status,200);assert.ok(h.body.items.some(a=>a.action==='RESUBMITTED'));assert.ok(h.body.items.some(a=>a.action==='RETURN'));const r=await call(front,'GET','/api/events/'+ids.request);assert.equal(r.body.eventId,ids.eventId)});
  }else{
+  const reviewConfig=JSON.parse(fs.readFileSync(process.env.CSE2E_COMPOSE_FILE));
+  const authUrl=reviewAuthDatabase(reviewConfig,process.env.CSE2E_PROJECT,process.env.AUTH_DATABASE_URL);
+  for(const [base,service,target] of [[front,'frontend',3000],[kong,'kong',8000]]){
+   const url=new URL(base);assert.ok(['127.0.0.1','localhost','host.docker.internal'].includes(url.hostname));
+   assert.ok(reviewConfig.services[service].ports.some(p=>p.host_ip==='127.0.0.1'&&Number(p.target)===target&&String(p.published)===(url.port||'80')),'Smoke endpoint must match the recorded review project');
+  }
   await check('real Keycloak authenticates role, organisation and multi-role fixtures',async()=>{for(const who of Object.keys(emails))await login(who);assert.deepEqual(sessions.multi.user.roles,['EVENT_ORGANISER','ATTENDEE']);assert.ok(sessions.same.user.organisationId===sessions.owner.user.organisationId);assert.notEqual(sessions.other.user.organisationId,sessions.owner.user.organisationId)});
   await check('built BFF seals login and exposes no bearer token',async()=>{const result=await login('owner',true);assert.ok(cookies.owner);assert.equal(result.token,undefined);assert.equal(result.user.id,sessions.owner.user.id)});
   await check('live API rejects caller spoofing, staff and Attendee creation',async()=>{for(const who of ['staff','attendee','coord','tech'])assert.equal((await call(kong,'POST','/event-requests',{...valid,saveAs:'submit',roles:['EVENT_ORGANISER'],organiserId:sessions.owner.user.id},who)).status,403);assert.equal((await call(kong,'GET','/event-requests',undefined,'owner',randomUUID(),{authorization:'Bearer invalid-token','x-user-id':sessions.owner.user.id})).status,401)});
@@ -32,6 +39,28 @@ async function check(name,run){checks++;try{await run();console.log('ok '+checks
   await check('amendment validation, same ID/Coordinator, prior baseline and concurrent resubmission',async()=>{const p='/api/events/'+request.id;assert.equal((await call(front,'PUT',p,{action:'resubmit',version:request.version})).status,409);const invalid=await call(front,'PUT',p,{action:'resubmit',expectedAttendance:0,version:request.version});assert.equal(invalid.status,422);assert.ok(JSON.stringify(invalid.body).includes('expectedAttendance'));const s=await call(front,'PUT',p,{expectedAttendance:120,version:request.version});assert.equal(s.status,200);const key=randomUUID(),body={action:'resubmit',version:s.body.version};const rs=await Promise.all([call(front,'PUT',p,body,'owner',key),call(front,'PUT',p,body,'owner',key)]);assert.deepEqual(rs.map(r=>r.status),[200,200]);assert.equal(rs[0].body.currentCoordinatorId,request.currentCoordinatorId);assert.equal(rs[0].body.id,request.id);assert.ok(rs[0].body.revisedAt);request=rs[0].body;const h=await call(front,'GET',p+'/activity');const rev=h.body.items.filter(a=>a.action==='RESUBMITTED');assert.equal(rev.length,1);assert.deepEqual(rev[0].details.changes.expectedAttendance,{old:100,new:120});assert.ok(rev[0].details.actorName);assert.equal((await call(kong,'GET',`/event-requests/${request.id}/activity`,undefined,'other')).status,403)});
   await check('approval creates distinct Planning Event with authorised same-organisation Event history',async()=>{const r=await call(front,'POST',`/api/events/${request.id}/decision`,{decision:'approve',version:request.version},decider);assert.equal(r.status,200);eventId=r.body.eventId;assert.ok(eventId);assert.notEqual(eventId,request.id);assert.equal(r.body.statusLabel,'Planning');assert.equal((await call(kong,'GET',`/event-requests/${request.id}/activity`,undefined,'same')).status,403);assert.equal((await call(kong,'GET',`/events/${eventId}/activity`,undefined,'same')).status,200);for(const who of ['other','attendee','staff','tech'])assert.equal((await call(kong,'GET',`/events/${eventId}/activity`,undefined,who)).status,403)});
   await check('existing venue/booking HTTP and Event option projections remain reachable',async()=>{assert.equal((await call(kong,'GET','/venues',undefined,'coord')).status,200);assert.equal((await call(kong,'GET','/venue-bookings',undefined,'coord')).status,200);const options=await call(kong,'GET','/events',undefined,'staff');assert.equal(options.status,200);assert.ok(options.body.items.some(e=>e.id===eventId));assert.ok(options.body.items.every(e=>Object.keys(e).every(k=>['id','title','status'].includes(k))))});
+  await check('trusted live permission removal denies writes, replay, history and decisions without effects; grants restore',async()=>{
+   const {Client}=require('pg');const auth=new Client({connectionString:authUrl.href});const eventUrl=new URL(authUrl);eventUrl.pathname='/event_db';const data=new Client({connectionString:eventUrl.href});
+   const effectCounts=async()=> (await data.query('SELECT (SELECT count(*) FROM event_requests) AS requests, (SELECT count(*) FROM activity_log) AS activity, (SELECT count(*) FROM coordinator_assignments) AS assignments, (SELECT count(*) FROM outbox) AS outbox, (SELECT count(*) FROM idempotency_records) AS replays')).rows[0];
+   try{
+    await auth.connect();await data.connect();
+    const replayKey=randomUUID(),replayBody={purpose:'Permission replay fixture',saveAs:'draft'};
+    const saved=await call(front,'POST','/api/events',replayBody,'owner',replayKey);assert.equal(saved.status,201);
+    const before=await effectCounts();
+    for(const [role,permission,verify] of [
+     ['EVENT_ORGANISER','event_requests.create',async()=>{assert.equal((await call(front,'POST','/api/events',{...valid,saveAs:'submit',permissions:['event_requests.create']})).status,403);assert.equal((await call(front,'POST','/api/events',replayBody,'owner',replayKey)).status,403);assert.equal((await call(front,'PUT','/api/events/'+draft.id,{purpose:'Denied edit',version:draft.version})).status,403)}],
+     ['EVENT_ORGANISER','events.view',async()=>{assert.equal((await call(front,'GET','/api/events/'+draft.id)).status,403);assert.equal((await call(front,'GET',`/api/events/${request.id}/activity`)).status,403);assert.equal((await call(kong,'GET',`/events/${eventId}/activity`)).status,403)}],
+     ['EVENT_COORDINATOR','event_requests.review',async()=>{assert.equal((await call(front,'GET','/api/review-queue',undefined,decider)).status,403);assert.equal((await call(front,'POST',`/api/events/${request.id}/decision`,{decision:'amendments',notes:'Denied review',version:request.version},decider)).status,403)}],
+    ]){
+     const existing=await auth.query('SELECT role, permission FROM role_permissions WHERE role=$1 AND permission=$2',[role,permission]);assert.equal(existing.rowCount,1,'Expected synthetic default grant');
+     try{await auth.query('DELETE FROM role_permissions WHERE role=$1 AND permission=$2',[role,permission]);await verify();}
+     finally{await auth.query('INSERT INTO role_permissions (role, permission) VALUES ($1,$2) ON CONFLICT DO NOTHING',[role,permission]);}
+    }
+    assert.deepEqual(await effectCounts(),before);
+    assert.equal((await call(front,'GET','/api/events/'+draft.id)).status,200);
+    assert.equal((await call(front,'POST','/api/events',replayBody,'owner',replayKey)).status,201);
+   }finally{await Promise.all([auth.end(),data.end()]);}
+  });
   await check('live auth expiry and logout invalidate bearer and old sealed cookie',async()=>{if(process.env.AUTH_DATABASE_URL){const {Client}=require('pg');const c=new Client({connectionString:process.env.AUTH_DATABASE_URL});await c.connect();try{const fresh=sessions.owner;const hash=createHash('sha256').update(fresh.token).digest('hex');await c.query('UPDATE sessions SET "expiresAt"=now()-interval \'1 second\' WHERE "tokenHash"=$1',[hash]);assert.equal((await call(kong,'GET',`/event-requests/${draft.id}`)).status,401)}finally{await c.end()}}else throw Error('AUTH_DATABASE_URL required for live expiry check');const old=cookies.owner;assert.equal((await call(front,'DELETE','/api/auth')).status,200);cookies.owner=old;assert.equal((await call(front,'GET','/api/events/'+draft.id)).status,401)});
   if(draft&&request&&eventId)fs.writeFileSync(evidence,JSON.stringify({draft:draft.id,request:request.id,eventId},null,2));
  }

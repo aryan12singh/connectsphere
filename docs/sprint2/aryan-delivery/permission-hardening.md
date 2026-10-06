@@ -1,0 +1,18 @@
+# Effective permission enforcement
+
+Final review of the standing project rule found event-service used verified roles/record relationships but discarded the permission array returned by auth-service. The existing catalog already has `event_requests.create`, `event_requests.review` and `events.view`. This meant removing a grant did not prevent its Event API action. The new tests demonstrated the defect with **four real PostgreSQL failures** and **two BFF failures** before the fix.
+
+Identity now takes capabilities only from the top-level trusted session-validation response. Missing/malformed arrays fail503; explicit empty arrays grant nothing. Route guards run before record loading, mutations and durable replay, while existing owner/current Coordinator/organisation/state rules remain. Request create/save/submit/resubmit require create; reads, contacts, history and minimal Event options require view; decisions require review; the queue requires view plus review. Caller body/header fields and nested user permission fields cannot provide a grant. This consumes the existing catalog without changing auth-service, its defaults, broader administration or secondary-role union work owned by CS-26.
+
+The real-PG tests cover revoked create across new writes, Draft edits, submit, resubmit and replay; revoked view across all read/history/contact projections; revoked review with authorised assigned reads retained; and malformed upstream capability payloads. Denied calls leave request, version, activity, assignment, outbox and replay effects unchanged. Two actual H3 BFF tests prove a sealed cached role/profile cannot bypass the fresh check.
+
+Local Node22 checks pass **111/111 frontend**, typecheck/build and **129/129 event** (110 unit/domain/harness +19 real PG). Actual built Keycloak/Kong/BFF/PG smoke passes **11/11**, including temporarily removing/restoring three synthetic grants and requiring unchanged workflow counts plus recovery. The live proof validates the recorded isolated project, loopback service/database endpoints and port mappings before mutation; its three guard tests recorded RED then GREEN. No shared seed or existing customer data was reset. The prepared review recipe uses the same explicit guard inputs.
+
+- [Backend RED](evidence/event-permissions-red.json) and [GREEN](evidence/event-permissions-final-local-green.json)
+- [Frontend RED](evidence/frontend-permissions-red.json) and [GREEN](evidence/frontend-permissions-green.json)
+- [Fixture guard RED](evidence/permission-fixture-guard-red.json) and [GREEN](evidence/permission-fixture-guard-green.json)
+- [Actual live proof](evidence/live-permissions-proof-green.json)
+- [Current access rules](../../access-matrix.md)
+- [OpenAPI permission annotations](../../../services/event-service/docs/openapi.yaml)
+
+Technical Support's current defaults lack Event view, so no new such access is granted by this branch. All previous role/owner/assignment/privacy regressions remain. Local desktop/mobile Chromium passes22/22 with no failures/skips/flaky cases/retries; six application services then restart and the same Draft/request/Event IDs and history pass the new-session persistence check1/1 without reseeding. [Browser record](evidence/permission-browser-corrected-green.json) and [restart record](evidence/permission-restart-persistence-green.json) preserve the dirty-source identity and distinct local Node26 driver. The final published revision must obtain its own full CI result; historical successful runs retain their original source identities and counts. Independent human/PO acceptance is still required.

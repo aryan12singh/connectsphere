@@ -1,0 +1,33 @@
+{
+  "name": "frontend-permissions-red",
+  "started_at": "2026-10-06T19:23:18.772779+00:00",
+  "finished_at": "2026-10-06T19:23:30.992658+00:00",
+  "exit_code": 1,
+  "runner": "Codex tools; no human acceptance implied",
+  "source": {
+    "revision": "25dd084548d29648aa3079ade62697c93f84e040",
+    "branch": "feat/aryan-sprint2-event-workflows",
+    "status": " M docs/sprint2/aryan-delivery/PR_DESCRIPTION.md\n M docs/sprint2/aryan-delivery/README.md\n M docs/sprint2/aryan-delivery/ci-startup-repair.md\n M docs/sprint2/aryan-delivery/verification.md\n M services/event-service/tests/integration/workflows.test.js\n M tests/helpers/event-api-harness.ts\n M tests/specs/CS-11.spec.ts\n?? docs/sprint2/aryan-delivery/evidence/ci-37515969069.json\n?? docs/sprint2/aryan-delivery/evidence/jira-20261007-0316.json\n?? docs/sprint2/aryan-delivery/team-status.md\n?? tests/records/CS-10/test-runs/2026-10-06T19-04-01Z-GREEN.md\n?? tests/records/CS-11/test-runs/2026-10-06T19-04-01Z-GREEN.md\n?? tests/records/CS-11/test-runs/2026-10-06T19-06-03Z-GREEN-BROWSER.md\n?? tests/records/CS-27/test-runs/2026-10-06T19-04-01Z-GREEN.md\n?? tests/records/CS-27/test-runs/2026-10-06T19-06-03Z-GREEN-BROWSER.md\n?? tests/records/CS-29/test-runs/2026-10-06T19-04-01Z-GREEN.md\n?? tests/records/CS-29/test-runs/2026-10-06T19-06-03Z-GREEN-BROWSER.md\n?? tests/records/CS-30/test-runs/2026-10-06T19-04-01Z-GREEN.md\n?? tests/records/CS-33/test-runs/2026-10-06T19-04-01Z-GREEN.md\n?? tests/records/CS-34/test-runs/2026-10-06T19-04-01Z-GREEN.md\n?? tests/records/CS-35/test-runs/2026-10-06T19-04-01Z-GREEN.md\n?? tests/records/CS-35/test-runs/2026-10-06T19-06-03Z-GREEN-BROWSER.md\n?? tests/records/CS-44/test-runs/2026-10-06T19-04-01Z-GREEN.md\n?? tests/records/CS-44/test-runs/2026-10-06T19-06-03Z-GREEN-BROWSER.md\n",
+    "diff_sha256": "579ecb87bef060aec481c62a83592dd7c72bee80a6007d020357104a1324023c",
+    "untracked_sha256": {
+      "docs/sprint2/aryan-delivery/evidence/ci-37515969069.json": "f9f76152a1599edd9df39667275111d5f876a5669290a1daf942adec32b8c7ce",
+      "docs/sprint2/aryan-delivery/evidence/jira-20261007-0316.json": "4b2f334ecf1ade3d47a4229d9c332261ed90f67a22728b36926bad9d8bda3e92",
+      "docs/sprint2/aryan-delivery/team-status.md": "3012ad4e6ffc84995b47fd37b34883921adef07641ad54180584473fb327a92f",
+      "tests/records/CS-10/test-runs/2026-10-06T19-04-01Z-GREEN.md": "50ddcd92725b7daefc74e09f7eb8338ff16b0043cf3ce801854fd6280aa61ae4",
+      "tests/records/CS-11/test-runs/2026-10-06T19-04-01Z-GREEN.md": "9de40dbd293b32a5651f35ec5f134f6a58131a1fe86af4f9728aa6d084985d70",
+      "tests/records/CS-11/test-runs/2026-10-06T19-06-03Z-GREEN-BROWSER.md": "52f727db3c0c86711f7b36e70bb017a75317d9254a8c7c84ddc2e74691e93576",
+      "tests/records/CS-27/test-runs/2026-10-06T19-04-01Z-GREEN.md": "347b2327695eb14c38a488a294e7c76a7eb64ea6817cc889f92b233071f0bcab",
+      "tests/records/CS-27/test-runs/2026-10-06T19-06-03Z-GREEN-BROWSER.md": "2a0d356ec61fd132e785e0cdc0fed6862f6098ee1c066a909d2e3d763a914388",
+      "tests/records/CS-29/test-runs/2026-10-06T19-04-01Z-GREEN.md": "dfdeba4373a46aa631f770fc0700954c546804cc437fb0ab4b5b2ff84645cc72",
+      "tests/records/CS-29/test-runs/2026-10-06T19-06-03Z-GREEN-BROWSER.md": "78e9eff6387c967ae654ca8e9cebdbd5a10d1978ddc75cdc8b2ab992e766f43b",
+      "tests/records/CS-30/test-runs/2026-10-06T19-04-01Z-GREEN.md": "a34e854e0e4f28598f318bc1eae31224553cd0ddfaac54e0401d48b0bfc30d8e",
+      "tests/records/CS-33/test-runs/2026-10-06T19-04-01Z-GREEN.md": "1d33b70b86063bc730b44fb75ae90661e6b20bd28ea1af3adddf2af657a08780",
+      "tests/records/CS-34/test-runs/2026-10-06T19-04-01Z-GREEN.md": "31287c6320126ad662a61effd41862806ac3487082385479ad654650bfc52aac",
+      "tests/records/CS-35/test-runs/2026-10-06T19-04-01Z-GREEN.md": "08ac593d0278e2160a4bfe402c3221c1ce538860b9694d43429617fb2e712788",
+      "tests/records/CS-35/test-runs/2026-10-06T19-06-03Z-GREEN-BROWSER.md": "eaa47f4da55a4ae7c16c6a66ba5b66c9a25e89a34f0fcbd24bd37c3b3ba52d23",
+      "tests/records/CS-44/test-runs/2026-10-06T19-04-01Z-GREEN.md": "7b0703f60aaa54750811d9b6b3460c05ec1bdd6c38a0b2c6ddc6d55337e37db7",
+      "tests/records/CS-44/test-runs/2026-10-06T19-06-03Z-GREEN-BROWSER.md": "659ced45e42724eb7b144c399db8d9b94b3d5667f974a8898783e321b0336259"
+    }
+  },
+  "output": "\n> test:report\n> node ../tests/scripts/run-test-report.mjs\n\nJSON report written to /evidence/frontend-permissions-red.json\nWrote /app/tests/records/CS-10/test-runs/2026-10-06T19-23-22Z-RED.md\nWrote /app/tests/records/CS-11/test-runs/2026-10-06T19-23-22Z-RED.md\nWrote /app/tests/records/CS-27/test-runs/2026-10-06T19-23-22Z-RED.md\nWrote /app/tests/records/CS-29/test-runs/2026-10-06T19-23-22Z-RED.md\nWrote /app/tests/records/CS-30/test-runs/2026-10-06T19-23-22Z-RED.md\nWrote /app/tests/records/CS-33/test-runs/2026-10-06T19-23-22Z-RED.md\nWrote /app/tests/records/CS-34/test-runs/2026-10-06T19-23-22Z-RED.md\nWrote /app/tests/records/CS-35/test-runs/2026-10-06T19-23-22Z-RED.md\nWrote /app/tests/records/CS-44/test-runs/2026-10-06T19-23-22Z-RED.md\nnpm notice\nnpm notice New major version of npm available! 10.9.9 -> 12.2.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0\nnpm notice To update run: npm install -g npm@12.2.0\nnpm notice\n"
+}

@@ -10,3 +10,6 @@ Blue section. Written from the current Jira snapshot and implementation instruct
 | TC-CS29-04 | 6 | Unsaved navigation warning and no expiry | Owner editing unsaved draft | Attempt navigate; cancel; then save and navigate; reopen retained draft | Changed purpose | Cancel keeps inputs; after save navigation succeeds; no expiry job or delete endpoint | Native browser + source inspection | 2026-10-06 |
 
 TCs with a manual or real-route layer are not proved solely by a component execution record. API evidence is in the external test-results JSON and logs; native-browser evidence has its own dated record.
+
+
+Permission regression amendment (2026-10-07): trusted auth-service permissions are required in addition to the existing role/record relationship. Request writes require `event_requests.create`; Request/Event reads/history require `events.view`; queue/decisions require `event_requests.review` (queue also view). Removed permissions deny403 before transaction/replay; malformed permission responses fail503. See CS-11 TC-CS11-21 and real-PG permission regressions. Caller fields never supply grants.
