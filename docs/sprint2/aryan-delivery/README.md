@@ -6,6 +6,7 @@ Branch: `feat/aryan-sprint2-event-workflows`. This dossier covers CS-11, CS-27, 
 - [Finish plan and review guide](finish-plan.md)
 - [Instructor access evidence boundary](instructor-access.md)
 - [Dependency audit](dependency-audit.md)
+- [Week 7 notes for the next planning meeting](next-sprint-notes.md)
 - [Prepared PR description](PR_DESCRIPTION.md)
 - [Reproducible clean-stack commands](../../event-review-run.md)
 

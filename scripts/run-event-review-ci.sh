@@ -23,7 +23,7 @@ compose() { docker compose -f "$COMPOSE" "$@"; }
 cleanup() {
   result=$?
   trap - EXIT
-  compose logs --no-color event-service venue-service booking-service frontend > "$EVIDENCE/services.log" 2>&1 || true
+  compose logs --no-color kong user-service auth-service event-service venue-service booking-service frontend > "$EVIDENCE/services.log" 2>&1 || true
   compose down > "$EVIDENCE/stop.log" 2>&1 || true
   # The project-scoped volume is intentionally retained, including on failure.
   exit "$result"

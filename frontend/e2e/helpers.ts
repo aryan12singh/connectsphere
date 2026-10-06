@@ -122,14 +122,24 @@ export async function assignedSession(request: APIRequest, owner: APIRequestCont
   return session(request, coordinator.email)
 }
 
-export function eventService(action: 'stop' | 'start') {
+function reviewCompose() {
   const file = process.env.CSE2E_COMPOSE_FILE
   if (!file) throw new Error('CSE2E_COMPOSE_FILE is required for the real service-outage test')
   const compose = JSON.parse(readFileSync(file, 'utf8'))
   if (!/^csreview-aryan-(overnight|ci)-[a-z0-9-]+$/.test(compose.name)) {
-    throw new Error('Only this runner\'s disposable Aryan project may be stopped')
+    throw new Error('Only this runner\'s disposable Aryan project may be changed')
   }
+  return file
+}
+
+export function eventService(action: 'stop' | 'start') {
+  const file = reviewCompose()
   execFileSync('docker', ['compose', '-f', file, action, 'event-service'], { stdio: 'pipe' })
+}
+
+export function recreateBookingService() {
+  const file = reviewCompose()
+  execFileSync('docker', ['compose', '-f', file, 'up', '-d', '--no-deps', '--force-recreate', 'booking-service'], { stdio: 'pipe' })
 }
 
 export async function waitForEventService(context: APIRequestContext, id: string) {

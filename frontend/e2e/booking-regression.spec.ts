@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { test, signIn, session, mutation, emails } from './helpers'
+import { test, signIn, session, mutation, emails, recreateBookingService } from './helpers'
 
 test('Booking regression: staff can create operational windows in the UI but decision permission cannot create an ordinary booking', async ({ page, playwright }) => {
   await signIn(page, emails.staff)
@@ -35,6 +35,12 @@ test('Booking regression: staff can create operational windows in the UI but dec
     const denied = await mutation(staff, 'POST', '/api/bookings', { ...saved, status: 'CONFIRMED' })
     expect(denied.status()).toBe(403)
     expect(await denied.json()).not.toHaveProperty('id')
+    expect((await (await staff.get(historyPath)).json()).items).toEqual(prior.items)
+    // Recreate the app container, preserving its database and the live session.
+    // Kong must resolve the current upstream and return the same persisted data.
+    recreateBookingService()
+    await expect.poll(async () => (await staff.get(`/api/bookings/${saved.id}`)).status(), { timeout: 45_000 }).toBe(200)
+    expect(await (await staff.get(`/api/bookings/${saved.id}`)).json()).toEqual(saved)
     expect((await (await staff.get(historyPath)).json()).items).toEqual(prior.items)
   }
   finally { await staff.dispose() }

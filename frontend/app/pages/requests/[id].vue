@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const requestFetch=useRequestFetch()
-import { computed,ref } from 'vue'
+import { computed,onMounted,ref } from 'vue'
 import { emptyRequestForm,formToPayload,recordToForm } from '@/components/request-form-state'
 import { operationIntent,fieldErrors as extractFields } from '@/components/request-errors'
 import { apiErrorMessage } from '@/components/shared/api-error'
@@ -16,6 +16,8 @@ const form=ref(loaded.value?recordToForm(loaded.value):emptyRequestForm()),clean
 const dirty=computed(()=>JSON.stringify(form.value)!==clean.value);useUnsavedRequest(dirty)
 const intent=operationIntent(),tab=ref<'details'|'history'>('details'),historyRevision=ref(0)
 const detailsTab=ref<HTMLButtonElement|null>(null),historyTab=ref<HTMLButtonElement|null>(null)
+const tabsReady=ref(false)
+onMounted(()=>{tabsReady.value=true})
 function navigateTabs(event:KeyboardEvent){
  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return
  event.preventDefault()
@@ -48,8 +50,8 @@ useHead({title:'Event request | ConnectSphere'})
    <p v-if="loaded.awaitingAssignment" role="status" class="mt-2">Awaiting assignment</p>
    <p v-if="savedMessage" role="status" class="mt-3">{{ savedMessage }}</p>
    <div role="tablist" aria-label="Request details and history" class="mt-4 flex gap-5" @keydown="navigateTabs">
-    <button id="request-details-tab" ref="detailsTab" type="button" role="tab" aria-controls="request-details-panel" :tabindex="tab==='details'?0:-1" :aria-selected="tab==='details'" @click="tab='details'">Details</button>
-    <button id="request-history-tab" ref="historyTab" type="button" role="tab" aria-controls="request-history-panel" :tabindex="tab==='history'?0:-1" :aria-selected="tab==='history'" @click="tab='history'">History</button>
+    <button id="request-details-tab" ref="detailsTab" type="button" role="tab" aria-controls="request-details-panel" :disabled="!tabsReady" :tabindex="tab==='details'?0:-1" :aria-selected="tab==='details'" @click="tab='details'">Details</button>
+    <button id="request-history-tab" ref="historyTab" type="button" role="tab" aria-controls="request-history-panel" :disabled="!tabsReady" :tabindex="tab==='history'?0:-1" :aria-selected="tab==='history'" @click="tab='history'">History</button>
    </div>
    <RequestActivityHistory v-if="tab==='history'" id="request-history-panel" aria-labelledby="request-history-tab" :key="historyRevision" :request-id="id" />
    <div v-else id="request-details-panel" role="tabpanel" aria-labelledby="request-details-tab">
