@@ -120,3 +120,7 @@ or RabbitMQ event-contract types, if that gets unwieldy later.
 - Whether any saga needs a genuine compensating action (e.g. releasing a
   venue hold if notification fails) or a retry is sufficient for this
   project's scope.
+
+## Event-workflow branch update
+
+The [changed-component sequence and ERD](event-workflows.md) describe the existing BFF/Kong/auth/event/PostgreSQL path, same transaction activity/outbox and request→Event linkage. The status guard remains shared. No new orchestration, notification or assignment service was added.

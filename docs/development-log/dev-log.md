@@ -1,3 +1,15 @@
+# 2026-10-07 — Final local review and date regressions
+
+The frontend suite passes 105/105 without skipped tests after correcting the strict refresh-key assertion for the immediate Coordinator panel. Actual browser checks pass 16/16 for partial Draft save, invalid-input retention, same-ID submit/return/save/resubmit, Coordinator visibility, expandable captured history, unsaved Stay/Leave and explicit submission receipts. These are agent-run checks; independent teammate and PO acceptance remain required.
+
+Review exposed two date representation defects. PostgreSQL JSON baselines now compare timestamps as canonical instants, so unchanged upgraded Returned requests remain rejected without activity/outbox/version effects. Adding a time zone to a partial ISO Draft now derives its local interval; legacy DTO fallbacks preserve overnight end dates and leave missing end times empty. Four new unit/real PostgreSQL route regressions fail against backend checkpoint 53c99b1 and pass after the fixes. The final event build/coverage run passes 117/117 (102 unit/domain plus 15 real PostgreSQL integration tests), zero skipped.
+
+Both service outage checks return 503, preserve database counts and recover. A separate clean-checkout recipe uses Node 22, locked installs, fresh isolated PostgreSQL 16, actual Keycloak/Kong/BFF smoke and same-ID restart checks; see [the independent recipe](../event-review-run.md). Week 7 changes remain future scope. Remote CI, human PR approval/merge, PO decisions and instructor access are still team gates.
+
+# 2026-10-06 — Persistent event workflows (local review branch)
+
+CS-11/29/27/44 reuse the merged PR6 schema/domain guard and existing Alan forms. [Decisions](../event-workflow-decisions.md), [changed contract](../event-workflows.md), and [reproduction](../event-review-run.md) record implementation scope and pending acceptance. Aryan selected least-recently-assigned ties within the existing selector. AI-assisted implementation requires Aryan understanding and independent Alan/Javier/Marcus review; no Done/remote CI/main merge is claimed.
+
 # ConnectSphere — development log
 
 A running record of what has been built, the decisions behind it, and what

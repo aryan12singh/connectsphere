@@ -8,6 +8,13 @@ Commands work in **PowerShell** (Windows) and in bash/zsh (macOS/Linux)
 unless a step says otherwise. Run them from the repo root (the folder with
 `README.md`) unless the step says `cd` somewhere.
 
+For the current Sprint 2 CS-11/29/27/44 request workflow, use the
+[isolated review recipe](event-review-run.md) first. It supplies a fresh
+PostgreSQL 16 project, Node 22 locked installs, parameterised ports, actual
+live-auth smoke and a restart check. The general development instructions and
+Sprint 1 manual checks below are retained for their original context; their
+old event expectations and test counts do not describe the current branch.
+
 ---
 
 ## Part A — One-time setup
@@ -15,11 +22,15 @@ unless a step says otherwise. Run them from the repo root (the folder with
 You need:
 
 - **Docker Desktop**, running.
-- **Node.js 20 or newer** (`node -v`).
+- **Node.js 22** (`node -v`), the verified runtime for this branch's locked dependencies.
 - **Git**. Clone the repo normally. `.gitattributes` keeps the shell script's
   line endings correct on Windows.
 
-### A2. Starting from scratch (skip on a brand-new clone)
+### A2. Legacy general-development reset (skip for isolated review)
+
+The destructive reset below belongs to the older general-development setup.
+It is unnecessary for the isolated recipe and must not be used on an existing
+shared development project while verifying these workflows.
 
 If you have run the stack before and want a clean start (or something is in
 a confusing state), wipe the old containers and **all** data first. This
@@ -296,7 +307,7 @@ Check that the server dropdown at the top shows `http://localhost:3002`.
 
 | # | Steps | Expected |
 |---|---|---|
-| MT-26 | `cd frontend` then `npm test` | **82 passed, 20 failed** (the 82 include 7 sign-up tests in `tests/specs/signup.spec.ts`). The 20 are known and unrelated to auth: 19 CS-11 tests call routes not built yet, and 1 CS-30 test expects a disabled "Change coordinator" button. Any *other* failure is a regression |
+| MT-26 (historical Sprint 1 result) | `cd frontend` then `npm test` | At that snapshot: **82 passed, 20 failed** (including 7 sign-up passes). The obsolete CS-11 route harness and CS-30 expectation were later replaced with mapped persistent-workflow assertions. For the current branch run `npm run test:report` with the isolated PostgreSQL/fixture-auth environment in [event-review-run.md](event-review-run.md); assess the actual dated result rather than this historical count. |
 
 ---
 
@@ -324,3 +335,7 @@ and every signed-up or admin-created account is gone (redo B2 for the seed users
 | Postgres logs `$'\r': command not found` | `init-databases.sh` has Windows line endings. Run `git add --renormalize .` and re-clone, or convert the file to LF, then `down -v` and `up` |
 | Every login fails; browser dev tools show 500 "Empty password" | `frontend/.env` has `NUXT_SESSION_PASSWORD=` with nothing after it. Delete that line (or give it 32+ characters) and restart `npm run dev` |
 | Admin screens / `/api/admin/...` return 501 | Website is in mock mode. Set `NUXT_AUTH_MODE=live` |
+
+## Persistent CS-11/29/27/44 branch
+
+Follow [the isolated review recipe](event-review-run.md) for real-database/API/live-auth/browser checks. It uses Node22, PostgreSQL16, a unique project/volume, loopback ports and locked installs. Existing destructive reset commands in older instructions are **not** required for this implementation verification. The active event BFF has no mock fallback; registration capture, same-record drafts/resubmissions and authorised history are described in [event workflows](event-workflows.md).

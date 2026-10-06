@@ -1,0 +1,40 @@
+name: Event request workflows
+on:
+  pull_request:
+    paths: ['services/event-service/**', 'services/user-service/src/routes/internal.routes.js', 'frontend/**', 'tests/**', '.github/workflows/event-workflows.yml']
+  push:
+    branches: [main]
+    paths: ['services/event-service/**', 'frontend/**', 'tests/**', '.github/workflows/event-workflows.yml']
+permissions:
+  contents: read
+jobs:
+  requests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: connectsphere
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: event_db
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U connectsphere -d event_db"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/event_db
+      NUXT_AUTH_MODE: mock
+      NUXT_SESSION_PASSWORD: isolated-ci-cookie-password-at-least-32-characters
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            services/event-service/package-lock.json
+            frontend/package-lock.json
+      - run: npm ci && npm run build && npx prisma migrate deploy && npm test && npm run test:integration
+        working-directory: services/event-service
+      - run: npm ci && npm run typecheck && npm test && npm run build
+        working-directory: frontend

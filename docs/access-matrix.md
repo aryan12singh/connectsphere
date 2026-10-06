@@ -1,3 +1,28 @@
+# Current event-workflow access — 2026-10-06
+
+This implemented amendment supersedes conflicting Sprint1 event/request rows below. Identity is verified at auth-service on every event call; roles array is authoritative with legacy single-role fallback. Caller role/owner/organisation headers or body fields grant nothing.
+
+| Resource/action | Organiser | Coordinator | Venue/Technical Staff | Attendee |
+|---|---|---|---|---|
+| Create/submit/save/resubmit Request | Owner only, guarded Draft/Returned states | No | No | No |
+| Request detail/history (including all cursor pages) | Owner only | Current assigned, non-Draft, excluding self-organised work | No | No |
+| Draft list/detail/history | Owner only | No | No | No |
+| Assigned submitted queue/return/approve/reject | No | Current assigned only; shared guard/version | No | No |
+| Actual Event history | Owner or same non-null organisation | Current assigned | No | No |
+| Minimal Event booking options | Own/same-org | Current assigned | Planning/Confirmed ID,title,status only | No |
+| GET BFF /api/users/:id | Own profile only | Own profile only | Own profile only | Own profile only |
+| Request-scoped Coordinator/Organiser contact | Only authorised relationship, limited projection | Only authorised relationship | No | No |
+
+Historic Draft entries remain owner-only after publication; a Coordinator sees published values with prior Draft values marked private. Wider Event viewers receive only Event-scoped entries, filtered before cursor paging.
+
+Multi-role users receive applicable role rights while relationships remain mandatory. Authentication's broader permissions administration is unchanged; no self-provisioning/reassignment rights are added. Missing organisation denies same-org access. Completed/cancelled history uses the same rules. Unauthenticated/expired/revoked401; wrong actor403; right actor/wrong state or stale version409. No ordinary history update/delete route.
+
+These rules are exercised by real PostgreSQL API tests, BFF fixtures and separate live-auth checks. Full instructor access and independent product acceptance remain manual review gates.
+
+---
+
+Historical Sprint1 matrix and findings (retained for traceability; resolved by the amendment where event routes were touched):
+
 # Role and Event Access Matrix
 
 Specifies which users may view or change each protected resource, based on their
