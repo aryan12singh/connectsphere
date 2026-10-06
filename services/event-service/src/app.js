@@ -4,7 +4,7 @@ const prisma=require('./db');
 const {authenticate,requirePermission,contact}=require('./identity');
 const {mutation,read,load,dto,history,has}=require('./workflows');
 const {fail}=require('./domain/validation');
-const app=express();app.use(helmet());app.use(express.json({limit:'64kb'}));
+const app=express();app.use(helmet());app.use(express.json({limit:'10kb'}));
 app.use('/docs',express.static(require('node:path').resolve(__dirname,'../docs')));
 app.get('/health',(req,res)=>res.json({status:'ok'}));
 app.use(['/event-requests','/events'],authenticate);
@@ -41,6 +41,9 @@ app.patch('/event-requests/:id',requirePermission('event_requests.create'),(req,
 for(const action of ['submit','resubmit','decision'])app.post(`/event-requests/:id/${action}`,requirePermission(action==='decision'?'event_requests.review':'event_requests.create'),(req,res)=>mutate(req,res,action,req.params.id));
 app.use((req,res)=>res.status(404).json({error:{code:'NOT_FOUND',message:'Not found'}}));
 app.use((err,req,res,next)=>{
+ // Parser messages can contain private input; expose only stable transport errors.
+ if(err.type==='entity.parse.failed')return res.status(400).json({error:{code:'BAD_REQUEST',message:'Use a valid JSON object.'}});
+ if(err.type==='entity.too.large')return res.status(413).json({error:{code:'PAYLOAD_TOO_LARGE',message:'Request body must be at most 10 KB.'}});
  const status=err.status||500;
  // Log only exception classification, not request bodies/tokens/database values.
  if(status>=500)console.error('event-service error',err.code||err.name);

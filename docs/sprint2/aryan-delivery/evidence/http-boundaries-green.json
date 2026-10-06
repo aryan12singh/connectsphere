@@ -1,0 +1,32 @@
+{
+  "name": "http-boundaries-green",
+  "started_at": "2026-10-06T19:47:51.355400+00:00",
+  "finished_at": "2026-10-06T19:47:51.906114+00:00",
+  "cwd": "/Users/DarthAryan/Downloads/SMU/Y3S1/IS212 SPM/PROJECT/connectsphere-aryan-event-workflows",
+  "argv": [
+    "docker",
+    "run",
+    "--rm",
+    "-v",
+    "/Users/DarthAryan/Downloads/SMU/Y3S1/IS212 SPM/PROJECT/connectsphere-aryan-event-workflows:/app",
+    "-w",
+    "/app/services/event-service",
+    "node:22-bookworm",
+    "node",
+    "--test",
+    "tests/http-boundaries.test.js"
+  ],
+  "exit_code": 0,
+  "source": {
+    "revision": "3c97f126663006a159241ce107de490da49c118c",
+    "branch": "feat/aryan-sprint2-event-workflows",
+    "status": " M services/event-service/src/app.js\n?? services/event-service/tests/http-boundaries.test.js\n",
+    "diff_sha256": "8509a6816f59c335f5a47e4afa9b20dbddf7ed21eabc31a5d3831d08fad7e500",
+    "untracked_sha256": {
+      "services/event-service/tests/http-boundaries.test.js": "22bed1eb3d50c8921e22e2e99329da19b5288e62aa83e88d3e3b4219db56e0f0"
+    }
+  },
+  "log": "/Users/DarthAryan/Downloads/SMU/Y3S1/IS212 SPM/PROJECT/connectsphere-aryan-implementation-20261006-190000/overnight/logs/http-boundaries-green.log",
+  "runner": "Codex tools; no human acceptance implied",
+  "assertion_log": "TAP version 13\n# Subtest: CS11 HTTP-01: exactly 10KB parses; one extra byte rejects before authentication or persistence\nok 1 - CS11 HTTP-01: exactly 10KB parses; one extra byte rejects before authentication or persistence\n  ---\n  duration_ms: 33.177875\n  type: 'test'\n  ...\n# Subtest: CS11 HTTP-02: malformed JSON returns a stable error without echoing private input\nok 2 - CS11 HTTP-02: malformed JSON returns a stable error without echoing private input\n  ---\n  duration_ms: 5.314792\n  type: 'test'\n  ...\n1..2\n# tests 2\n# suites 0\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 250.859709\n"
+}
