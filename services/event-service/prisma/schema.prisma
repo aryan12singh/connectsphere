@@ -1,0 +1,231 @@
+// ─────────────────────────────────────────────────────────────────────────
+// event-service — owns event requests, events, coordinator assignment, the
+// activity history and the outbox (event_db). Sprint 2: CS-11, CS-12, CS-28,
+// CS-30, CS-32, CS-44.
+//
+// Two status fields, on purpose (story CS-32):
+//   EventRequest.status  — the organiser's REQUEST: Draft → Submitted → …
+//   Event.status         — the EVENT that exists once a request is approved.
+// Booking, equipment and registration statuses belong to other services.
+// The transition rules live in ONE guard in src/ (see CS-32); this file only
+// stores the result.
+//
+// Cross-service ids (organiserId, coordinatorId, …) are plain strings with no
+// FK — see docs/development-log/dev-log.md.
+//
+// Times: instants are `timestamptz`. An event's start/end are stored as
+// instants plus the IANA `timeZone` the organiser chose, so the UI can show
+// "10:00 Singapore time" even to a viewer elsewhere.
+//
+// NOT expressible in this file (written by hand in the migration SQL):
+//   * ONE CURRENT COORDINATOR: partial unique index on coordinator_assignments
+//   * CHECK constraints (end after start, submitted requests are complete,
+//     reason length 1–500)
+//   * ActivityLog is append-only (trigger blocks UPDATE / DELETE)
+//   * partial index of unpublished outbox rows
+// ─────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // -> event_db
+}
+
+enum EventRequestStatus {
+  DRAFT
+  SUBMITTED // shown as "Under Review"
+  RETURNED_FOR_AMENDMENT
+  APPROVED // an Event now exists, in Planning
+  REJECTED // closed
+}
+
+enum EventStatus {
+  ARRANGEMENT_PENDING // shown as "Planning"
+  CONFIRMED
+  CANCELLED // closed
+  COMPLETED // closed
+  REJECTED // closed — rejected from Planning (CS-28); see schema-decisions.md
+}
+
+enum AssignmentReason {
+  AUTO // chosen by the least-loaded rule on submission
+  REASSIGNED // moved by the current Coordinator
+}
+
+enum ActorType {
+  USER
+  SYSTEM // e.g. automatic assignment, "end time passes" → Completed
+}
+
+model EventRequest {
+  id             String             @id @default(uuid())
+  organiserId    String // ref: user-service users.id (the owner)
+  // Copied from the organiser at creation so "same organisation" checks need
+  // no call to user-service. Null if the organiser has no organisation.
+  organisationId String? // ref: user-service organisations.id
+  status         EventRequestStatus @default(DRAFT)
+
+  // Optimistic concurrency: every state change does
+  //   UPDATE … SET version = version + 1 WHERE id = ? AND version = ?
+  // and returns 409 if no row matched (stale or simultaneous action).
+  version Int @default(1)
+
+  // ── What the organiser asked for (nullable: a Draft may be incomplete;
+  //    the CHECK in the migration requires them once status ≠ DRAFT) ──
+  eventName            String
+  purpose              String?
+  description          String?
+  startAt              DateTime?  @db.Timestamptz(3)
+  endAt                DateTime?  @db.Timestamptz(3)
+  timeZone             String? // IANA, e.g. "Asia/Singapore"
+  expectedAttendance   Int?
+  minimumCapacity      Int?
+  preferredLayout      String?
+  venueType            String?
+  venueRequirements    String?
+  accessibilityNeeds   String[]   @default([])
+  accessibilityDetails String?
+  equipmentNeeds       String[]   @default([])
+  technicalDetails     String?
+
+  // ── Coordinator ──
+  // Denormalised copy of the one open CoordinatorAssignment, kept in the SAME
+  // transaction as the assignment so queue queries need no join. null while
+  // "Awaiting assignment". The partial unique index on the assignments table
+  // is the real guarantee; this column is a convenience.
+  currentCoordinatorId String?
+
+  // ── Latest decision (full history is in ActivityLog) ──
+  submittedAt    DateTime? @db.Timestamptz(3)
+  decidedById    String? // ref: user-service users.id
+  decidedAt      DateTime? @db.Timestamptz(3)
+  // Reason (reject) or comments (return). 1–500 chars, required for those two
+  // outcomes. Optional notes on approval are stored here too.
+  decisionReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  event       Event? // 0..1, created on approval
+  assignments CoordinatorAssignment[]
+  activity    ActivityLog[]
+
+  @@index([organiserId, status])
+  @@index([organisationId])
+  @@index([currentCoordinatorId, status])
+  @@index([status, submittedAt])
+  @@map("event_requests")
+}
+
+model Event {
+  id             String       @id @default(uuid())
+  eventRequestId String       @unique
+  eventRequest   EventRequest @relation(fields: [eventRequestId], references: [id])
+
+  organiserId    String
+  organisationId String?
+  title          String
+  description    String?
+  startAt        DateTime @db.Timestamptz(3)
+  endAt          DateTime @db.Timestamptz(3)
+  timeZone       String
+  status         EventStatus @default(ARRANGEMENT_PENDING)
+  version        Int         @default(1)
+
+  confirmedById String?
+  confirmedAt   DateTime? @db.Timestamptz(3)
+  cancelledById String?
+  cancelledAt   DateTime? @db.Timestamptz(3)
+  cancelReason  String?
+  completedAt   DateTime? @db.Timestamptz(3)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, startAt])
+  @@index([organiserId])
+  @@map("events")
+}
+
+// One row per assignment ever made. The row with revokedAt = null is the
+// current Coordinator; at most one such row per request (partial unique index).
+model CoordinatorAssignment {
+  id             String           @id @default(uuid())
+  eventRequestId String
+  eventRequest   EventRequest     @relation(fields: [eventRequestId], references: [id])
+  coordinatorId  String // ref: user-service users.id
+  reason         AssignmentReason
+  assignedById   String? // who did it; null = the system (AUTO)
+  assignedAt     DateTime         @default(now()) @db.Timestamptz(3)
+  revokedAt      DateTime?        @db.Timestamptz(3)
+  revokedById    String?
+
+  @@index([eventRequestId])
+  // Least-loaded rule: "when did this coordinator last get an assignment?"
+  @@index([coordinatorId, assignedAt])
+  @@map("coordinator_assignments")
+}
+
+// Append-only history (CS-44). Every transition, assignment and edit writes a
+// row IN THE SAME TRANSACTION as the change it describes.
+model ActivityLog {
+  id             String       @id @default(uuid())
+  eventRequestId String
+  eventRequest   EventRequest @relation(fields: [eventRequestId], references: [id])
+  // Free text on purpose: later sprints add actions without a migration.
+  // Today: REQUEST_CREATED, REQUEST_EDITED, SUBMITTED, COORDINATOR_ASSIGNED,
+  // COORDINATOR_REASSIGNED, APPROVED, RETURNED, RESUBMITTED, REJECTED,
+  // CONFIRMED, CANCELLED, COMPLETED, SIGNIFICANT_CHANGE_APPROVED.
+  action         String
+  fromStatus     String? // e.g. "SUBMITTED"
+  toStatus       String?
+  actorType      ActorType
+  actorId        String? // null when actorType = SYSTEM
+  // Anything extra: the reason/comments, old and new coordinator, etc.
+  details        Json?
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([eventRequestId, createdAt])
+  @@map("activity_log")
+}
+
+// Transactional outbox: a domain event is INSERTED here in the same
+// transaction as the state change. A relay (later) publishes unpublished rows
+// to RabbitMQ and sets publishedAt. This is how "RequestApproved" etc. are
+// emitted without ever being lost or sent for a change that rolled back.
+model Outbox {
+  id            String    @id @default(uuid())
+  aggregateType String // "EventRequest" | "Event"
+  aggregateId   String
+  // Text so new event types need no migration. Today: RequestSubmitted,
+  // CoordinatorAssigned, CoordinatorReassigned, RequestApproved,
+  // RequestRejected, RequestReturned, RequestResubmitted.
+  eventType     String
+  payload       Json
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  publishedAt   DateTime? @db.Timestamptz(3)
+  attempts      Int       @default(0)
+
+  @@map("outbox")
+}
+
+// Remembers the result of a POST/PUT that carried an `Idempotency-Key`
+// header, so a retry returns the same response instead of acting twice.
+model IdempotencyRecord {
+  id             String   @id @default(uuid())
+  userId         String
+  key            String
+  method         String
+  path           String
+  requestHash    String // sha-256 of the body; same key + different body → 422
+  responseStatus Int
+  responseBody   Json
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([userId, key])
+  @@map("idempotency_records")
+}
