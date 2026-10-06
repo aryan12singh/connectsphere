@@ -30,17 +30,47 @@ enum UserRole {
   ATTENDEE
 }
 
+// A client organisation (e.g. "Nexus Labs"). Organisers in the same
+// organisation can be shown each other's events (Sprint 2 decision; the
+// visibility rule itself lives in event-service).
+model Organisation {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+
+  @@map("organisations")
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
   passwordHash String? // legacy/unused for login — Keycloak checks passwords
-  firstName    String
-  lastName     String
-  role         UserRole
-  company      String? // organisation the user belongs to; null for most attendees
-  isActive     Boolean  @default(true) // false = disabled by tech support, cannot log in
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
 
+  firstName String
+  lastName  String
+
+  // Multi-role (Session 2): one account may hold several roles, e.g.
+  // EVENT_ORGANISER + ATTENDEE. `roles` is the source of truth.
+  //
+  // `role` is the DEPRECATED "primary role". It stays only so auth-service
+  // and the frontend (which still read `role`) keep working during the
+  // migration. A database trigger (see migration 20261002000000) keeps the
+  // two in step: role is always one of roles; inserting/updating only
+  // `role` rewrites `roles` to [role]. Remove `role` and the trigger once
+  // auth-service reads `roles`.
+  roles        UserRole[] @default([])
+  role         UserRole
+
+  company        String? // free-text label kept for the UI; organisationId is the real link
+  organisationId String? // same-service FK. Null for staff and most attendees.
+  organisation   Organisation? @relation(fields: [organisationId], references: [id])
+
+  isActive  Boolean  @default(true) // false = disabled by tech support, cannot log in
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organisationId])
   @@map("users")
 }

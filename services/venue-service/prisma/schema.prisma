@@ -1,0 +1,143 @@
+// ─────────────────────────────────────────────────────────────────────────
+// venue-service — owns the venue catalogue, operating hours and blocks
+// (venue_db). Story: "Extension of DB scheme for Venue Epic" (Sprint 2).
+//
+// What is stored and what is computed
+//   Stored:   venue, layouts, facilities, accessibility tags, weekly operating
+//             hours, and VenueBlock (a period when the venue cannot be used).
+//   Computed: AVAILABILITY. A time slot is available when it is inside the
+//             operating hours AND overlaps no VenueBlock AND (from Sprint 3)
+//             overlaps no approved booking held by booking-service. We do not
+//             store availability rows, because they would go stale the moment
+//             a block or booking changes.
+//
+// Dates and times
+//   * Instants (blocks) are `timestamptz` — an absolute moment, returned as
+//     ISO 8601 with an offset by the API.
+//   * Operating hours are wall-clock "HH:MM" in the venue's own `timeZone`
+//     (IANA name, e.g. Asia/Singapore), because "opens 08:00" means 08:00
+//     local time all year round, not a fixed UTC instant.
+//
+// Cross-service references (userId) are plain strings with no FK, as per
+// docs/development-log/dev-log.md.
+//
+// NOT expressible in this file (written by hand in the migration SQL):
+//   * CHECK constraints (hours format, block end > start)
+//   * the EXCLUDE constraint that stops two blocks overlapping at one venue
+//   * GIN indexes on the facilities / accessibility arrays
+// ─────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client" // Rust-free client, works on Alpine (same as other services)
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // -> venue_db
+}
+
+// Seating arrangements a venue can be set up in.
+enum LayoutType {
+  THEATRE
+  CLASSROOM
+  BANQUET
+  BOARDROOM
+  U_SHAPE
+  CABARET
+  STANDING
+}
+
+enum BlockReason {
+  MAINTENANCE
+  PRIVATE_USE
+  PUBLIC_HOLIDAY
+  OTHER
+}
+
+model Venue {
+  id          String  @id @default(uuid())
+  name        String
+  address     String
+  description String?
+  // Largest headcount the venue holds in its most generous layout.
+  capacity    Int
+  // IANA time zone the operating hours are written in.
+  timeZone    String  @default("Asia/Singapore")
+  // Controlled vocabularies, validated by the API (lower_snake_case), e.g.
+  //   facilities:        wifi, projector, stage, catering_kitchen, parking
+  //   accessibilityTags: step_free_access, wheelchair_toilet, hearing_loop,
+  //                      lift, accessible_parking
+  // Plain arrays (not tables) because they are only ever filtered, never
+  // joined to, and the lists are small.
+  facilities        String[] @default([])
+  accessibilityTags String[] @default([])
+  isActive    Boolean  @default(true) // false = hidden from search, kept for history
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  layouts VenueLayout[]
+  hours   VenueOperatingHours[]
+  blocks  VenueBlock[]
+  staff   VenueStaffAssignment[]
+
+  @@map("venues")
+}
+
+// How many people the venue holds in a given set-up.
+model VenueLayout {
+  id       String     @id @default(uuid())
+  venueId  String
+  venue    Venue      @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  type     LayoutType
+  capacity Int
+
+  @@unique([venueId, type])
+  @@map("venue_layouts")
+}
+
+// One row per venue per weekday. dayOfWeek is ISO: 1 = Monday ... 7 = Sunday.
+// A venue with no row for a day is treated as closed that day.
+model VenueOperatingHours {
+  id        String  @id @default(uuid())
+  venueId   String
+  venue     Venue   @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  dayOfWeek Int
+  isClosed  Boolean @default(false)
+  opensAt   String? // "HH:MM" 24h in the venue's timeZone; null when isClosed
+  closesAt  String? // "HH:MM"; "24:00" is not allowed — use 23:59
+
+  @@unique([venueId, dayOfWeek])
+  @@map("venue_operating_hours")
+}
+
+// A period when the venue cannot be used (maintenance, private use, holiday).
+// Half-open interval [startsAt, endsAt). Blocks at one venue never overlap
+// (enforced by an EXCLUDE constraint in the migration → API returns 409).
+model VenueBlock {
+  id          String      @id @default(uuid())
+  venueId     String
+  venue       Venue       @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  startsAt    DateTime    @db.Timestamptz(3)
+  endsAt      DateTime    @db.Timestamptz(3)
+  reason      BlockReason
+  note        String?
+  createdById String // ref: user-service users.id
+  createdAt   DateTime    @default(now())
+
+  @@index([venueId, startsAt])
+  @@map("venue_blocks")
+}
+
+// Which Venue Staff member manages which venue. Many-to-many: one person may
+// look after several venues and a venue may have several staff.
+model VenueStaffAssignment {
+  venueId   String
+  venue     Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  userId    String // ref: user-service users.id (must hold VENUE_STAFF)
+  createdAt DateTime @default(now())
+
+  @@id([venueId, userId])
+  @@index([userId])
+  @@map("venue_staff_assignments")
+}

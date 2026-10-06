@@ -14,10 +14,19 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- organisations (Sprint 2). Sarah and Daniel share Nexus Labs, so the
+-- "Organisers in the same organisation" cases can be demonstrated; Priya and
+-- Marcus are each alone in theirs.
+INSERT INTO "organisations" ("id", "name", "createdAt", "updatedAt") VALUES
+  ('b1000000-0000-4000-8000-000000000001', 'Nexus Labs',           '2026-05-04 02:00:00.000', '2026-05-04 02:00:00.000'),
+  ('b1000000-0000-4000-8000-000000000002', 'GreenLeaf Foundation', '2026-05-11 06:30:00.000', '2026-05-11 06:30:00.000'),
+  ('b1000000-0000-4000-8000-000000000003', 'Orbit Fintech',        '2026-05-18 01:45:00.000', '2026-05-18 01:45:00.000')
+ON CONFLICT ("id") DO NOTHING;
+
 -- users
 INSERT INTO "users" ("id", "email", "passwordHash", "firstName", "lastName", "role", "company", "createdAt", "updatedAt") VALUES
   ('a1000000-0000-4000-8000-000000000001', 'sarah.tan@nexuslabs.sg',          crypt('Sarah@CS01!',    gen_salt('bf', 10)), 'Sarah',    'Tan',       'EVENT_ORGANISER',         'Nexus Labs',               '2026-05-04 02:10:00.000', '2026-05-04 02:10:00.000'),  -- U01 EVENT_ORGANISER | pw: Sarah@CS01!
-  ('a1000000-0000-4000-8000-000000000002', 'daniel.lim@brightpath.edu.sg',    crypt('Daniel@CS02!',   gen_salt('bf', 10)), 'Daniel',   'Lim',       'EVENT_ORGANISER',         'BrightPath Academy',       '2026-05-06 03:25:00.000', '2026-05-06 03:25:00.000'),  -- U02 EVENT_ORGANISER | pw: Daniel@CS02!
+  ('a1000000-0000-4000-8000-000000000002', 'daniel.lim@brightpath.edu.sg',    crypt('Daniel@CS02!',   gen_salt('bf', 10)), 'Daniel',   'Lim',       'EVENT_ORGANISER',         'Nexus Labs',                '2026-05-06 03:25:00.000', '2026-05-06 03:25:00.000'),  -- U02 EVENT_ORGANISER | pw: Daniel@CS02!
   ('a1000000-0000-4000-8000-000000000003', 'priya.raman@greenleaf.org.sg',    crypt('Priya@CS03!',    gen_salt('bf', 10)), 'Priya',    'Raman',     'EVENT_ORGANISER',         'GreenLeaf Foundation',     '2026-05-11 06:40:00.000', '2026-05-11 06:40:00.000'),  -- U03 EVENT_ORGANISER | pw: Priya@CS03!
   ('a1000000-0000-4000-8000-000000000004', 'marcus.wong@orbitfintech.com',    crypt('Marcus@CS04!',   gen_salt('bf', 10)), 'Marcus',   'Wong',      'EVENT_ORGANISER',         'Orbit Fintech',            '2026-05-18 01:55:00.000', '2026-05-18 01:55:00.000'),  -- U04 EVENT_ORGANISER | pw: Marcus@CS04!
   ('a1000000-0000-4000-8000-000000000005', 'aisha.rahman@connectsphere.sg',   crypt('Aisha@CS05!',    gen_salt('bf', 10)), 'Aisha',    'Rahman',    'EVENT_COORDINATOR',       'ConnectSphere',            '2026-05-01 01:00:00.000', '2026-05-01 01:00:00.000'),  -- U05 EVENT_COORDINATOR | pw: Aisha@CS05!
@@ -37,6 +46,20 @@ INSERT INTO "users" ("id", "email", "passwordHash", "firstName", "lastName", "ro
   ('a1000000-0000-4000-8000-000000000019', 'weijie.low@lowlogistics.sg',      crypt('WeiJie@CS19!',   gen_salt('bf', 10)), 'Wei Jie',  'Low',       'ATTENDEE',                'Low Logistics',            '2026-06-25 05:15:00.000', '2026-06-25 05:15:00.000'),  -- U19 ATTENDEE | pw: WeiJie@CS19!
   ('a1000000-0000-4000-8000-000000000020', 'olivia.fernandez@gmail.com',      crypt('Olivia@CS20!',   gen_salt('bf', 10)), 'Olivia',   'Fernandez', 'ATTENDEE',                NULL,                       '2026-07-01 10:40:00.000', '2026-07-01 10:40:00.000')   -- U20 ATTENDEE | pw: Olivia@CS20!
 ON CONFLICT ("id") DO NOTHING;
+
+-- Sprint 2: organisation links and the multi-role user. These are UPDATEs
+-- (not part of the INSERT above) so they also fix a database that was seeded
+-- before the roles/organisations migration. Safe to run repeatedly.
+UPDATE "users" SET "organisationId" = 'b1000000-0000-4000-8000-000000000001', "company" = 'Nexus Labs'
+  WHERE "id" IN ('a1000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000002');   -- Sarah, Daniel
+UPDATE "users" SET "organisationId" = 'b1000000-0000-4000-8000-000000000002'
+  WHERE "id" = 'a1000000-0000-4000-8000-000000000003';                                               -- Priya
+UPDATE "users" SET "organisationId" = 'b1000000-0000-4000-8000-000000000003'
+  WHERE "id" = 'a1000000-0000-4000-8000-000000000004';                                               -- Marcus
+-- Multi-role user: Priya organises events AND attends other organisers' events.
+UPDATE "users" SET "roles" = ARRAY['EVENT_ORGANISER', 'ATTENDEE']::"UserRole"[]
+  WHERE "id" = 'a1000000-0000-4000-8000-000000000003';
+
 COMMIT;
 
 -- Sanity check (optional): should return 1 row

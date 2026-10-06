@@ -1,7 +1,7 @@
 # ConnectSphere local stack.
 # Start everything that is built:   docker compose -f infra/docker-compose.yml up --build
 #
-# Services that don't have code yet (event, venue, booking, attendance,
+# Services that don't have code yet (booking, attendance,
 # messaging, notification, orchestrator) are listed at the bottom with
 # `profiles: ["not-built-yet"]`, so a normal `up` skips them. When a service
 # gets its Dockerfile and code:
@@ -93,6 +93,8 @@ services:
     depends_on:
       - auth-service
       - user-service
+      - event-service
+      - venue-service
 
   # ── Built services ────────────────────────────────────────────────────
 
@@ -133,25 +135,25 @@ services:
       user-service:
         condition: service_started
 
-  # ── Not built yet (skipped by a normal `up`, see top of file) ─────────
-  # Every domain service gets AUTH_SERVICE_URL + INTERNAL_API_KEY so it can
-  # check callers via auth-service's /internal/sessions/validate (RBAC).
+  # ── Sprint 2 services: schema, migrations and /health only. Routes are
+  # added by the feature stories (contract: services/*/docs/openapi.yaml).
 
   event-service:
-    profiles: ["not-built-yet"]
     build: ../services/event-service
     restart: unless-stopped
     environment:
       PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/event_db
       AUTH_SERVICE_URL: http://auth-service:3000
+      USER_SERVICE_URL: http://user-service:3000 # Coordinator list for assignment
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
+    ports:
+      - "3003:3000" # local debugging only
     depends_on:
       postgres:
         condition: service_healthy
 
   venue-service:
-    profiles: ["not-built-yet"]
     build: ../services/venue-service
     restart: unless-stopped
     environment:
@@ -159,9 +161,42 @@ services:
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/venue_db
       AUTH_SERVICE_URL: http://auth-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
+    ports:
+      - "3004:3000" # local debugging only
     depends_on:
       postgres:
         condition: service_healthy
+
+  # Loads the demo data once the services have migrated their databases.
+  # Replaces the manual `docker compose cp` + psql steps. Re-running is safe.
+  #   docker compose -f infra/docker-compose.yml up --build -d
+  #   docker compose -f infra/docker-compose.yml logs seed     # "[seed] done"
+  seed:
+    image: postgres:16
+    restart: "no"
+    command: ["bash", "/run-seeds.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: connectsphere
+      PGPASSWORD: connectsphere
+    volumes:
+      - ./seed/run-seeds.sh:/run-seeds.sh:ro
+      - ../services:/seed/services:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      user-service:
+        condition: service_started
+      auth-service:
+        condition: service_started
+      event-service:
+        condition: service_started
+      venue-service:
+        condition: service_started
+
+  # ── Not built yet (skipped by a normal `up`, see top of file) ─────────
+  # Every domain service gets AUTH_SERVICE_URL + INTERNAL_API_KEY so it can
+  # check callers via auth-service's /internal/sessions/validate (RBAC).
 
   booking-service:
     profiles: ["not-built-yet"]
