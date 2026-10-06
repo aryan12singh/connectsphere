@@ -7,8 +7,17 @@ const { availabilityRange, filterAvailability } = require('../availability');
 
 const router = express.Router();
 const auth = requireAuth();
-const createPermission = requireAnyPermission('venue_bookings.create', 'venue_bookings.decide');
+const ordinaryCreatePermission = requireAnyPermission('venue_bookings.create');
+const operationalBlockPermission = requireAnyPermission('venue_bookings.decide');
 const bookingAccess = requireAnyPermission('venue_bookings.create', 'venue_bookings.decide');
+
+function createPermission(req, res, next) {
+  // Venue staff may block a maintenance/unavailable window under CS-35.
+  // Decision permission does not grant creation of an ordinary event booking.
+  const operationalBlock = req.actor.role === 'VENUE_STAFF'
+    && ['BLOCKED', 'UNAVAILABLE'].includes(req.body?.status);
+  return (operationalBlock ? operationalBlockPermission : ordinaryCreatePermission)(req, res, next);
+}
 
 function validationError(res, fields) {
   return res.status(422).json({ error: { code: 'VALIDATION_ERROR', message: 'Request contains invalid fields', fields } });

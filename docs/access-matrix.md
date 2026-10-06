@@ -137,3 +137,7 @@ defaulted.
 Not yet covered, and due with CS-26 in Sprint 2: direct endpoint access by a second
 Organiser against another Organiser's request, Coordinator access to an event
 assigned to a different Coordinator, and access revocation after reassignment.
+
+## Current booking creation amendment — 7 October 2026
+
+The canonical create permission is required for an ordinary booking. `VENUE_STAFF` with decision permission can create only operational BLOCKED/UNAVAILABLE windows under that permission. Existing authorised staff replacements still use the shared staff policy. Technical Support does not gain booking access from its role alone. API checks reject denied creation before writes/history, and the calendar's new staff window presents only permitted statuses. This amendment is covered by the retained booking contract and live browser regression.

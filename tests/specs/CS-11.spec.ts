@@ -152,3 +152,28 @@ describe('CS-11 — TC-CS11-17 transactional outbox',()=>{it('writes RequestSubm
 describe('CS-11 — TC-CS11-18 retries do not duplicate outbox',()=>{it('keeps a single pending submission record on replay',async()=>{const key=crypto.randomUUID();const r=await create(valid,key);await create(valid,key);expect(await api.db.outbox.count({where:{aggregateId:r.body.id,eventType:'RequestSubmitted'}})).toBe(1)})})
 describe('CS-11 — TC-CS11-19 incomplete submit',()=>{it('fails instead of creating an implicit draft',async()=>{const count=await api.db.eventRequest.count({where:{organiserId:api.users.owner.id}});expect((await create({eventName:'Partial'})).status).toBe(422);expect(await api.db.eventRequest.count({where:{organiserId:api.users.owner.id}})).toBe(count)})})
 describe('CS-11 — TC-CS11-20 trusted role and CSRF',()=>{it('rejects wrong-role creation, unauthenticated sessions and foreign origins',async()=>{expect((await api.call('POST','/api/events',valid,'attendee')).status).toBe(403);expect((await api.call('POST','/api/events',valid,null)).status).toBe(401);expect((await api.call('POST','/api/events',valid,'owner',crypto.randomUUID(),{origin:'https://unrelated.example'})).status).toBe(403)})})
+
+
+describe('CS-11 — TC-CS11-23 required-field accessibility', () => {
+  it('announces mandatory name and purpose while allowing purpose-only Draft save', async () => {
+    const wrapper = await mountNewRequestPage()
+    expect(wrapper.get('#event-name').attributes('aria-required')).toBe('true')
+    expect(wrapper.get('#purpose').attributes('aria-required')).toBe('true')
+    await wrapper.get('#purpose').setValue('Incomplete but meaningful draft')
+    const save = wrapper.findAll('button').find(button => button.text() === 'Save draft')!
+    expect(save.attributes('disabled')).toBeUndefined()
+  })
+})
+
+// Browser verification found a section heading and control sharing a label target.
+describe('CS-11 — TC-CS11-24 field labels target unique form controls', () => {
+  it('associates each explicit label with exactly one input, select or textarea', async () => {
+    const wrapper = await mountNewRequestPage()
+    for (const label of wrapper.findAll('label[for]')) {
+      const target = label.attributes('for')
+      const controls = wrapper.findAll(`[id="${target}"]`)
+      expect(controls, `${target} must be unique`).toHaveLength(1)
+      expect(controls[0]!.element.tagName, `${target} must be a form control`).toMatch(/^(INPUT|SELECT|TEXTAREA)$/)
+    }
+  })
+})

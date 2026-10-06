@@ -57,3 +57,12 @@ The current CS-11 Jira AC7 and full implementation request supersede the older T
 C02 is still a team proposal. TC-CS11-02/03/04 use it provisionally and do not claim approval. Registration is now captured in the UI. TC-CS11-19 covers incomplete **submit** rejection; the user explicitly included CS-29, so explicit Save draft is now supported. The contradictory no-Save-draft wording is superseded, not quietly passed.
 
 The old TC-CS11-20/21/22 mock-route fixtures are replaced by actual H3→Express→Prisma tests: create/401/422/role/CSRF in 07/19/20; update/submit/private/404 in CS29-02/03 and CS27-02/03 plus service API tests; receipt/draft navigation in 08 and CS29-01/02 plus live browser. Current-row locks, rollback and concurrent duplicates are additionally proved in event-service integration tests. Old 405 edit expectations now use the shared guard's 409 state conflict; 403 ownership is retained. TC-CS11-21/22 have no new assertion with those exact IDs and are reported Not Executed with this mapping.
+
+## Accessibility regressions — 2026-10-07
+
+| Test Case ID | AC | Scenario | Steps and data | Expected result | Layer | Created |
+|---|---|---|---|---|---|---|
+| TC-CS11-23 | 1,2; accessibility | Mandatory-name and purpose cues preserve incomplete Draft workflow | Inspect required cues, then type purpose only | Both controls announce required-for-submit; purpose-only Save draft remains enabled | Component; real desktop/mobile browser | 2026-10-07 01:26 SGT |
+| TC-CS11-24 | 1; accessibility | Label targets remain unique and labelable | Inspect every explicit label and its target ID | Exactly one input/select/textarea for each label; section headings cannot steal a control ID | Component; real browser form completion | 2026-10-07 01:44 SGT |
+
+TC23 first failed in the dated 17:26:58Z RED record. TC24 first reached a valid assertion failure in 17:45:33Z RED after the cross-platform dependency setup was corrected; the preceding native-binding startup failure is diagnostic only. Existing test expectations have not been weakened.

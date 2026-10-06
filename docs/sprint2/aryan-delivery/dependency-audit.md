@@ -1,0 +1,7 @@
+# Dependency verification — 7 October 2026
+
+The initial frontend `npm audit --omit=dev` reported29 findings:1 low,5 moderate,14 high,9 critical. A targeted semver-compatible update of devalue, proxy-addr, shell-quote, source-map-js, serialize-javascript and the MCP SDK reduced it to23:5 moderate,11 high,7 critical. Playwright1.63.0 is pinned as a development dependency. No forced audit fix, framework downgrade or permission-policy bypass was used. Locked installs, typecheck, the full component/API suite and production build pass after the updates.
+
+This source dependency tree still contains inherited findings through simple-git/argv-parser, braces, decode-uri-component and node-forge, propagated into the Nuxt/shadcn build-tool tree. Available remediations include major changes and some advisory ranges have no compatible patched version in the existing parent constraints. A green functional CI run does not mean zero advisories. The deployed Nitro output has a smaller dependency manifest, which is recorded separately when checked; bundling is not a security exemption.
+
+Patched primary sources: [devalue advisory](https://github.com/advisories/GHSA-j22f-vq7h-c4qm), [proxy-addr advisory](https://github.com/advisories/GHSA-jqcg-44mw-7w3h), [shell-quote advisory](https://github.com/advisories/GHSA-pqg4-j6r4-53mv). [npm update](https://docs.npmjs.com/cli/v11/commands/npm-update/) respects package/dependency semver constraints; the actual final lock is the reproducible dependency selection.

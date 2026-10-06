@@ -55,6 +55,16 @@ export function bookingSelectionStatuses(canDecide: boolean, canSetAllStatuses =
   return canDecide ? ['CONFIRMED', 'BLOCKED', 'TENTATIVELY_HELD', 'UNAVAILABLE'] : ['TENTATIVELY_HELD']
 }
 
+/** Staff decision permission creates operational windows, not ordinary bookings. */
+export function venueStaffCreationState(editing: boolean) {
+  return {
+    initialStatus: 'BLOCKED',
+    statuses: editing
+      ? bookingSelectionStatuses(false, true).filter(status => status !== 'AVAILABLE')
+      : ['BLOCKED', 'UNAVAILABLE'],
+  }
+}
+
 export function coordinatorBookingEditState(booking: Pick<CalendarBooking, 'requestedById' | 'status'> | null | undefined, actorId: string | null | undefined) {
   const canEdit = Boolean(booking && actorId && booking.requestedById === actorId && ['TENTATIVELY_HELD', 'CANCELLED'].includes(booking.status))
   return {

@@ -225,6 +225,8 @@ node_modules/
 .nitro/
 .data/
 logs/
+frontend/test-results/
+frontend/playwright-report/
 
 # Local environment variants
 .env.*

@@ -25,6 +25,6 @@ export function findUserByEmail(email: string): DbUser | undefined {
   return MOCK_USERS.find(u => u.email.toLowerCase() === email.toLowerCase())
 }
 
-export function verifyPassword(user: DbUser, password: string): boolean {
+export function verifyMockPassword(user: DbUser, password: string): boolean {
   return user.passwordHash === password
 }

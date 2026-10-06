@@ -1,15 +1,19 @@
 name: Event request workflows
 on:
   pull_request:
-    paths: ['services/event-service/**', 'services/user-service/src/routes/internal.routes.js', 'frontend/**', 'tests/**', '.github/workflows/event-workflows.yml']
   push:
-    branches: [main]
-    paths: ['services/event-service/**', 'frontend/**', 'tests/**', '.github/workflows/event-workflows.yml']
+    branches: [main, feat/aryan-sprint2-event-workflows]
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: event-workflows-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   requests:
+    name: Request, venue and booking regression tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16
@@ -25,6 +29,38 @@ jobs:
       DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/event_db
       NUXT_AUTH_MODE: mock
       NUXT_SESSION_PASSWORD: isolated-ci-cookie-password-at-least-32-characters
+      TEST_RUN_PHASE: GREEN
+      TEST_RESULTS_JSON: ${{ runner.temp }}/frontend-results.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            services/event-service/package-lock.json
+            services/venue-service/package-lock.json
+            services/booking-service/package-lock.json
+            frontend/package-lock.json
+      - run: npm ci && npm run build && npx prisma migrate deploy && npm run test:coverage
+        working-directory: services/event-service
+      - run: npm ci && npm run test:coverage && npm run test:contract
+        working-directory: services/venue-service
+      - run: npm ci && npm run test:coverage && npm run test:contract
+        working-directory: services/booking-service
+      - run: npm ci && npm run typecheck && npm run test:report && npm run build
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: request-regression-evidence
+          path: |
+            ${{ runner.temp }}/frontend-results.json
+            tests/records/*/test-runs/*.md
+  live:
+    name: Live auth, browser workflows and restart persistence
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,10 +70,19 @@ jobs:
           cache-dependency-path: |
             services/event-service/package-lock.json
             frontend/package-lock.json
-      - run: npm ci && npm run build && npx prisma migrate deploy && npm test && npm run test:integration
-        working-directory: services/event-service
-      # Preserved CS-33 frontend tests import the real venue validator/config.
-      - run: npm ci
-        working-directory: services/venue-service
-      - run: npm ci && npm run typecheck && npm test && npm run build
-        working-directory: frontend
+      - name: Install locked browser and smoke dependencies
+        run: |
+          npm ci --prefix services/event-service
+          npm ci --prefix frontend
+          cd frontend
+          npx playwright install --with-deps chromium
+      - name: Verify a fresh isolated production stack
+        env:
+          CSE2E_PROJECT: csreview-aryan-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          CSE2E_WORK_DIR: ${{ runner.temp }}/event-review
+        run: bash scripts/run-event-review-ci.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-browser-evidence
+          path: ${{ runner.temp }}/event-review/evidence/

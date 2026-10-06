@@ -108,6 +108,37 @@ class BookingServiceContractTest(unittest.TestCase):
         self.assertEqual(status, 403)
         self.assertNotIn("id", body)
 
+    def test_venue_staff_can_create_operational_blocks_without_booking_create_permission(self):
+        for state in ["BLOCKED", "UNAVAILABLE"]:
+            with self.subTest(status=state):
+                payload = {**self.valid_payload(), "eventId": None, "status": state,
+                           "reason": "Maintenance window"}
+                key = f"staff-operational-{state}"
+                status, block = self.request("POST", "/venue-bookings", payload,
+                    role="VENUE_STAFF", user_id="staff-operations", key=key)
+                self.assertEqual(status, 201)
+                self.assertEqual(block["status"], state)
+                replay_status, replay = self.request("POST", "/venue-bookings", payload,
+                    role="VENUE_STAFF", user_id="staff-operations", key=key)
+                self.assertEqual(replay_status, 200)
+                self.assertEqual(replay["id"], block["id"])
+
+    def test_staff_decision_permission_does_not_create_ordinary_bookings_or_history(self):
+        _, before = self.request("GET", "/venue-bookings/history?venueId=venue-permission",
+                                 role="VENUE_STAFF", user_id="staff-permission")
+        for state in [None, "AVAILABLE", "TENTATIVELY_HELD", "CONFIRMED", "REJECTED", "CANCELLED"]:
+            with self.subTest(status=state):
+                payload = {**self.valid_payload(), "venueId": "venue-permission"}
+                if state is not None:
+                    payload["status"] = state
+                status, result = self.request("POST", "/venue-bookings", payload,
+                    role="VENUE_STAFF", user_id="staff-permission", key=f"staff-denied-{state}")
+                self.assertEqual(status, 403)
+                self.assertNotIn("id", result)
+        _, after = self.request("GET", "/venue-bookings/history?venueId=venue-permission",
+                                role="VENUE_STAFF", user_id="staff-permission")
+        self.assertEqual(after["items"], before["items"])
+
     def test_submission_without_reason_returns_field_level_validation(self):
         payload = self.valid_payload()
         del payload["reason"]

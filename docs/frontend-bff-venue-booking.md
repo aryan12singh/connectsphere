@@ -42,9 +42,15 @@ and booking-service contract retains the `/venue-bookings/*` path.
 
 Every route requires a Nuxt session with a server-side token. Kong and the
 owning service remain responsible for `venues.view`, `venues.manage`, and
-`venue_bookings.create`/`venue_bookings.decide` authorization. Service HTTP status codes and
+`venue_bookings.create`/`venue_bookings.decide` authorization. Service error HTTP status codes and
 error bodies are preserved by the existing `backendFetch` adapter; a missing
 or unreachable Kong response becomes the existing BFF 401/503 behavior.
 
 The BFF is transport-only: validation, ownership, idempotency, status rules,
 and database writes stay in the venue and booking services.
+
+## Creation permission regression repair — 7 October 2026
+
+Ordinary `POST /venue-bookings` requires `venue_bookings.create`. Venue Staff may instead create an explicit BLOCKED or UNAVAILABLE operational window with `venue_bookings.decide`; that exception does not grant ordinary creation. Their calendar starts such a new window at BLOCKED and offers only those two statuses. Existing staff booking decisions/edits and Coordinator tentative/cancelled creation keep the prior status rules. The original create-permission regression test is preserved, with positive operational-window/replay checks and denied-create/no-history checks added. No schema, response shape or shared auth permission list changed.
+
+The existing booking BFF returns200 on successful creation (it forwards the body through backendFetch). Direct booking-service creation remains201, with200 on idempotent replay. The live browser regression checks this existing BFF behavior and then reads the persisted ID/status and unchanged history after denied writes; it does not change the transport contract.

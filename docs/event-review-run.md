@@ -103,3 +103,25 @@ docker compose -f "$cs_review_compose" up -d postgres keycloak user-service auth
 ```
 
 Clean-checkout recipe and scoped CI are supplied; teammate execution and remote CI on the eventual merge commit remain review gates. A passing build does not establish product acceptance or the full DoD.
+
+## Automated desktop/mobile and CI review — 7 October 2026
+
+The feature branch now has a push workflow as well as PR/main checks. The regression job measures event/venue/booking coverage and executes frontend typecheck, dated Vitest records and a production build. The live job builds a fresh isolated PostgreSQL16/Keycloak/Kong stack and runs actual BFF workflows, desktop and mobile Chromium, a real service outage and retry, then a restart check without reseeding. It uploads machine-readable results, HTML/failure screenshots, logs and dated story records. Passing feature CI still needs a new green run on the eventual merge commit under the team's DoD.
+
+On a clean checkout with **native Node22**, Docker, Python3, Bash and curl, install locked dependencies and Chromium, then invoke the same runner used by CI:
+
+```bash
+npm ci --prefix services/event-service
+npm ci --prefix frontend
+(cd frontend && npx playwright install --with-deps chromium)
+cs_browser_stamp="$(date -u +%Y%m%d%H%M%S)"
+CSE2E_PROJECT="csreview-aryan-ci-$cs_browser_stamp" \
+CSE2E_WORK_DIR="$PWD/../cs-browser-$cs_browser_stamp" \
+CSE2E_PORT_BASE=43000 bash scripts/run-event-review-ci.sh
+```
+
+Use port base43000 only when its related ports are free. Output must be a new absolute directory outside the checkout. The script refuses an existing directory/project/config and retains the project volume when it stops the stack. It must not be pointed at an existing review database. The frontend is in live mode throughout; fixture authentication is limited to the separate component/API regression job. The browser harness honours the existing gateway's ten-login-per-minute limit with bounded authentication setup backoff; Playwright retries and skips are disabled. All browser cases use real server sessions and actual service writes, including setup calls.
+
+To test an **already prepared and built** stack, run `npm run test:e2e:report` from frontend with FRONTEND_BASE, CSE2E_COMPOSE_FILE and a new CSE2E_EVIDENCE_DIR. The outage test only stops/restarts event-service in a compose project matching `csreview-aryan-(overnight|ci)-...`. Dated browser records supplement the main story specs; they do not imply independent manual acceptance. Chromium screenshots and JSON/HTML reports omit traces/video so sealed cookies and bearer headers are not persisted.
+
+The command wrapper checks and records source revision, working-tree digest, Node version and start time. CI's fresh Ubuntu checkout and Node22 execution are the reproducibility check; local browser development on macOS Node26 is recorded separately. [Playwright CI documentation](https://playwright.dev/docs/ci) describes the supported browser dependency installation.

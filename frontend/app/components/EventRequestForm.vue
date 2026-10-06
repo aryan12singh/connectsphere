@@ -19,12 +19,13 @@ const model = defineModel<RequestFormState>({ required: true })
                 <FieldGroup class="gap-5">
                   <Field class="gap-2">
                     <FieldLabel for="event-name">
-                      Event name
+                      Event name <span aria-hidden="true">*</span>
                     </FieldLabel>
                     <Input
                       id="event-name"
                       v-model="model.eventName"
                       name="eventName"
+                      aria-required="true"
                       :aria-invalid="!!fieldErrors.eventName"
                       :aria-describedby="fieldErrors.eventName ? 'error-eventName' : undefined"
                       type="text"
@@ -35,12 +36,13 @@ const model = defineModel<RequestFormState>({ required: true })
 
                   <Field class="gap-2">
                     <FieldLabel for="purpose">
-                      Purpose
+                      Purpose <span aria-hidden="true">*</span>
                     </FieldLabel>
                     <Input
                       id="purpose"
                       v-model="model.purpose"
                       name="purpose"
+                      aria-required="true"
                       :aria-invalid="!!fieldErrors.purpose"
                       :aria-describedby="fieldErrors.purpose ? 'error-purpose' : undefined"
                       type="text"
@@ -159,8 +161,8 @@ const model = defineModel<RequestFormState>({ required: true })
             </section>
 
             <Field class="gap-2"><FieldLabel for="end-date">End date (leave empty for the proposed date)</FieldLabel><Input id="end-date" v-model="model.endDate" name="endDate" type="date" :aria-invalid="!!fieldErrors.endDate" aria-describedby="error-endDate" /></Field>
-            <section aria-labelledby="venue-requirements" class="grid gap-5">
-              <h2 id="venue-requirements" class="text-xl font-semibold">
+            <section aria-labelledby="venue-requirements-heading" class="grid gap-5">
+              <h2 id="venue-requirements-heading" class="text-xl font-semibold">
                     Venue requirements
               </h2>
                 <FieldGroup class="gap-5">

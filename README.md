@@ -6,6 +6,7 @@ Event Planning and Venue Booking System for ConnectSphere Event Services. IS212 
 - [Role and Event Access Matrix](docs/access-matrix.md) — which roles may view or change each protected resource, and known authorisation findings.
 - [Definition of Done](docs/DEFINITION_OF_DONE.md) — criteria every user story must satisfy before it is accepted.
 - [How to run and test](docs/how-to-run-and-test.md) — start the system from a clean clone and the manual test cases.
+- [Aryan Sprint 2 delivery and finish plan](docs/sprint2/aryan-delivery/README.md) — story progress, evidence, review gates and prepared PR description.
 - [Isolated Sprint 2 review](docs/event-review-run.md) — Node 22, a fresh PostgreSQL 16 project, configurable ports and real live-auth/restart checks.
 - [Auth setup](docs/auth-setup.md) — how login, roles/permissions and the tech support admin API work.
 - [Development log](docs/development-log/dev-log.md) — decisions and progress, newest first.

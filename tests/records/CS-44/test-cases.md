@@ -8,3 +8,7 @@ Blue section. Written from the current Jira snapshot and implementation instruct
 | TC-CS44-02 | 1,3,4,5,6 | Transactional authorised persistent activity | Migrated PostgreSQL and owner/role/org fixtures | Run HTTP workflow; induce transaction failure; retry; query both entity scopes | Draft/Submitted/Returned/Planning/Completed/Cancelled fixtures | Real actions logged once; failure logs none; private/wrong role denied; Event link distinct; closed history retained; secrets excluded | Real-route API + PostgreSQL + live auth | 2026-10-06 |
 
 TCs with a manual or real-route layer are not proved solely by a component execution record. API evidence is in the external test-results JSON and logs; native-browser evidence has its own dated record.
+
+## Keyboard tab verification — 2026-10-07
+
+TC-CS44-03: as the owning Organiser on a saved Draft, type an unsaved purpose; focus Details; press ArrowRight and verify History is selected and focused; press ArrowLeft and verify Details focus and the same unsaved purpose. Home/End are also supported. Each tab has a unique panel relationship and only the selected tab is in the normal tab order. This case is automated in `frontend/e2e/CS-44.spec.ts` for desktop and mobile; the unchanged main spec remains `tests/specs/CS-44.spec.ts`. The real desktop run first failed at focus transfer at 2026-10-07 01:33 SGT before the production fix. This is agent-run evidence, not independent human acceptance.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bookingDraftForCalendarSlot, bookingDraftForSlot, bookingDraftState, bookingPopoverOffset, bookingSelectionStatuses, calendarSelectionFromDrag, calendarWallTimeToIso, canCreateBlock } from '../../frontend/app/components/venue/booking-state'
+import { bookingDraftForCalendarSlot, bookingDraftForSlot, bookingDraftState, bookingPopoverOffset, bookingSelectionStatuses, venueStaffCreationState, calendarSelectionFromDrag, calendarWallTimeToIso, canCreateBlock } from '../../frontend/app/components/venue/booking-state'
 
 const existing = [{ id: 'block-1', venueId: 'venue-1', title: 'Maintenance', status: 'BLOCKED', startAt: '2026-12-22T09:00:00Z', endAt: '2026-12-22T11:00:00Z' }]
 const block = (overrides = {}) => ({ venueId: 'venue-1', title: 'Maintenance', reason: 'Electrical work', timeZone: 'Asia/Singapore', status: 'BLOCKED', startAt: '2026-12-22T09:00:00Z', endAt: '2026-12-22T10:00:00Z', ...overrides })
@@ -27,5 +27,13 @@ describe('CS-35 — client-side booking and block behaviour', () => {
   it('TC-CS35-07 rejects equal times and accepts a one-minute block', () => {
     expect(bookingDraftState(block({ startAt: '2026-12-22T10:00:00Z', endAt: '2026-12-22T10:00:00Z' }), [])).toMatchObject({ canSubmit: false, errors: { endAt: 'End time must be after start time.' } })
     expect(bookingDraftState(block({ startAt: '2026-12-22T10:00:00Z', endAt: '2026-12-22T10:01:00Z' }), [])).toMatchObject({ canSubmit: true })
+  })
+})
+
+// 2026-10-07: ordinary creation requires create permission; CS-35 staff blocks remain allowed.
+describe('CS-35 — staff creation follows shared API permissions', () => {
+  it('TC-CS35-08 offers only operational states for a new staff window and preserves existing edit states', () => {
+    expect(venueStaffCreationState(false)).toEqual({ initialStatus: 'BLOCKED', statuses: ['BLOCKED', 'UNAVAILABLE'] })
+    expect(venueStaffCreationState(true).statuses).toEqual(bookingSelectionStatuses(false, true).filter(status => status !== 'AVAILABLE'))
   })
 })

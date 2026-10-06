@@ -1,0 +1,15 @@
+# CS-35 — GREEN-attempt-failed browser execution
+
+Started UTC: 2026-10-06T17:56:45.963Z
+
+Runner: Codex automated Playwright, real production Nuxt/BFF/Kong/Keycloak/auth/PostgreSQL; synthetic checked-in accounts only. This is not independent human review or PO acceptance. Authentication setup honours gateway429 backoff; Playwright reruns are disabled.
+
+Source: 8d269d4a7bdbf0944c8ea1bf235c0cd52a36a40a
+
+Full run: 0 passed, 1 unexpected, 0 flaky, 0 skipped.
+
+| Browser case | Project | Result | Duration ms | Reruns |
+|---|---|---|---|---|
+| Booking regression: staff can create operational windows in the UI but decision permission cannot create an ordinary booking | desktop | FAILED | 1321 | 0 |
+
+Machine-readable results and HTML/failure screenshots are retained with the run's evidence. The normal, failure and boundary expectations in the named browser cases remain explicit. Earlier failed attempts are retained. Main story specifications remain in tests/specs and tests/records/CS-35/test-cases.md.

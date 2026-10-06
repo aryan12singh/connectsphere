@@ -1,4 +1,4 @@
-import { findUserByEmail, verifyPassword } from '../utils/mockUserDb'
+import { findUserByEmail, verifyMockPassword } from '../utils/mockUserDb'
 import { MOCK_ROLE_PERMISSIONS } from '../utils/mockPermissions'
 import type { BackendUser } from '../utils/backend'
 
@@ -44,7 +44,7 @@ async function loginWithAuthService(event: Parameters<typeof backendFetch>[0], e
 // Mock login against mockUserDb.
 function loginWithMock(email: string, password: string): LoginResult {
   const user = findUserByEmail(email)
-  if (!user || !verifyPassword(user, password))
+  if (!user || !verifyMockPassword(user, password))
     throw createError({ statusCode: 401, statusMessage: 'Invalid credentials' })
   return {
     token: 'mock-token-123',

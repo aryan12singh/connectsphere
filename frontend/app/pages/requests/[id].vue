@@ -14,7 +14,14 @@ const canEdit=computed(()=>loaded.value?.organiserId===user.value?.id && ['DRAFT
 const mode=computed(()=>canEdit.value&&loaded.value?.status==='DRAFT'?'draft':canEdit.value&&editMode.value?'edit':'readonly')
 const form=ref(loaded.value?recordToForm(loaded.value):emptyRequestForm()),clean=ref(JSON.stringify(form.value))
 const dirty=computed(()=>JSON.stringify(form.value)!==clean.value);useUnsavedRequest(dirty)
-const intent=operationIntent(),tab=ref('details'),historyRevision=ref(0)
+const intent=operationIntent(),tab=ref<'details'|'history'>('details'),historyRevision=ref(0)
+const detailsTab=ref<HTMLButtonElement|null>(null),historyTab=ref<HTMLButtonElement|null>(null)
+function navigateTabs(event:KeyboardEvent){
+ if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return
+ event.preventDefault()
+ tab.value=event.key==='Home'?'details':event.key==='End'?'history':tab.value==='details'?'history':'details'
+ ;(tab.value==='details'?detailsTab.value:historyTab.value)?.focus()
+}
 async function save(submit:boolean){
  if(isSubmitting.value||!canEdit.value)return
  isSubmitting.value=true;submitError.value='';fieldErrors.value={};savedMessage.value=''
@@ -40,11 +47,14 @@ useHead({title:'Event request | ConnectSphere'})
    <p v-if="loaded.eventId" class="mt-2 text-sm">Event ID: <NuxtLink :to="`/events/${loaded.eventId}`" class="underline">{{ loaded.eventId }} · Event history</NuxtLink></p>
    <p v-if="loaded.awaitingAssignment" role="status" class="mt-2">Awaiting assignment</p>
    <p v-if="savedMessage" role="status" class="mt-3">{{ savedMessage }}</p>
-   <div role="tablist" aria-label="Request details and history" class="mt-4 flex gap-5">
-    <button role="tab" :aria-selected="tab==='details'" @click="tab='details'">Details</button><button role="tab" :aria-selected="tab==='history'" @click="tab='history'">History</button>
+   <div role="tablist" aria-label="Request details and history" class="mt-4 flex gap-5" @keydown="navigateTabs">
+    <button id="request-details-tab" ref="detailsTab" type="button" role="tab" aria-controls="request-details-panel" :tabindex="tab==='details'?0:-1" :aria-selected="tab==='details'" @click="tab='details'">Details</button>
+    <button id="request-history-tab" ref="historyTab" type="button" role="tab" aria-controls="request-history-panel" :tabindex="tab==='history'?0:-1" :aria-selected="tab==='history'" @click="tab='history'">History</button>
    </div>
-   <RequestActivityHistory v-if="tab==='history'" :key="historyRevision" :request-id="id" />
-   <RequestFormPage v-else v-model="form" :title="loaded.eventName || 'Untitled draft'" :status-label="loaded.statusLabel ?? REQUEST_STATUS_LABELS[loaded.status] ?? loaded.status" :banner="coordinator as any" :disabled="mode==='readonly'" :is-submitting="isSubmitting" :submit-error="submitError" :field-errors="fieldErrors" :mode="mode" :can-edit="canEdit" :return-comments="loaded.decisionReason ?? ''" @save="save(false)" @submit="save(true)" @edit="editMode=true" />
+   <RequestActivityHistory v-if="tab==='history'" id="request-history-panel" aria-labelledby="request-history-tab" :key="historyRevision" :request-id="id" />
+   <div v-else id="request-details-panel" role="tabpanel" aria-labelledby="request-details-tab">
+    <RequestFormPage v-model="form" :title="loaded.eventName || 'Untitled draft'" :status-label="loaded.statusLabel ?? REQUEST_STATUS_LABELS[loaded.status] ?? loaded.status" :banner="coordinator as any" :disabled="mode==='readonly'" :is-submitting="isSubmitting" :submit-error="submitError" :field-errors="fieldErrors" :mode="mode" :can-edit="canEdit" :return-comments="loaded.decisionReason ?? ''" @save="save(false)" @submit="save(true)" @edit="editMode=true" />
+   </div>
   </template>
   <p v-else class="mt-6">Loading request…</p>
  </main>
