@@ -1,0 +1,159 @@
+{
+  "checkedAt": "2026-10-06 20:08:24 UTC",
+  "query": "project = CS AND sprint = 4 ORDER BY key ASC",
+  "complete": true,
+  "sprintId": 4,
+  "total": 24,
+  "counts": {
+    "In Progress": 10,
+    "To Do": 10,
+    "Done": 4
+  },
+  "unassigned": 0,
+  "issues": [
+    {
+      "key": "CS-10",
+      "summary": "Secure Login and Role-Based Navigation",
+      "assignee": "Marc Ang",
+      "status": "In Progress"
+    },
+    {
+      "key": "CS-11",
+      "summary": "Submit and View an Event Request",
+      "assignee": "ARYAN SINGH _",
+      "status": "In Progress"
+    },
+    {
+      "key": "CS-12",
+      "summary": "Review and Approve an Assigned Event Request",
+      "assignee": "Javier Seah Ping Xuan",
+      "status": "To Do"
+    },
+    {
+      "key": "CS-15",
+      "summary": "Configure Continuous Integration and Build Checks",
+      "assignee": "Marc Ang",
+      "status": "To Do"
+    },
+    {
+      "key": "CS-17",
+      "summary": "Define the Initial Data Model, Migrations and Seed Data",
+      "assignee": "Javier Seah Ping Xuan",
+      "status": "In Progress"
+    },
+    {
+      "key": "CS-22",
+      "summary": "Define the API Contract for the First Services",
+      "assignee": "Javier Seah Ping Xuan",
+      "status": "In Progress"
+    },
+    {
+      "key": "CS-26",
+      "summary": "Register Accounts and Enforce Role-and-Event Permissions",
+      "assignee": "Marc Ang",
+      "status": "To Do"
+    },
+    {
+      "key": "CS-27",
+      "summary": "Validate and Resubmit Returned Event Requests",
+      "assignee": "ARYAN SINGH _",
+      "status": "In Progress"
+    },
+    {
+      "key": "CS-28",
+      "summary": "Reject or Return an Event Request for Amendment",
+      "assignee": "Javier Seah Ping Xuan",
+      "status": "To Do"
+    },
+    {
+      "key": "CS-29",
+      "summary": "Save and Resume a Draft Event Request",
+      "assignee": "ARYAN SINGH _",
+      "status": "In Progress"
+    },
+    {
+      "key": "CS-30",
+      "summary": "Automatically Assign and Reassign the Event Coordinator",
+      "assignee": "Javier Seah Ping Xuan",
+      "status": "In Progress"
+    },
+    {
+      "key": "CS-32",
+      "summary": "Maintain Event Status and Transition Rules",
+      "assignee": "Javier Seah Ping Xuan",
+      "status": "To Do"
+    },
+    {
+      "key": "CS-33",
+      "summary": "Maintain Venue Catalogue and Operating Information",
+      "assignee": "Alan Sebastian Bun",
+      "status": "Done"
+    },
+    {
+      "key": "CS-34",
+      "summary": "View Venue Availability Calendar",
+      "assignee": "Alan Sebastian Bun",
+      "status": "Done"
+    },
+    {
+      "key": "CS-35",
+      "summary": "Record Operational Venue Unavailability",
+      "assignee": "Alan Sebastian Bun",
+      "status": "Done"
+    },
+    {
+      "key": "CS-44",
+      "summary": "View Event Activity and Change History",
+      "assignee": "ARYAN SINGH _",
+      "status": "In Progress"
+    },
+    {
+      "key": "CS-67",
+      "summary": "Merge the Frontend and Backend Branches into Main",
+      "assignee": "ARYAN SINGH _",
+      "status": "In Progress"
+    },
+    {
+      "key": "CS-68",
+      "summary": "Get the Existing Test Suite Green",
+      "assignee": "Alan Sebastian Bun",
+      "status": "To Do"
+    },
+    {
+      "key": "CS-69",
+      "summary": "Align Architecture Docs and C4 with Current Decisions",
+      "assignee": "Alan Sebastian Bun",
+      "status": "To Do"
+    },
+    {
+      "key": "CS-70",
+      "summary": "Give Both Instructors Repository and Jira Access",
+      "assignee": "ARYAN SINGH _",
+      "status": "In Progress"
+    },
+    {
+      "key": "CS-71",
+      "summary": "Seed data for the different databases",
+      "assignee": "VIGNESH SUNDARARAJ _",
+      "status": "Done"
+    },
+    {
+      "key": "CS-72",
+      "summary": "Update C4 Model based on changes learnt in Consultation",
+      "assignee": "Marc Ang",
+      "status": "To Do"
+    },
+    {
+      "key": "CS-73",
+      "summary": "Expand the CI pipeline",
+      "assignee": "Marc Ang",
+      "status": "To Do"
+    },
+    {
+      "key": "CS-74",
+      "summary": "Extension of DB scheme for Venue Epic",
+      "assignee": "Javier Seah Ping Xuan",
+      "status": "To Do"
+    }
+  ]
+}

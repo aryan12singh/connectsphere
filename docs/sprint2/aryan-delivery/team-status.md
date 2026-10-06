@@ -1,6 +1,6 @@
 # Team Sprint 2 status snapshot
 
-Complete live Jira query at **2026-10-06 19:16:15 UTC**: **24 issues**, **4 Done**, **10 In Progress**, **10 To Do**, **zero unassigned**. These are Jira states, not a fresh verification of every teammate's acceptance criteria.
+Complete live Jira query at **2026-10-06 20:08:24 UTC**: **24 issues**, **4 Done**, **10 In Progress**, **10 To Do**, **zero unassigned**. These are Jira states, not a fresh verification of every teammate's acceptance criteria.
 
 | Owner | Issues and observed states | Integration follow-up |
 |---|---|---|

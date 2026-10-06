@@ -1,0 +1,100 @@
+{
+  "testedRevision": "3c97f126663006a159241ce107de490da49c118c",
+  "branch": "feat/aryan-sprint2-event-workflows",
+  "run": {
+    "id": 37521392740,
+    "url": "https://github.com/aryan12singh/connectsphere/actions/runs/37521392740",
+    "conclusion": "success",
+    "completedUTC": "2026-10-06T19:56:01Z",
+    "jobs": [
+      {
+        "name": "Request, venue and booking regression tests",
+        "conclusion": "success"
+      },
+      {
+        "name": "Live auth, browser workflows and restart persistence",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "browserSource": {
+    "clean": true,
+    "node": "v22.23.3",
+    "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "results": {
+    "frontend": {
+      "passed": 111,
+      "total": 111,
+      "failed": 0,
+      "pending": 0,
+      "typecheck": "pass",
+      "build": "pass"
+    },
+    "event": {
+      "passed": 129,
+      "total": 129,
+      "unitDomain": 110,
+      "realPostgres": 19,
+      "coverage": {
+        "lines": 98.93,
+        "branches": 93.15,
+        "functions": 96.31
+      }
+    },
+    "venue": {
+      "passed": 52,
+      "total": 52,
+      "unit": 42,
+      "http": 10,
+      "coverage": {
+        "lines": 82.42,
+        "branches": 90.08,
+        "functions": 78.67
+      }
+    },
+    "booking": {
+      "passed": 48,
+      "total": 48,
+      "unit": 34,
+      "http": 14,
+      "coverage": {
+        "lines": 79.57,
+        "branches": 90.64,
+        "functions": 78.29
+      }
+    },
+    "browser": {
+      "passed": 22,
+      "desktop": 11,
+      "mobile": 11,
+      "unexpected": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "reruns": 0,
+      "startedUTC": "2026-10-06T19:49:00.409Z",
+      "durationMs": 312347.011
+    },
+    "liveSmoke": {
+      "passed": 11,
+      "total": 11
+    },
+    "restartSmoke": {
+      "passed": 1,
+      "total": 1,
+      "noReseed": true
+    }
+  },
+  "artifacts": [
+    "request-regression-evidence",
+    "live-browser-evidence"
+  ],
+  "acceptance": {
+    "agentRun": true,
+    "independentHumanReview": false,
+    "poAcceptance": false,
+    "mainMerge": false
+  },
+  "coverageScope": "Node aggregate includes test files and startup-imported routes; Python HTTP coverage is separate; no frontend percentage claimed.",
+  "note": "Actual results from this successful source run; earlier failures remain retained. Final branch publication is separately verified."
+}

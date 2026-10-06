@@ -15,7 +15,7 @@ The live Sprint 2 query found six issues assigned to Aryan and **zero unassigned
 - [Week 7 notes for the next planning meeting](next-sprint-notes.md)
 - [Prepared PR description](PR_DESCRIPTION.md)
 - [Reproducible clean-stack commands](../../event-review-run.md)
-- [Dated Jira snapshot](evidence/jira-20261007-0316.json)
+- [Dated Jira snapshot](evidence/jira-20261007-0408.json)
 
 Read the code, obtain an independent review/manual record and resolve the documented acceptance decisions, then open the PR to main with the prepared description. The PR, merge and PO acceptance remain team steps; none was fabricated by this delivery. The original checkout and main were preserved. Week 7 changes were kept outside the running Sprint 2 commitment.
 

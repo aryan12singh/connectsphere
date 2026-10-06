@@ -1,8 +1,14 @@
+# 2026-10-07 — Complete application source verified in CI
+
+Application revision `d70b1cefc9418e4a44e1588481fa28ab76ba95a4` passes [both CI jobs](https://github.com/aryan12singh/connectsphere/actions/runs/37522678737): frontend 111/111 with typecheck/build, Event 131/131 (112 unit/domain/harness + 19 real PG), Venue 52/52, Booking 48/48, real desktop/mobile browser 22/22 with no skips/reruns, live 11/11 including permission removal/restoration and no-reseed restart 1/1. Canonical create/view/review guards and the standing 10 KB JSON limit/safe parser errors follow meaningful RED tests. [The delivery dossier](../sprint2/aryan-delivery/README.md) keeps source identities, historical failures and dated execution records. Final publication changes reports/records only and obtains its own branch checks.
+
+The six Aryan issues stay In Progress pending their actual acceptance/evidence gates; no unassigned Sprint 2 issue was found by complete queries. Main/original checkout remain preserved. Independent review/manual cases, Aryan's understanding, PR/main CI/PO and confirmed instructor access still require evidence; Week 7 stays future scope.
+
 # 2026-10-07 — Trusted permissions and CI setup repairs
 
 Review caught event-service ignoring the trusted auth-service capabilities. New real-PG/BFF RED cases demonstrate permission removal and denied durable replay. The fix consumes the existing create/view/review catalog before record/business guards, with missing/malformed data failing closed. It leaves authentication defaults and broader CS-26 administration/secondary-role union with its owner. Local frontend111, Event129 and live11 pass; the live proof temporarily removes/restores three synthetic grants under validated isolated project/port guards and confirms unchanged workflow counts. See the [permission evidence](../sprint2/aryan-delivery/permission-hardening.md).
 
-Earlier publication runs also exposed masked Express5 bind errors, fixed-port HTTP setup and post-browser429. Startup/error handling, OS-assigned ports and bounded authentication-only backoff repair those cases, without workflow/CI reruns or removed assertions. [Run37515969069](https://github.com/aryan12singh/connectsphere/actions/runs/37515969069) is the successful pre-permission source result; the next source must establish its own remote evidence. Previous dated records and failures are retained.
+Earlier publication runs also exposed masked Express5 bind errors, fixed-port HTTP setup and post-browser429. Startup/error handling, OS-assigned ports and bounded authentication-only backoff repair those cases, without workflow/CI reruns or removed assertions. [Run37515969069](https://github.com/aryan12singh/connectsphere/actions/runs/37515969069) is the successful pre-permission source result; the later complete source is verified by run 37522678737 above. Previous dated records and failures are retained.
 
 # 2026-10-07 — Green remote CI and complete branch evidence
 
