@@ -1,624 +1,2061 @@
-openapi: 3.0.3
-info:
-  title: ConnectSphere event-service
-  version: 0.2.0
-  description: |
-    Event requests, events, Coordinator assignment, decisions and activity history
-    (event_db). **Sprint 2 contract** — agreed so frontend and backend can build in
-    parallel. Routes marked *(implemented by CS-xx)* are built by that story.
-
-    Shared rules (errors, ids, times, idempotency, concurrency, identity headers) are in
-    `docs/api-contract.md`. In short: ISO 8601 times with an offset, UUID ids, errors as
-    `{ "error": { "code", "message", "details?" } }`, `409` = state conflict or stale
-    `version`, `403` = wrong person (checked before state).
-
-    ### Who may do what
-    | Action | Who |
-    |---|---|
-    | create / edit / submit / resubmit | the owning **Organiser** only |
-    | read a request | owner; Organisers of the **same organisation** (read-only); its current **Coordinator**; any Coordinator while it is unassigned (`SUBMITTED`) |
-    | approve / reject / return / reassign | the **current Coordinator** only |
-    | review queue | Coordinators |
-
-    Role *and* relationship are both checked. A Coordinator who was reassigned away
-    loses read and write access immediately.
-
-    ### Status flow (full table is encoded once, in the transition guard — CS-32)
-    `DRAFT → SUBMITTED → APPROVED` (Event created in **Planning**),
-    `SUBMITTED → RETURNED_FOR_AMENDMENT → SUBMITTED`,
-    `SUBMITTED | APPROVED(Planning) → REJECTED`. Confirm / cancel / complete act on the
-    **Event** and arrive in later stories (CS-31, CS-54); the guard already knows them.
-servers:
-  - url: http://localhost:8000
-    description: Through Kong (use this)
-  - url: http://localhost:3003
-    description: Direct, local debugging only (no gateway)
-
-security:
-  - bearerAuth: []
-
-tags:
-  - name: Requests
-    description: Organiser's event requests
-  - name: Review
-    description: Coordinator's queue and decisions
-  - name: Events
-    description: Events created from approved requests
-
-paths:
-  /event-requests:
-    post:
-      tags: [Requests]
-      operationId: createEventRequest
-      summary: Create a draft request (Organiser)
-      description: Saves a **Draft**. A Draft may be incomplete. Submit with `/submit`. *(CS-11)*
-      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/EventRequestInput' }
-            example:
-              eventName: Nexus Labs Annual Summit
-              purpose: Customer summit
-              description: Keynotes, breakouts and a partner expo.
-              startAt: '2026-11-20T09:00:00+08:00'
-              endAt: '2026-11-20T18:00:00+08:00'
-              timeZone: Asia/Singapore
-              expectedAttendance: 450
-              minimumCapacity: 400
-              preferredLayout: THEATRE
-              venueType: Convention centre
-              accessibilityNeeds: [step_free_access, hearing_loop]
-              equipmentNeeds: [projector, microphones]
-      responses:
-        '201':
-          description: Draft created
-          content: { application/json: { schema: { $ref: '#/components/schemas/EventRequest' } } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { $ref: '#/components/responses/Validation' }
-    get:
-      tags: [Requests]
-      operationId: listMyEventRequests
-      summary: List my requests (Organiser)
-      description: |
-        `scope=own` (default) returns requests I own. `scope=organisation` also returns
-        those owned by other Organisers in my organisation (read-only). Coordinators use
-        `/event-requests/review-queue` instead and get 403 here. *(CS-11)*
-      parameters:
-        - { name: scope, in: query, schema: { type: string, enum: [own, organisation], default: own } }
-        - { name: status, in: query, description: Repeat to filter by several, schema: { type: array, items: { $ref: '#/components/schemas/RequestStatus' } }, style: form, explode: true }
-        - { $ref: '#/components/parameters/Page' }
-        - { $ref: '#/components/parameters/PageSize' }
-      responses:
-        '200':
-          description: A page of requests, newest first
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Page'
-                  - type: object
-                    properties:
-                      items: { type: array, items: { $ref: '#/components/schemas/EventRequest' } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
-  /event-requests/review-queue:
-    get:
-      tags: [Review]
-      operationId: reviewQueue
-      summary: Coordinator's review queue
-      description: |
-        Requests assigned to me, plus **unassigned** submitted requests (so nothing is
-        lost when no Coordinator existed at submission). Default filter is `SUBMITTED`;
-        newest submission first, so a fresh submission is at the top. Each item includes
-        the organiser's name and company. Non-Coordinators get 403. *(CS-30)*
-      parameters:
-        - { name: status, in: query, schema: { type: array, items: { $ref: '#/components/schemas/RequestStatus' } }, style: form, explode: true }
-        - { name: assigned, in: query, description: '`me` = only mine, `unassigned` = only awaiting assignment, omitted = both', schema: { type: string, enum: [me, unassigned] } }
-        - { $ref: '#/components/parameters/Page' }
-        - { $ref: '#/components/parameters/PageSize' }
-      responses:
-        '200':
-          description: A page of queue items
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Page'
-                  - type: object
-                    properties:
-                      items: { type: array, items: { $ref: '#/components/schemas/QueueItem' } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
-  /event-requests/{id}:
-    parameters: [{ $ref: '#/components/parameters/Id' }]
-    get:
-      tags: [Requests]
-      operationId: getEventRequest
-      summary: Read one request
-      description: |
-        Returns the full request with its current Coordinator, linked Event (if approved)
-        and `allowedActions` for **this caller** (drive buttons from it, not from the role).
-        403 if the request exists but I may not see it; 404 if the id does not exist.
-      responses:
-        '200':
-          description: The request
-          content: { application/json: { schema: { $ref: '#/components/schemas/EventRequest' } } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-    put:
-      tags: [Requests]
-      operationId: updateEventRequest
-      summary: Edit a request (owner only)
-      description: |
-        Allowed while `DRAFT` or `RETURNED_FOR_AMENDMENT`. A submitted or closed request
-        is read-only → 409 `INVALID_TRANSITION`. Send the `version` you last read. *(CS-11)*
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-                - $ref: '#/components/schemas/EventRequestInput'
-                - type: object
-                  required: [version]
-                  properties: { version: { type: integer, minimum: 1 } }
-      responses:
-        '200':
-          description: Updated request
-          content: { application/json: { schema: { $ref: '#/components/schemas/EventRequest' } } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Validation' }
-
-  /event-requests/{id}/submit:
-    parameters: [{ $ref: '#/components/parameters/Id' }]
-    post:
-      tags: [Requests]
-      operationId: submitEventRequest
-      summary: Submit a draft (owner only)
-      description: |
-        `DRAFT → SUBMITTED`. The request must be complete (name, start/end with offset,
-        time zone, expected attendance, venue type) → else 422. The system then assigns
-        the Coordinator with the **fewest active requests** (ties: the most experienced, meaning the
-        longest-serving Coordinator by account `createdAt`, then lowest id). *Active* means a
-        request currently assigned to that Coordinator that is `SUBMITTED`, `RETURNED_FOR_AMENDMENT`,
-        or `APPROVED` with its Event in Planning or Confirmed. **If no Coordinator exists the submit still
-        succeeds** and the response has `awaitingAssignment: true`.
-        Writes outbox events `RequestSubmitted` and (if assigned) `CoordinatorAssigned`. *(CS-30)*
-      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/VersionBody' } } }
-      responses:
-        '200':
-          description: Submitted (and assigned, unless no Coordinator exists)
-          content: { application/json: { schema: { $ref: '#/components/schemas/EventRequest' } } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Validation' }
-
-  /event-requests/{id}/resubmit:
-    parameters: [{ $ref: '#/components/parameters/Id' }]
-    post:
-      tags: [Requests]
-      operationId: resubmitEventRequest
-      summary: Resubmit after amendment (owner only)
-      description: |
-        `RETURNED_FOR_AMENDMENT → SUBMITTED`. The **same Coordinator** keeps the request.
-        A `REJECTED` request cannot be resubmitted → 409. Writes `RequestResubmitted`. *(CS-28)*
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/VersionBody' } } }
-      responses:
-        '200':
-          description: Resubmitted
-          content: { application/json: { schema: { $ref: '#/components/schemas/EventRequest' } } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Validation' }
-
-  /event-requests/{id}/decision:
-    parameters: [{ $ref: '#/components/parameters/Id' }]
-    post:
-      tags: [Review]
-      operationId: decideEventRequest
-      summary: Approve, reject or return a request (current Coordinator only)
-      description: |
-        Every decision goes through the single transition guard.
-
-        | `decision` | From | To | Needs | Outbox |
-        |---|---|---|---|---|
-        | `approve` | `SUBMITTED` | `APPROVED` + **Event created in Planning** | `notes` optional | `RequestApproved` |
-        | `reject` | `SUBMITTED`, or `APPROVED` while the Event is in Planning | `REJECTED` (closed) | `reason` 1–500 chars | `RequestRejected` |
-        | `amendments` | `SUBMITTED` | `RETURNED_FOR_AMENDMENT` | `comments` 1–500 chars | `RequestReturned` |
-
-        * Wrong person (not the current Coordinator, or an Organiser) → **403**, nothing changed.
-        * Right person, wrong status (already decided, closed, Confirmed) → **409** `INVALID_TRANSITION`.
-          A confirmed event cannot be rejected, only cancelled (CS-54).
-        * Missing / whitespace-only / over-500 `reason` or `comments` → **422**.
-        * A repeated or simultaneous approval gives exactly one transition; the rest get 409.
-          This endpoint takes **no** `Idempotency-Key`, so a replay is a 409, never the old 200.
-        * Approval **reserves nothing** and never shows Confirmed; confirmation is CS-31.
-        * Each decision records old and new status, actor, time and the text in the activity history.
-        *(CS-12 approve, CS-28 reject/return)*
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/DecisionInput' }
-            examples:
-              approve:
-                value: { decision: approve, notes: Feasible; Orchard Boardroom looks suitable., version: 2 }
-              reject:
-                value: { decision: reject, reason: No venue holds 500 standing guests on that date., version: 2 }
-              return:
-                value: { decision: amendments, comments: Please confirm the catering budget., version: 2 }
-      responses:
-        '200':
-          description: Decision recorded; returns the updated request (with `event` after approval)
-          content: { application/json: { schema: { $ref: '#/components/schemas/EventRequest' } } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Validation' }
-
-  /event-requests/{id}/reassign:
-    parameters: [{ $ref: '#/components/parameters/Id' }]
-    post:
-      tags: [Review]
-      operationId: reassignCoordinator
-      summary: Hand the request to another Coordinator
-      description: |
-        Only the **current Coordinator** may reassign. The new Coordinator gains access and
-        the old one loses it in the same transaction; the history records old, new, actor
-        and time. Two simultaneous reassignments leave exactly one current Coordinator (the
-        loser gets 409 `STALE_VERSION`). Allowed while `SUBMITTED`, `RETURNED_FOR_AMENDMENT`
-        or `APPROVED` (Event in Planning); closed → 409. The target must be an active user
-        holding `EVENT_COORDINATOR` and different from the current one (else 422).
-
-        **Claiming:** if the request has no Coordinator (*Awaiting assignment*), any
-        Coordinator may call this with their own id to take it.
-        Writes `CoordinatorReassigned`. *(CS-30)*
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [coordinatorId, version]
-              properties:
-                coordinatorId: { type: string, format: uuid }
-                version: { type: integer, minimum: 1 }
-            example: { coordinatorId: a1000000-0000-4000-8000-000000000007, version: 2 }
-      responses:
-        '200':
-          description: Reassigned
-          content: { application/json: { schema: { $ref: '#/components/schemas/EventRequest' } } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Validation' }
-
-  /event-requests/{id}/activity:
-    parameters: [{ $ref: '#/components/parameters/Id' }]
-    get:
-      tags: [Requests]
-      operationId: getActivityHistory
-      summary: Activity history, newest first
-      description: |
-        Append-only record of every change: who, what, old → new status, when. **Newest entry
-        first** (default page size 20). Visible to whoever can read the request; an unrelated
-        user gets 403. There is no update or delete endpoint, and the database also refuses
-        UPDATE and DELETE on the log. Earlier decisions are kept after later ones.
-        Automatic Coordinator assignment is logged too, so submit → return → resubmit shows
-        4 entries (submitted, coordinator assigned, returned, resubmitted). *(CS-44)*
-      parameters:
-        - { $ref: '#/components/parameters/Page' }
-        - { $ref: '#/components/parameters/PageSize' }
-      responses:
-        '200':
-          description: A page of history entries
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Page'
-                  - type: object
-                    properties:
-                      items: { type: array, items: { $ref: '#/components/schemas/ActivityEntry' } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
-  /events:
-    get:
-      tags: [Events]
-      operationId: listEvents
-      summary: List events I may see
-      description: Events created from approved requests, same visibility rules as requests.
-      parameters:
-        - { name: status, in: query, schema: { type: array, items: { $ref: '#/components/schemas/EventStatus' } }, style: form, explode: true }
-        - { $ref: '#/components/parameters/Page' }
-        - { $ref: '#/components/parameters/PageSize' }
-      responses:
-        '200':
-          description: A page of events
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Page'
-                  - type: object
-                    properties:
-                      items: { type: array, items: { $ref: '#/components/schemas/Event' } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-
-  /events/{id}:
-    parameters: [{ $ref: '#/components/parameters/Id' }]
-    get:
-      tags: [Events]
-      operationId: getEvent
-      summary: Read one event
-      description: |
-        Reserved for later stories (not Sprint 2): `POST /events/{id}/confirm` (CS-31, routed to
-        the orchestrator) and `POST /events/{id}/cancel` (CS-54).
-      responses:
-        '200':
-          description: The event
-          content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      description: Session token from `POST /auth/login`. The Nuxt BFF adds it from the session cookie.
-
-  parameters:
-    Id:
-      name: id
-      in: path
-      required: true
-      schema: { type: string, format: uuid }
-    IdempotencyKey:
-      name: Idempotency-Key
-      in: header
-      required: false
-      description: Client-generated UUID. A retry with the same key and body replays the first response.
-      schema: { type: string, format: uuid }
-    Page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
-    PageSize: { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
-
-  responses:
-    Unauthenticated:
-      description: No session, expired, revoked, or account disabled
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-          example: { error: { code: UNAUTHENTICATED, message: Not logged in or session has expired } }
-    Forbidden:
-      description: Signed in but not allowed (wrong role, not the owner, not the current Coordinator). Nothing changed.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-          example: { error: { code: FORBIDDEN, message: Only the current Coordinator can do this. } }
-    NotFound:
-      description: No such id
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-          example: { error: { code: NOT_FOUND, message: Event request not found } }
-    Conflict:
-      description: Invalid transition for the current status, or stale `version`. Nothing changed.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-          examples:
-            invalidTransition:
-              value: { error: { code: INVALID_TRANSITION, message: 'A request in status APPROVED cannot be approved.' } }
-            stale:
-              value: { error: { code: STALE_VERSION, message: This request was changed by someone else. Reload and try again. } }
-    Validation:
-      description: Fails validation
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Error' }
-          example:
-            error:
-              code: VALIDATION_FAILED
-              message: Please fix the highlighted fields.
-              details: [{ field: reason, message: Reason is required (1-500 characters). }]
-
-  schemas:
-    Error:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: object
-          required: [code, message]
-          properties:
-            code: { type: string }
-            message: { type: string }
-            details:
-              type: array
-              items:
-                type: object
-                properties: { field: { type: string }, message: { type: string } }
-    Page:
-      type: object
-      required: [items, page, pageSize, total]
-      properties:
-        items: { type: array, items: {} }
-        page: { type: integer }
-        pageSize: { type: integer }
-        total: { type: integer }
-    VersionBody:
-      type: object
-      required: [version]
-      properties: { version: { type: integer, minimum: 1 } }
-      example: { version: 1 }
-
-    RequestStatus:
-      type: string
-      enum: [DRAFT, SUBMITTED, RETURNED_FOR_AMENDMENT, APPROVED, REJECTED]
-      description: Labels - Draft, Under Review, Returned for Amendment, Planning (approved), Rejected.
-    EventStatus:
-      type: string
-      enum: [ARRANGEMENT_PENDING, CONFIRMED, CANCELLED, COMPLETED, REJECTED]
-      description: Labels - Planning, Confirmed, Cancelled, Completed, Rejected.
-    Action:
-      type: string
-      description: What the caller may do right now (computed by the transition guard).
-      enum: [edit, submit, resubmit, approve, reject, amendments, reassign, claim, confirm, cancel]
-
-    EventRequestInput:
-      type: object
-      description: Form fields. All optional for a Draft; the complete set is checked on submit.
-      properties:
-        eventName: { type: string, maxLength: 200 }
-        purpose: { type: string, maxLength: 200 }
-        description: { type: string, maxLength: 2000 }
-        startAt: { type: string, format: date-time, description: 'ISO 8601 WITH offset' }
-        endAt: { type: string, format: date-time, description: 'Must be after startAt' }
-        timeZone: { type: string, example: Asia/Singapore, description: IANA name }
-        expectedAttendance: { type: integer, minimum: 1 }
-        minimumCapacity: { type: integer, minimum: 1, nullable: true }
-        preferredLayout: { type: string, nullable: true }
-        venueType: { type: string }
-        venueRequirements: { type: string, nullable: true }
-        accessibilityNeeds: { type: array, items: { type: string } }
-        accessibilityDetails: { type: string, nullable: true }
-        equipmentNeeds: { type: array, items: { type: string } }
-        technicalDetails: { type: string, nullable: true }
-
-    UserSummary:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-        email: { type: string, format: email }
-    Assignment:
-      type: object
-      properties:
-        coordinator: { $ref: '#/components/schemas/UserSummary' }
-        assignedAt: { type: string, format: date-time }
-        assignedBy: { allOf: [{ $ref: '#/components/schemas/UserSummary' }], nullable: true, description: null = automatic }
-        reason: { type: string, enum: [AUTO, REASSIGNED] }
-
-    EventRequest:
-      allOf:
-        - $ref: '#/components/schemas/EventRequestInput'
-        - type: object
-          required: [id, status, version, awaitingAssignment, allowedActions]
-          properties:
-            id: { type: string, format: uuid }
-            organiserId: { type: string, format: uuid }
-            organisationId: { type: string, format: uuid, nullable: true }
-            status: { $ref: '#/components/schemas/RequestStatus' }
-            version: { type: integer }
-            coordinator: { allOf: [{ $ref: '#/components/schemas/Assignment' }], nullable: true }
-            awaitingAssignment: { type: boolean, description: 'true when SUBMITTED and no Coordinator yet' }
-            submittedAt: { type: string, format: date-time, nullable: true }
-            decidedAt: { type: string, format: date-time, nullable: true }
-            decidedBy: { allOf: [{ $ref: '#/components/schemas/UserSummary' }], nullable: true }
-            decisionReason: { type: string, nullable: true, description: 'Reject reason, return comments or approval notes' }
-            event:
-              nullable: true
-              type: object
-              description: Present after approval
-              properties:
-                id: { type: string, format: uuid }
-                status: { $ref: '#/components/schemas/EventStatus' }
-            allowedActions:
-              type: array
-              items: { $ref: '#/components/schemas/Action' }
-            createdAt: { type: string, format: date-time }
-            updatedAt: { type: string, format: date-time }
-
-    QueueItem:
-      allOf:
-        - $ref: '#/components/schemas/EventRequest'
-        - type: object
-          properties:
-            organiser:
-              type: object
-              properties:
-                name: { type: string }
-                company: { type: string }
-                email: { type: string, format: email }
-
-    DecisionInput:
-      type: object
-      required: [decision, version]
-      properties:
-        decision: { type: string, enum: [approve, reject, amendments] }
-        reason: { type: string, minLength: 1, maxLength: 500, description: 'Required for reject' }
-        comments: { type: string, minLength: 1, maxLength: 500, description: 'Required for amendments' }
-        notes: { type: string, maxLength: 500, description: 'Optional for approve' }
-        version: { type: integer, minimum: 1 }
-
-    Event:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        eventRequestId: { type: string, format: uuid }
-        title: { type: string }
-        description: { type: string, nullable: true }
-        startAt: { type: string, format: date-time }
-        endAt: { type: string, format: date-time }
-        timeZone: { type: string }
-        status: { $ref: '#/components/schemas/EventStatus' }
-        version: { type: integer }
-        confirmedAt: { type: string, format: date-time, nullable: true }
-        cancelledAt: { type: string, format: date-time, nullable: true }
-        completedAt: { type: string, format: date-time, nullable: true }
-
-    ActivityEntry:
-      type: object
-      properties:
-        id: { type: string, format: uuid }
-        action: { type: string, example: COORDINATOR_REASSIGNED }
-        fromStatus: { type: string, nullable: true }
-        toStatus: { type: string, nullable: true }
-        actor:
-          nullable: true
-          description: null when the system acted
-          allOf: [{ $ref: '#/components/schemas/UserSummary' }]
-        details:
-          type: object
-          nullable: true
-          additionalProperties: true
-          description: |
-            Extra facts for the entry. A **resubmit** entry carries the fields the Organiser
-            changed while the request was Returned (CS-44 44-02); a decision carries its
-            reason, comments or notes; a reassignment carries the old and new Coordinator.
-          properties:
-            changes:
-              type: array
-              items:
-                type: object
-                properties:
-                  field: { type: string }
-                  from: {}
-                  to: {}
-          example:
-            changes: [{ field: expectedAttendance, from: 400, to: 450 }]
-        createdAt: { type: string, format: date-time }
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ConnectSphere event-service \u2014 implemented request workflows",
+    "version": "0.3.0",
+    "description": "CS-11/29/27/44 persistent implementation. Authentication uses live opaque session validation with internal key, never caller identity headers. No competing transition/assignment engine. Deliberate draft-contract amendments and pending matrix/limits/history granularity are documented in docs/event-workflow-decisions.md."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:18000",
+      "description": "Isolated review Kong; normal dev port8000"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/event-requests": {
+      "post": {
+        "summary": "Create incomplete Draft or directly submit",
+        "operationId": "post_event_requests",
+        "description": "Organiser only. Default saveAs=draft; submit invokes full validator and shared transaction/assignment. Body organiserId/roles/status never controls identity.",
+        "responses": {
+          "201": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Request"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Durable actor/method/path-scoped intent key. Retry identical JSON/version/key. Changed payload409. Replay reauthorises and returns original response; no TTL purge."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "List own Requests",
+        "operationId": "get_event_requests",
+        "description": "Organiser owner list only; optional repeated status query. This endpoint is not paginated; history is cursor-paginated.",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DRAFT",
+                "SUBMITTED",
+                "RETURNED_FOR_AMENDMENT",
+                "APPROVED",
+                "REJECTED"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/event-requests/drafts": {
+      "get": {
+        "summary": "List owner-private Drafts",
+        "operationId": "get_event_requests_drafts",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/event-requests/review-queue": {
+      "get": {
+        "summary": "Assigned submitted queue",
+        "operationId": "get_event_requests_review_queue",
+        "description": "Current Coordinator only; excludes own multi-role requests; contact is limited organiser id/name/email/company.",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/event-requests/{id}": {
+      "get": {
+        "summary": "Read authorised Request",
+        "operationId": "get_event_requests_id",
+        "description": "Owner or current assigned Coordinator for non-Drafts. Same organisation alone grants no Request access.",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Request"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Request UUID, or actual distinct Event UUID on /events/{id}/activity"
+          }
+        ]
+      },
+      "put": {
+        "summary": "Save owner Draft or Returned amendment",
+        "operationId": "put_event_requests_id",
+        "description": "Required current version; permissive supplied-field validation; fields omitted are preserved; null/empty clears nullable text. Returned baseline survives saves.",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Request"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Request UUID, or actual distinct Event UUID on /events/{id}/activity"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Durable actor/method/path-scoped intent key. Retry identical JSON/version/key. Changed payload409. Replay reauthorises and returns original response; no TTL purge."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Save owner Draft or Returned amendment",
+        "operationId": "patch_event_requests_id",
+        "description": "Required current version; permissive supplied-field validation; fields omitted are preserved; null/empty clears nullable text. Returned baseline survives saves.",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Request"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Request UUID, or actual distinct Event UUID on /events/{id}/activity"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Durable actor/method/path-scoped intent key. Retry identical JSON/version/key. Changed payload409. Replay reauthorises and returns original response; no TTL purge."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/event-requests/{id}/submit": {
+      "post": {
+        "summary": "Submit same Draft",
+        "operationId": "post_event_requests_id_submit",
+        "description": "Owner only; full single validator/shared guard; version required. Resubmit must differ from return baseline; retains ID/Coordinator; one activity/outbox, no reassignment.",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Request"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Request UUID, or actual distinct Event UUID on /events/{id}/activity"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Durable actor/method/path-scoped intent key. Retry identical JSON/version/key. Changed payload409. Replay reauthorises and returns original response; no TTL purge."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/event-requests/{id}/resubmit": {
+      "post": {
+        "summary": "Resubmit same Returned Request",
+        "operationId": "post_event_requests_id_resubmit",
+        "description": "Owner only; full single validator/shared guard; version required. Resubmit must differ from return baseline; retains ID/Coordinator; one activity/outbox, no reassignment.",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Request"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Request UUID, or actual distinct Event UUID on /events/{id}/activity"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Durable actor/method/path-scoped intent key. Retry identical JSON/version/key. Changed payload409. Replay reauthorises and returns original response; no TTL purge."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/event-requests/{id}/decision": {
+      "post": {
+        "summary": "Assigned Coordinator approve, return or reject",
+        "operationId": "post_event_requests_id_decision",
+        "description": "Required version; shared guard. RETURN/REJECT require nonblank text1\u2013500; APPROVE optional notes. Approval creates distinct Planning Event only. No reassign/confirm/cancel/complete endpoint is implemented here.",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Request"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Request UUID, or actual distinct Event UUID on /events/{id}/activity"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Durable actor/method/path-scoped intent key. Retry identical JSON/version/key. Changed payload409. Replay reauthorises and returns original response; no TTL purge."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/event-requests/{id}/activity": {
+      "get": {
+        "summary": "Authorised private Request history",
+        "operationId": "get_event_requests_id_activity",
+        "description": "Owner or current assigned non-Draft Coordinator; draft entries owner-private. Latest sequence first, twenty per page. Read each page against current identity/relationship. Draft-only entries and prior private Draft values remain owner-only after submission; Coordinator DTO marks redacted old values.",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/History"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Request UUID, or actual distinct Event UUID on /events/{id}/activity"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "description": "Exclusive sequence cursor from nextCursor; fixed pageSize20"
+          }
+        ]
+      }
+    },
+    "/event-requests/{id}/coordinator": {
+      "get": {
+        "summary": "Relationship-scoped Coordinator contact",
+        "operationId": "get_event_requests_id_coordinator",
+        "description": "Same Request read policy. Null when unassigned; limited id/name/email/company otherwise.",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Request UUID, or actual distinct Event UUID on /events/{id}/activity"
+          }
+        ]
+      }
+    },
+    "/events": {
+      "get": {
+        "summary": "Minimal actual Event booking options",
+        "operationId": "get_events",
+        "description": "Organiser own/same non-null organisation; assigned Coordinator; Venue/Technical Staff Planning/Confirmed only. Projection id/title/status, no private request fields. Attendee403.",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOptions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/{id}/activity": {
+      "get": {
+        "summary": "History through actual Event identity",
+        "operationId": "get_events_id_activity",
+        "description": "Owner/current assigned Coordinator or same non-null organisation Organiser. Other organisation, staff and Attendee403. Completed/Cancelled history retained. Request linkage included; Draft has no Event. Wider same-org viewers see only actual Event-scoped entries, filtered before pagination; no private request/draft/amendment values.",
+        "responses": {
+          "200": {
+            "description": "Successful committed result or authorised replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/History"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query/body or missing operation key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/revoked session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Wrong role/relationship; no data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Record does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale version, invalid state, unchanged resubmit or conflicting key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Aggregated validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency unavailable; no partial write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Request UUID, or actual distinct Event UUID on /events/{id}/activity"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "description": "Exclusive sequence cursor from nextCursor; fixed pageSize20"
+          }
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Public service health",
+        "operationId": "get_health",
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "Alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Opaque auth-service session token validated live on every protected call"
+      }
+    },
+    "schemas": {
+      "RequestInput": {
+        "type": "object",
+        "properties": {
+          "eventName": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 100
+          },
+          "purpose": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "timeZone": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "preferredLayout": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "venueType": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "venueRequirements": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "accessibilityDetails": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "technicalDetails": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "proposedDate": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "endDate": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "startTime": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "endTime": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "expectedAttendance": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1
+          },
+          "minimumCapacity": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1
+          },
+          "accessibilityNeeds": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "equipmentNeeds": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "startAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "registrationOpensAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "registrationClosesAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "registrationEnabled": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "saveAs": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "submit"
+            ]
+          }
+        },
+        "description": "Missing fields allowed on save; full submission uses provisional C02 mandatory matrix. Use offset ISO startAt/endAt OR local proposedDate/startTime/endTime/timeZone (optional endDate); do not mix both. Registration local clocks use event zone; ISO offsets also accepted. Positive counts/type/bounds validated even on drafts. Empty draft rejected."
+      },
+      "DecisionInput": {
+        "type": "object",
+        "required": [
+          "action",
+          "version"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "APPROVE",
+              "RETURN",
+              "REJECT"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "Request": {
+        "type": "object",
+        "required": [
+          "id",
+          "organiserId",
+          "status",
+          "version"
+        ],
+        "properties": {
+          "eventName": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 100
+          },
+          "purpose": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "timeZone": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "preferredLayout": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "venueType": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "venueRequirements": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "accessibilityDetails": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "technicalDetails": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "proposedDate": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "endDate": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "startTime": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "endTime": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "expectedAttendance": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1
+          },
+          "minimumCapacity": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1
+          },
+          "accessibilityNeeds": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "equipmentNeeds": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "startAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "registrationOpensAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "registrationClosesAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "registrationEnabled": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "saveAs": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "submit"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "nullable": false
+          },
+          "organiserId": {
+            "type": "string",
+            "nullable": false
+          },
+          "status": {
+            "type": "string",
+            "nullable": false
+          },
+          "statusLabel": {
+            "type": "string",
+            "nullable": false
+          },
+          "currentCoordinatorId": {
+            "type": "string",
+            "nullable": true
+          },
+          "decisionReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventId": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "awaitingAssignment": {
+            "type": "boolean"
+          },
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "revisedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "decidedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        }
+      },
+      "RequestList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Request"
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Contact": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "company": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "History": {
+        "type": "object",
+        "properties": {
+          "entity": {
+            "type": "object",
+            "properties": {
+              "eventRequestId": {
+                "type": "string"
+              },
+              "eventId": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "pageSize": {
+            "type": "integer",
+            "enum": [
+              20
+            ]
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "eventRequestId": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string"
+                },
+                "actorType": {
+                  "type": "string",
+                  "enum": [
+                    "USER",
+                    "SYSTEM"
+                  ]
+                },
+                "actorId": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "fromStatus": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "toStatus": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "details": {
+                  "type": "object",
+                  "description": "Allowlisted old/new changes, optional previousValues/note/eventId and trusted actorName. Never arbitrary body/headers/token/profile."
+                }
+              }
+            }
+          }
+        }
+      },
+      "EventOptions": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

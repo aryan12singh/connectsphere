@@ -18,12 +18,20 @@ const PUBLIC_USER_FIELDS = {
   firstName: true,
   lastName: true,
   role: true,
+  roles: true,
+  organisationId: true,
   company: true,
   isActive: true,
   createdAt: true,
 };
 
 const ROLES = ['EVENT_ORGANISER', 'EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF', 'ATTENDEE'];
+
+// Narrow trusted directory for the merged assignment selector; no profile dump.
+router.get('/coordinators', async (req, res) => {
+  const coordinators = await prisma.user.findMany({where:{isActive:true,roles:{has:'EVENT_COORDINATOR'}},select:{id:true,createdAt:true},orderBy:[{createdAt:'asc'},{id:'asc'}]});
+  res.json({coordinators});
+});
 
 // GET /internal/users?search=tan&role=ATTENDEE&page=1
 // Paged list for the tech support "Users" screen. 25 users per page.

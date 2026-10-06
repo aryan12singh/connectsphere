@@ -1,0 +1,16 @@
+{
+  "REQUEST_LABELS": {
+    "DRAFT": "Draft",
+    "SUBMITTED": "Under Review",
+    "RETURNED_FOR_AMENDMENT": "Returned for Amendment",
+    "APPROVED": "Approved",
+    "REJECTED": "Rejected"
+  },
+  "EVENT_LABELS": {
+    "ARRANGEMENT_PENDING": "Planning",
+    "CONFIRMED": "Confirmed",
+    "CANCELLED": "Cancelled",
+    "COMPLETED": "Completed",
+    "REJECTED": "Rejected"
+  }
+}

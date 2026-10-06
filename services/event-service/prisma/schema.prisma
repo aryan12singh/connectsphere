@@ -75,7 +75,7 @@ model EventRequest {
   version Int @default(1)
 
   // ── What the organiser asked for (nullable: a Draft may be incomplete;
-  //    the CHECK in the migration requires them once status ≠ DRAFT) ──
+  //    the CHECK in the migration requires them when Submitted or closed (Returned can be incomplete)) ──
   eventName            String
   purpose              String?
   description          String?
@@ -91,6 +91,18 @@ model EventRequest {
   accessibilityDetails String?
   equipmentNeeds       String[]   @default([])
   technicalDetails     String?
+
+  // Incomplete local clocks survive draft saves; instants are derived server-side.
+  proposedDate String?
+  endDate String?
+  startTime String?
+  endTime String?
+  registrationEnabled Boolean @default(false)
+  registrationOpensAt DateTime? @db.Timestamptz(3)
+  registrationClosesAt DateTime? @db.Timestamptz(3)
+  // Snapshot at return, retained across amendment saves.
+  returnedBaseline Json?
+  revisedAt DateTime? @db.Timestamptz(3)
 
   // ── Coordinator ──
   // Denormalised copy of the one open CoordinatorAssignment, kept in the SAME
@@ -173,6 +185,7 @@ model CoordinatorAssignment {
 // Append-only history (CS-44). Every transition, assignment and edit writes a
 // row IN THE SAME TRANSACTION as the change it describes.
 model ActivityLog {
+  sequence BigInt @unique @default(autoincrement())
   id             String       @id @default(uuid())
   eventRequestId String
   eventRequest   EventRequest @relation(fields: [eventRequestId], references: [id])
@@ -190,6 +203,7 @@ model ActivityLog {
   createdAt      DateTime     @default(now()) @db.Timestamptz(3)
 
   @@index([eventRequestId, createdAt])
+  @@index([eventRequestId, sequence])
   @@map("activity_log")
 }
 
@@ -221,11 +235,11 @@ model IdempotencyRecord {
   key            String
   method         String
   path           String
-  requestHash    String // sha-256 of the body; same key + different body → 422
+  requestHash    String // sha-256 of the body; same scoped key + different body → 409
   responseStatus Int
   responseBody   Json
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
 
-  @@unique([userId, key])
+  @@unique([userId, key, method, path])
   @@map("idempotency_records")
 }
