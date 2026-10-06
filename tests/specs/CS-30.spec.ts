@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
-import { createError, defineEventHandler, getRouterParam, H3Event, readBody, useSession } from 'h3'
+import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest'
+import { ref } from 'vue'
+import { eventHarness, valid } from '../helpers/event-api-harness'
+let api:Awaited<ReturnType<typeof eventHarness>>
+beforeAll(async()=>{api=await eventHarness()})
+afterAll(async()=>api.close())
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 
 // CS-30 — single file per story (IS212/IEEE 829). Organiser-visible slice
@@ -8,6 +12,7 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 
 const detailMocks = vi.hoisted(() => ({
   useFetch: vi.fn(),
+  actionFetch: vi.fn(),
   eventResponse: { value: null as unknown },
   eventError: { value: null as unknown },
   coordinatorResponse: { value: null as unknown },
@@ -23,9 +28,11 @@ const detailMocks = vi.hoisted(() => ({
   refreshNuxtData: vi.fn(),
 }))
 
+for(const name of ['eventResponse','eventError','coordinatorResponse','queueResponse','queueError'] as const)(detailMocks as any)[name]=ref(detailMocks[name].value)
+mockNuxtImport('useRequestFetch',()=>()=>detailMocks.actionFetch)
 mockNuxtImport('useFetch', () => (url: unknown, init?: { method?: string }) => {
   detailMocks.useFetch(url, init)
-  if (typeof url === 'string' && url.startsWith('/api/users/'))
+  if (typeof url === 'string' && url.endsWith('/coordinator'))
     return { data: detailMocks.coordinatorResponse, error: { value: null } }
   if (typeof url === 'string' && url === '/api/review-queue')
     return { data: detailMocks.queueResponse, error: detailMocks.queueError, refresh: detailMocks.queueRefresh }
@@ -47,74 +54,7 @@ mockNuxtImport('useRoute', () => () => ({ params: { id: 'req-1' } }))
 mockNuxtImport('navigateTo', () => detailMocks.navigateTo)
 mockNuxtImport('refreshNuxtData', () => detailMocks.refreshNuxtData)
 
-// Boundary harness: real H3Event + real iron-sealed session (same pattern as
-// CS-11 agreed-surface tests). `cookie` is a forbidden header stripped by
-// `new Request()`; `readBody` needs preset `Symbol.for('h3ParsedBody')`.
-const BFF_PASSWORD = 'test-session-password-with-32plus-chars-0123456789abcdef'
-
-const ORGANISER_USER = { id: 'u-organiser', email: 'organiser@example.com', name: 'Organiser One', role: 'EVENT_ORGANISER' }
-
-const VALID_FORM = {
-  eventName: 'Autumn Product Summit',
-  purpose: 'Product launch',
-  description: 'Annual gathering for customers and partners.',
-  proposedDate: '2026-11-20',
-  expectedAttendance: 200,
-  startTime: '09:00',
-  endTime: '17:00',
-  timeZone: 'Asia/Singapore',
-  venueType: 'physical',
-  minimumCapacity: 220,
-  preferredLayout: 'theatre',
-  venueRequirements: 'Hall A, near MRT',
-  accessibilityNeeds: ['wheelchair'],
-  accessibilityDetails: '',
-  equipmentNeeds: ['projector'],
-  technicalDetails: '',
-}
-
-function mockBffEvent(opts: { cookie?: string, method?: string, body?: unknown, params?: Record<string, string> }) {
-  const resHeaders = new Map<string, string | string[]>()
-  const nodeReq: Record<string | symbol, unknown> = {
-    method: opts.method ?? 'GET',
-    headers: { host: 'localhost', 'content-type': 'application/json', ...(opts.cookie ? { cookie: opts.cookie } : {}) },
-  }
-  if (opts.body !== undefined)
-    nodeReq[Symbol.for('h3ParsedBody')] = opts.body
-  const nodeRes = {
-    getHeader: (name: string) => resHeaders.get(name),
-    setHeader: (name: string, value: string | string[]) => { resHeaders.set(name, value) },
-    removeHeader: (name: string) => { resHeaders.delete(name) },
-    appendHeader: (name: string, value: string) => { resHeaders.set(name, value) },
-  }
-  const event = new H3Event(nodeReq, nodeRes) as unknown as Parameters<typeof useSession>[0] & { context: { params?: Record<string, string> } }
-  if (opts.params)
-    event.context.params = opts.params
-  return { event, resHeaders }
-}
-
-async function sealBffCookie(user: Record<string, unknown>) {
-  const sealer = mockBffEvent({})
-  const session = await useSession(sealer.event, { password: BFF_PASSWORD, name: 'nuxt-session' })
-  await session.update({ user })
-  const raw = sealer.resHeaders.get('set-cookie')
-  return ((Array.isArray(raw) ? raw[0] ?? '' : raw ?? '').split(';')[0] ?? '')
-}
-
-function stubBffGlobals() {
-  vi.stubGlobal('defineEventHandler', defineEventHandler)
-  vi.stubGlobal('readBody', readBody)
-  vi.stubGlobal('createError', createError)
-  vi.stubGlobal('getRouterParam', getRouterParam)
-  vi.stubGlobal('requireUserSession', async (event: Parameters<typeof useSession>[0]) => {
-    const session = await useSession(event, { password: BFF_PASSWORD, name: 'nuxt-session' })
-    if (!session.data.user)
-      throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-    return session.data
-  })
-}
-
-const SUBMITTED_EVENT = {  id: 'req-1',
+const SUBMITTED_EVENT = { version:1, id: 'req-1',
   organiserId: 'u-organiser',
   status: 'SUBMITTED',
   submittedAt: '2026-09-20T00:00:00.000Z',
@@ -150,7 +90,8 @@ async function mountDetailPage() {
 }
 
 function showSubmittedWithCoordinator() {
-  detailMocks.eventResponse.value = SUBMITTED_EVENT
+  detailMocks.sessionUser.value = {id:'u-organiser',email:'o@example.test',name:'Owner',role:'EVENT_ORGANISER'}
+  detailMocks.eventResponse = ref({...SUBMITTED_EVENT})
   detailMocks.eventError.value = null
   detailMocks.coordinatorResponse.value = COORDINATOR
   detailMocks.putResponse.value = null
@@ -187,17 +128,18 @@ describe('CS-30 — TC-CS30-02 organiser sees the current coordinator contact', 
   })
 })
 
-describe('CS-30 — TC-CS30-03 submitted request is read-only until edit is chosen', () => {
-  it('renders disabled fields with an Edit action', async () => {
+describe('CS-30 — TC-CS30-03 submitted request is read-only; returned requests allow amendments', () => {
+  it('renders disabled fields without an Edit action', async () => {
     showSubmittedWithCoordinator()
     const wrapper = await mountDetailPage()
     expect(wrapper.find('fieldset[disabled]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Edit request')
+    expect(wrapper.text()).not.toContain('Edit request')
   })
 
   it('edit mode enables the reusable form and saves through PUT', async () => {
     showSubmittedWithCoordinator()
-    detailMocks.putResponse.value = { ...SUBMITTED_EVENT, eventName: 'Renamed Summit' }
+    detailMocks.eventResponse.value = {...SUBMITTED_EVENT,status:'RETURNED_FOR_AMENDMENT'}
+    detailMocks.actionFetch.mockResolvedValue({...SUBMITTED_EVENT,eventName:'Renamed Summit'})
     const wrapper = await mountDetailPage()
     const editButtons = wrapper.findAll('button').filter(b => b.text().includes('Edit request'))
     expect(editButtons.length > 0, 'edit action is not rendered').toBe(true)
@@ -208,16 +150,18 @@ describe('CS-30 — TC-CS30-03 submitted request is read-only until edit is chos
     await wrapper.get('#request-form').trigger('submit')
     await wrapper.vm.$nextTick()
     await new Promise(resolve => setTimeout(resolve, 0))
-    const puts = detailMocks.useFetch.mock.calls.filter(([url, init]) => url === '/api/events/req-1' && (init as { method?: string })?.method === 'PUT')
+    const puts = detailMocks.actionFetch.mock.calls.filter(([url, init]) => url === '/api/events/req-1' && (init as { method?: string })?.method === 'PUT')
     expect(puts.length).toBe(1)
     expect((puts[0]![1] as { body?: Record<string, unknown> }).body).toMatchObject({ eventName: 'Renamed Summit' })
-    expect(detailMocks.refreshNuxtData).toHaveBeenCalledWith('organiser-events')
-    expect(detailMocks.navigateTo).toHaveBeenCalledWith('/')
+    expect(detailMocks.refreshNuxtData).toHaveBeenCalledWith(['event-coordinator-req-1', 'organiser-events'])
+    expect(wrapper.text()).toContain('submitted for review')
   })
 })
 
 describe('CS-30 — TC-CS30-04 draft opens editable with submit available', () => {
   it('draft shows enabled fields and submits through PUT submit=true', async () => {
+    showSubmittedWithCoordinator()
+    detailMocks.actionFetch.mockResolvedValue({...SUBMITTED_EVENT,id:'req-2',status:'SUBMITTED'})
     detailMocks.eventResponse.value = { ...SUBMITTED_EVENT, id: 'req-2', status: 'DRAFT', coordinatorId: null, submittedAt: null }
     detailMocks.eventError.value = null
     detailMocks.coordinatorResponse.value = null
@@ -230,10 +174,10 @@ describe('CS-30 — TC-CS30-04 draft opens editable with submit available', () =
     await wrapper.get('#request-form').trigger('submit')
     await wrapper.vm.$nextTick()
     await new Promise(resolve => setTimeout(resolve, 0))
-    const puts = detailMocks.useFetch.mock.calls.filter(([url, init]) => typeof url === 'string' && url.startsWith('/api/events/') && (init as { method?: string })?.method === 'PUT')
+    const puts = detailMocks.actionFetch.mock.calls.filter(([url, init]) => typeof url === 'string' && url.startsWith('/api/events/') && (init as { method?: string })?.method === 'PUT')
     expect(puts.length).toBe(1)
     expect((puts[0]![1] as { body?: Record<string, unknown> }).body).toMatchObject({ submit: true })
-    expect(detailMocks.navigateTo).toHaveBeenCalledWith('/')
+    expect(wrapper.text()).toContain('submitted for review')
   })
 })
 
@@ -247,390 +191,9 @@ describe('CS-30 — TC-CS30-05 unavailable request shows an error state', () => 
   })
 })
 
-describe('CS-30 — TC-CS30-01 organiser reads the submitted request with its coordinator', () => {
-  it('GET owner view returns fields plus coordinatorId after submit', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(ORGANISER_USER)
-      const { default: postHandler } = await import('../../frontend/server/api/events.post') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      const created = await postHandler(mockBffEvent({ cookie, method: 'POST', body: { ...VALID_FORM, saveAs: 'submit' } }).event)
-      const { default: getHandler } = await import('../../frontend/server/api/events/[id].get') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      const body = await getHandler(mockBffEvent({ cookie, params: { id: created.id as string } }).event)
-      expect(body).toMatchObject({ id: created.id, eventName: 'Autumn Product Summit', status: 'SUBMITTED' })
-      expect(typeof body.coordinatorId).toBe('string')
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('GET from another organiser is denied 403 without contents', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(ORGANISER_USER)
-      const { default: postHandler } = await import('../../frontend/server/api/events.post') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      const created = await postHandler(mockBffEvent({ cookie, method: 'POST', body: { ...VALID_FORM, saveAs: 'submit' } }).event)
-      const otherCookie = await sealBffCookie({ id: 'u-organiser-b', email: 'b@example.com', name: 'B', role: 'EVENT_ORGANISER' })
-      const { default: getHandler } = await import('../../frontend/server/api/events/[id].get') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      await expect(getHandler(mockBffEvent({ cookie: otherCookie, params: { id: created.id as string } }).event))
-        .rejects.toMatchObject({ statusCode: 403 })
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('GET users/:id returns the BFF profile view without secrets', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(ORGANISER_USER)
-      const { default: usersHandler } = await import('../../frontend/server/api/users/[id].get') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      const body = await usersHandler(mockBffEvent({ cookie, params: { id: 'u-coordinator' } }).event)
-      expect(body).toMatchObject({ id: 'u-coordinator', role: 'EVENT_COORDINATOR' })
-      expect(typeof (body as { email?: unknown }).email).toBe('string')
-      expect(body).not.toHaveProperty('passwordHash')
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('GET resolves dashboard seed ids for the owning organiser', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(ORGANISER_USER)
-      const { default: getHandler } = await import('../../frontend/server/api/events/[id].get') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      const body = await getHandler(mockBffEvent({ cookie, params: { id: 'e1' } }).event)
-      expect(body).toMatchObject({
-        id: 'e1',
-        eventName: 'Product Summit Launch',
-        status: 'DRAFT',
-        proposedDate: '2026-11-20',
-        expectedAttendance: 300,
-        venueRequirements: 'Riverside Hall',
-      })
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('GET seeded submitted request carries its coordinator', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(ORGANISER_USER)
-      const { default: getHandler } = await import('../../frontend/server/api/events/[id].get') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      const body = await getHandler(mockBffEvent({ cookie, params: { id: 'e2' } }).event)
-      expect(body).toMatchObject({ id: 'e2', status: 'SUBMITTED', coordinatorId: 'u-coordinator' })
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('dashboard list meta reflects the underlying record data', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(ORGANISER_USER)
-      const { default: listHandler } = await import('../../frontend/server/api/events.get') as unknown as {
-        default: (event: never) => Promise<{ events: Record<string, unknown>[] }>
-      }
-      const body = await listHandler(mockBffEvent({ cookie }).event)
-      const first = body.events.find(event => event.id === 'e1')
-      expect(first).toMatchObject({ title: 'Product Summit Launch', status: 'DRAFT' })
-      expect(String(first?.meta)).toContain('Riverside Hall')
-      expect(String(first?.meta)).toContain('300')
-      expect(String(first?.meta)).toContain('Nov 20')
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('created drafts appear in the dashboard list', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(ORGANISER_USER)
-      const { default: postHandler } = await import('../../frontend/server/api/events.post') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      const created = await postHandler(mockBffEvent({ cookie, method: 'POST', body: { ...VALID_FORM, eventName: 'List Visibility Check', saveAs: 'draft' } }).event)
-      const { default: listHandler } = await import('../../frontend/server/api/events.get') as unknown as {
-        default: (event: never) => Promise<{ events: Record<string, unknown>[] }>
-      }
-      const body = await listHandler(mockBffEvent({ cookie }).event)
-      const found = body.events.find(event => event.id === created.id)
-      expect(found).toMatchObject({ title: 'List Visibility Check', status: 'DRAFT' })
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('edited details update the dashboard card title and meta', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(ORGANISER_USER)
-      const { default: postHandler } = await import('../../frontend/server/api/events.post') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      const created = await postHandler(mockBffEvent({ cookie, method: 'POST', body: { ...VALID_FORM, saveAs: 'draft' } }).event)
-      const { default: putHandler } = await import('../../frontend/server/api/events/[id].put') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      await putHandler(mockBffEvent({ cookie, method: 'PUT', params: { id: created.id as string }, body: { ...VALID_FORM, eventName: 'Renamed For List', venueRequirements: 'New Venue Hall' } }).event)
-      const { default: listHandler } = await import('../../frontend/server/api/events.get') as unknown as {
-        default: (event: never) => Promise<{ events: Record<string, unknown>[] }>
-      }
-      const body = await listHandler(mockBffEvent({ cookie }).event)
-      const found = body.events.find(event => event.id === created.id)
-      expect(found).toMatchObject({ title: 'Renamed For List' })
-      expect(String(found?.meta)).toContain('New Venue Hall')
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('GET seed id from another organiser is denied 403', async () => {
-    stubBffGlobals()
-    try {
-      const otherCookie = await sealBffCookie({ id: 'u-organiser-b', email: 'b@example.com', name: 'B', role: 'EVENT_ORGANISER' })
-      const { default: getHandler } = await import('../../frontend/server/api/events/[id].get') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      await expect(getHandler(mockBffEvent({ cookie: otherCookie, params: { id: 'e1' } }).event))
-        .rejects.toMatchObject({ statusCode: 403 })
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-})
-
-describe('CS-30 — TC-CS30-06 edit actions follow request status', () => {
-  it('draft offers save and submit as two actions', async () => {
-    detailMocks.eventResponse.value = { ...SUBMITTED_EVENT, id: 'req-2', status: 'DRAFT', coordinatorId: null, submittedAt: null }
-    detailMocks.eventError.value = null
-    detailMocks.coordinatorResponse.value = null
-    detailMocks.putResponse.value = { id: 'req-2', status: 'DRAFT' }
-    detailMocks.putError.value = null
-    detailMocks.useFetch.mockReset()
-    detailMocks.navigateTo.mockReset()
-    const wrapper = await mountDetailPage()
-    const saves = wrapper.findAll('button').filter(b => b.text().includes('Save changes'))
-    const submits = wrapper.findAll('button').filter(b => b.text().includes('Submit request'))
-    expect(saves.length).toBe(1)
-    expect(submits.length).toBe(1)
-    await saves[0]!.trigger('click')
-    await wrapper.vm.$nextTick()
-    await new Promise(resolve => setTimeout(resolve, 0))
-    const puts = detailMocks.useFetch.mock.calls.filter(([url, init]) => typeof url === 'string' && url.startsWith('/api/events/') && (init as { method?: string })?.method === 'PUT')
-    expect(puts.length).toBe(1)
-    expect((puts[0]![1] as { body?: Record<string, unknown> }).body).not.toMatchObject({ submit: true })
-    expect(detailMocks.navigateTo).toHaveBeenCalledWith('/')
-  })
-
-  it('submitted offers one combined save-and-submit action', async () => {
-    showSubmittedWithCoordinator()
-    const wrapper = await mountDetailPage()
-    const edits = wrapper.findAll('button').filter(b => b.text().includes('Edit request'))
-    expect(edits.length).toBe(1)
-    await edits[0]!.trigger('click')
-    await wrapper.vm.$nextTick()
-    const actions = wrapper.findAll('button').filter(b => b.text().includes('Save and Submit'))
-    expect(actions.length).toBe(1)
-    expect(wrapper.findAll('button').filter(b => b.text().includes('Submit request')).length).toBe(0)
-  })
-
-  it('rejected offers no edit action', async () => {
-    detailMocks.eventResponse.value = { ...SUBMITTED_EVENT, id: 'req-9', status: 'REJECTED', coordinatorId: null }
-    detailMocks.eventError.value = null
-    detailMocks.coordinatorResponse.value = null
-    const wrapper = await mountDetailPage()
-    expect(wrapper.findAll('button').filter(b => b.text().includes('Edit request')).length).toBe(0)
-    expect(wrapper.find('fieldset[disabled]').exists()).toBe(true)
-  })
-})
-
-const COORDINATOR_USER = { id: 'u-coordinator', email: 'coordinator@example.com', name: 'Coordinator One', role: 'EVENT_COORDINATOR' }
-
-describe('CS-30 — TC-CS30-06 review queue is coordinator-only', () => {
-  it('GET returns submitted requests with organiser contact for coordinators', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(COORDINATOR_USER)
-      const { default: queueHandler } = await import('../../frontend/server/api/review-queue.get') as unknown as {
-        default: (event: never) => Promise<{ requests: Record<string, unknown>[] }>
-      }
-      const body = await queueHandler(mockBffEvent({ cookie }).event)
-      expect(body.requests.length > 0).toBe(true)
-      expect(body.requests.every(item => item.status === 'SUBMITTED')).toBe(true)
-      const first = body.requests[0]!
-      expect(first).toHaveProperty('id')
-      expect(first).toHaveProperty('title')
-      expect(first).toMatchObject({ organiser: { name: expect.any(String) } })
-      expect(typeof first.submittedAt).toBe('string')
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('GET denies organisers with 403', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(ORGANISER_USER)
-      const { default: queueHandler } = await import('../../frontend/server/api/review-queue.get') as unknown as {
-        default: (event: never) => Promise<unknown>
-      }
-      await expect(queueHandler(mockBffEvent({ cookie }).event)).rejects.toMatchObject({ statusCode: 403 })
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('GET denies unauthenticated callers with 401', async () => {
-    stubBffGlobals()
-    try {
-      const { default: queueHandler } = await import('../../frontend/server/api/review-queue.get') as unknown as {
-        default: (event: never) => Promise<unknown>
-      }
-      await expect(queueHandler(mockBffEvent({}).event)).rejects.toMatchObject({ statusCode: 401 })
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-})
-
-describe('CS-30 — TC-CS30-07 coordinator decisions transition submitted requests', () => {
-  it('approve moves SUBMITTED to APPROVED', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(COORDINATOR_USER)
-      const { default: decideHandler } = await import('../../frontend/server/api/events/[id]/decision.post') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      const body = await decideHandler(mockBffEvent({ cookie, method: 'POST', params: { id: 'e2' }, body: { decision: 'approve' } }).event)
-      expect(body).toMatchObject({ id: 'e2', status: 'APPROVED' })
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('reject and amendments transitions apply', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(COORDINATOR_USER)
-      const { default: decideHandler } = await import('../../frontend/server/api/events/[id]/decision.post') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      const rejected = await decideHandler(mockBffEvent({ cookie, method: 'POST', params: { id: 'e4' }, body: { decision: 'reject' } }).event)
-      expect(rejected).toMatchObject({ status: 'REJECTED' })
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('organisers cannot decide (403), unknown decisions 422, unknown ids 404', async () => {
-    stubBffGlobals()
-    try {
-      const orgCookie = await sealBffCookie(ORGANISER_USER)
-      const coordCookie = await sealBffCookie(COORDINATOR_USER)
-      const { default: decideHandler } = await import('../../frontend/server/api/events/[id]/decision.post') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      await expect(decideHandler(mockBffEvent({ cookie: orgCookie, method: 'POST', params: { id: 'e2' }, body: { decision: 'approve' } }).event))
-        .rejects.toMatchObject({ statusCode: 403 })
-      await expect(decideHandler(mockBffEvent({ cookie: coordCookie, method: 'POST', params: { id: 'e2' }, body: { decision: 'explode' } }).event))
-        .rejects.toMatchObject({ statusCode: 422 })
-      await expect(decideHandler(mockBffEvent({ cookie: coordCookie, method: 'POST', params: { id: 'nope' }, body: { decision: 'approve' } }).event))
-        .rejects.toMatchObject({ statusCode: 404 })
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('deciding a non-submitted request conflicts with 409', async () => {
-    stubBffGlobals()
-    try {
-      const cookie = await sealBffCookie(COORDINATOR_USER)
-      const { default: decideHandler } = await import('../../frontend/server/api/events/[id]/decision.post') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      await expect(decideHandler(mockBffEvent({ cookie, method: 'POST', params: { id: 'e1' }, body: { decision: 'approve' } }).event))
-        .rejects.toMatchObject({ statusCode: 409 })
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-})
-
-describe('CS-30 — TC-CS30-08 role scoping on reads', () => {
-  it('coordinator sees an empty organiser list; organisers see only their own', async () => {
-    stubBffGlobals()
-    try {
-      const coordCookie = await sealBffCookie(COORDINATOR_USER)
-      const otherCookie = await sealBffCookie({ id: 'u-organiser-b', email: 'b@example.com', name: 'B', role: 'EVENT_ORGANISER' })
-      const { default: listHandler } = await import('../../frontend/server/api/events.get') as unknown as {
-        default: (event: never) => Promise<{ events: Record<string, unknown>[] }>
-      }
-      const coordBody = await listHandler(mockBffEvent({ cookie: coordCookie }).event)
-      expect(coordBody.events).toEqual([])
-      const otherBody = await listHandler(mockBffEvent({ cookie: otherCookie }).event)
-      expect(otherBody.events).toEqual([])
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-
-  it('assigned coordinator reads submitted details; drafts stay owner-only', async () => {
-    stubBffGlobals()
-    try {
-      const orgCookie = await sealBffCookie(ORGANISER_USER)
-      const coordCookie = await sealBffCookie(COORDINATOR_USER)
-      const { default: postHandler } = await import('../../frontend/server/api/events.post') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      const created = await postHandler(mockBffEvent({ cookie: orgCookie, method: 'POST', body: { ...VALID_FORM, saveAs: 'submit' } }).event)
-      const { default: getHandler } = await import('../../frontend/server/api/events/[id].get') as unknown as {
-        default: (event: never) => Promise<Record<string, unknown>>
-      }
-      const body = await getHandler(mockBffEvent({ cookie: coordCookie, params: { id: created.id as string } }).event)
-      expect(body).toMatchObject({ id: created.id, status: 'SUBMITTED' })
-      expect(typeof body.coordinatorId).toBe('string')
-      await expect(getHandler(mockBffEvent({ cookie: coordCookie, params: { id: 'e1' } }).event))
-        .rejects.toMatchObject({ statusCode: 403 })
-    }
-    finally {
-      vi.unstubAllGlobals()
-    }
-  })
-})
-
 const QUEUE_ITEMS = [
   {
+    version:1,
     id: 'req-1',
     title: 'Autumn Product Summit',
     status: 'SUBMITTED',
@@ -655,6 +218,7 @@ const QUEUE_ITEMS = [
     technicalDetails: '',
   },
   {
+    version:1,
     id: 'req-2',
     title: 'Vendor Expo 2026',
     status: 'SUBMITTED',
@@ -689,6 +253,7 @@ async function mountIndexPage() {
 }
 
 function showQueue() {
+  detailMocks.actionFetch.mockReset().mockImplementation(async()=>{if(detailMocks.decisionError.value)throw detailMocks.decisionError.value;return detailMocks.decisionResponse.value})
   detailMocks.sessionUser.value = { id: 'u-coordinator', email: 'coordinator@example.com', name: 'Coordinator One', role: 'EVENT_COORDINATOR' }
   detailMocks.queueResponse.value = { requests: QUEUE_ITEMS }
   detailMocks.queueError.value = null
@@ -759,7 +324,7 @@ describe('CS-30 — TC-CS30-11 coordinator decision actions', () => {
     await approves[0]!.trigger('click')
     await wrapper.vm.$nextTick()
     await new Promise(resolve => setTimeout(resolve, 0))
-    const posts = detailMocks.useFetch.mock.calls.filter(([url, init]) => url === '/api/events/req-1/decision' && (init as { method?: string })?.method === 'POST')
+    const posts = detailMocks.actionFetch.mock.calls.filter(([url, init]) => url === '/api/events/req-1/decision' && (init as { method?: string })?.method === 'POST')
     expect(posts.length).toBe(1)
     expect((posts[0]![1] as { body?: Record<string, unknown> }).body).toMatchObject({ decision: 'approve' })
     expect(detailMocks.refreshNuxtData).toHaveBeenCalledWith('coordinator-queue')
@@ -792,4 +357,23 @@ describe('CS-30 — TC-CS30-11 coordinator decision actions', () => {
     expect(change.attributes('disabled')).not.toBe(undefined)
     expect(change.attributes('title')).toMatch(/not available yet/i)
   })
+})
+// Replaces the mock seed/API harness; retains owner/contact/queue/decision scope.
+describe('CS-30 — TC-CS30-01 persistent coordinator and dashboard integration',()=>{
+ it('owner and assigned Coordinator see one saved record, unrelated users are denied',async()=>{const r=await api.call('POST','/api/events',valid);expect(r.status).toBe(201);expect(r.body.coordinatorId).toBe(api.users.coord.id);expect((await api.call('GET','/api/events/'+r.body.id,undefined,'coord')).status).toBe(200);expect((await api.call('GET','/api/events/'+r.body.id,undefined,'other')).status).toBe(403)})
+ it('relationship-scoped coordinator contact contains only required profile fields',async()=>{const r=await api.call('POST','/api/events',valid);const c=await api.call('GET',`/api/events/${r.body.id}/coordinator`);expect(c.body).toMatchObject({id:api.users.coord.id,name:'coord Synthetic',email:'coord@example.test'});expect(c.body).not.toHaveProperty('passwordHash');expect((await api.call('GET',`/api/events/${r.body.id}/coordinator`,undefined,'other')).status).toBe(403)})
+ it('drafts and their edits appear in owner cards with updated title/date',async()=>{const r=await api.call('POST','/api/events',{...valid,saveAs:'draft'});const saved=await api.call('PUT','/api/events/'+r.body.id,{version:r.body.version,eventName:'Renamed',proposedDate:'2028-12-01'});expect(saved.status).toBe(200);const list=await api.call('GET','/api/events');expect(list.body.events.find((x:any)=>x.id===r.body.id)).toMatchObject({title:'Renamed',status:'DRAFT',meta:expect.stringContaining('2028-12-01')});expect((await api.call('GET','/api/events',undefined,'other')).body.events).toEqual([])})
+ it('unknown persisted IDs fail without synthesising mock records',async()=>{expect((await api.call('GET','/api/events/e2')).status).toBe(404)})
+})
+describe('CS-30 — TC-CS30-06 queue authorisation',()=>{
+ it('lists submitted assigned requests with limited organiser contact',async()=>{const r=await api.call('POST','/api/events',valid);const q=await api.call('GET','/api/review-queue',undefined,'coord');expect(q.body.requests.some((x:any)=>x.id===r.body.id&&x.organiser.name==='owner Synthetic')).toBe(true)})
+ it('rejects Organisers and missing sessions',async()=>{expect((await api.call('GET','/api/review-queue')).status).toBe(403);expect((await api.call('GET','/api/review-queue',undefined,null)).status).toBe(401)})
+})
+describe('CS-30 — TC-CS30-07 existing decision controls use shared guard',()=>{
+ it('approve creates a distinct Planning Event and closes further decisions',async()=>{const r=await api.call('POST','/api/events',valid);const p=`/api/events/${r.body.id}/decision`;const d=await api.call('POST',p,{decision:'approve',version:r.body.version},'coord');expect(d.status).toBe(200);expect(d.body).toMatchObject({status:'APPROVED',eventStatus:'ARRANGEMENT_PENDING',statusLabel:'Planning'});expect(d.body.eventId).not.toBe(r.body.id);expect((await api.call('POST',p,{decision:'approve',version:d.body.version},'coord')).status).toBe(409)})
+ it('reject and return require comments and return their explanations',async()=>{for(const decision of ['reject','amendments']){const r=await api.call('POST','/api/events',valid);const p=`/api/events/${r.body.id}/decision`;expect((await api.call('POST',p,{decision,version:r.body.version},'coord')).status).toBe(422);const d=await api.call('POST',p,{decision,version:r.body.version,notes:'Explain'},'coord');expect(d.status).toBe(200);expect(d.body.decisionReason).toBe('Explain')}})
+ it('owner cannot approve; unknown action and unknown ID keep their error status',async()=>{const r=await api.call('POST','/api/events',valid);expect((await api.call('POST',`/api/events/${r.body.id}/decision`,{decision:'approve',version:r.body.version})).status).toBe(403);expect((await api.call('POST',`/api/events/${r.body.id}/decision`,{decision:'explode',version:r.body.version},'coord')).status).toBe(400);expect((await api.call('POST','/api/events/missing/decision',{decision:'approve',version:1},'coord')).status).toBe(404)})
+})
+describe('CS-30 — TC-CS30-08 private draft and role-scoped dashboard',()=>{
+ it('Coordinator dashboard stays empty and draft reads stay private',async()=>{const r=await api.call('POST','/api/events',{eventName:'Incomplete',saveAs:'draft'});expect((await api.call('GET','/api/events',undefined,'coord')).body.events).toEqual([]);expect((await api.call('GET','/api/events/'+r.body.id,undefined,'coord')).status).toBe(403)})
 })

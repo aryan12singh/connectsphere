@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardFooter, CardHeader } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { REQUEST_STATUS_LABELS } from '@/components/status-labels'
 const activeTab = ref('all')
 
 const { user } = useUserSession()
@@ -36,6 +37,7 @@ interface OrganiserEvent {
   title: string
   meta: string
   status: EventStatus
+  statusLabel?: string
 }
 
 const EVENT_STATUSES: readonly string[] = [
@@ -100,9 +102,9 @@ function badgeFor(status: EventStatus) {
     case 'DRAFT':
       return { label: 'Draft', variant: 'outline' as const, class: '', dotted: false }
     case 'SUBMITTED':
-      return { label: 'Submitted', variant: 'secondary' as const, class: '', dotted: false }
+      return { label: REQUEST_STATUS_LABELS.SUBMITTED, variant: 'secondary' as const, class: '', dotted: false }
     case 'RETURNED_FOR_AMENDMENT':
-      return { label: 'Returned', variant: 'outline' as const, class: 'border-transparent bg-warning-soft text-warning', dotted: true }
+      return { label: REQUEST_STATUS_LABELS.RETURNED_FOR_AMENDMENT, variant: 'outline' as const, class: 'border-transparent bg-warning-soft text-warning', dotted: true }
     case 'APPROVED':
       return { label: 'Approved', variant: 'outline' as const, class: 'border-transparent bg-success-soft text-success', dotted: true }
     case 'REJECTED':
@@ -146,7 +148,7 @@ function badgeFor(status: EventStatus) {
             Draft ({{ countFor('DRAFT') }})
           </TabsTrigger>
           <TabsTrigger value="SUBMITTED" data-testid="tab-submitted" class="flex-none">
-            Submitted ({{ countFor('SUBMITTED') }})
+            Under Review ({{ countFor('SUBMITTED') }})
           </TabsTrigger>
           <TabsTrigger value="RETURNED_FOR_AMENDMENT" data-testid="tab-returned" class="flex-none">
             Returned ({{ countFor('RETURNED_FOR_AMENDMENT') }})
@@ -185,7 +187,7 @@ function badgeFor(status: EventStatus) {
           <CardFooter class="justify-between gap-2 border-t border-border p-4 pt-4!">
             <Badge :variant="badgeFor(event.status).variant" :class="['h-[22px]', badgeFor(event.status).class]">
               <span v-if="badgeFor(event.status).dotted" aria-hidden="true" class="size-1.5 rounded-full bg-current" />
-              {{ badgeFor(event.status).label }}
+              {{ event.statusLabel ?? badgeFor(event.status).label }}
             </Badge>
             <Button as-child variant="ghost" class="relative h-9 shrink-0 gap-1 px-2.5 text-primary hover:text-primary">
               <NuxtLink :to="`/requests/${event.id}`">

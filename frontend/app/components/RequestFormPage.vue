@@ -2,7 +2,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import EventRequestForm from './EventRequestForm.vue'
-import type { RequestFormState } from './request-form-state'
+import { hasMeaningfulInput, type RequestFormState } from './request-form-state'
 
 export interface CoordinatorBanner {
   name?: unknown
@@ -17,6 +17,8 @@ withDefaults(defineProps<{
   isSubmitting?: boolean
   submitError?: string
   canEdit?: boolean
+  returnComments?: string
+  fieldErrors?: Record<string,string[]>
   mode: 'create' | 'draft' | 'edit' | 'readonly'
 }>(), {
   banner: null,
@@ -24,6 +26,8 @@ withDefaults(defineProps<{
   isSubmitting: false,
   submitError: '',
   canEdit: true,
+  returnComments: '',
+  fieldErrors: () => ({}),
 })
 
 defineEmits<{
@@ -59,14 +63,15 @@ const form = defineModel<RequestFormState>({ required: true })
     </p>
   </div>
 
-  <form id="request-form" class="mt-6" @submit.prevent="mode === 'edit' ? $emit('save') : $emit('submit')">
+  <aside v-if="returnComments" data-testid="return-comments" class="mt-5 rounded-3xl border border-border bg-card p-4"><h2 class="font-semibold">Coordinator comments</h2><p class="mt-2 whitespace-pre-wrap text-sm">{{ returnComments }}</p></aside>
+  <form id="request-form" class="mt-6" novalidate @submit.prevent="$emit('submit')">
     <p v-if="submitError" role="alert" class="mb-4 text-sm text-destructive">
       {{ submitError }}
     </p>
-    <EventRequestForm v-model="form" :disabled="disabled" />
+    <EventRequestForm v-model="form" :disabled="disabled || isSubmitting" :field-errors="fieldErrors" />
     <div class="mt-6 grid gap-3" :class="mode === 'edit' || mode === 'readonly' ? 'grid-cols-1' : 'grid-cols-2'">
       <template v-if="mode === 'create'">
-        <Button type="button" variant="outline" class="w-full" :disabled="isSubmitting" @click="$emit('save-draft')">
+        <Button type="button" variant="outline" class="w-full" :disabled="isSubmitting || !hasMeaningfulInput(form)" @click="$emit('save-draft')">
           Save draft
         </Button>
         <Button type="submit" class="w-full" :disabled="isSubmitting">
@@ -82,9 +87,8 @@ const form = defineModel<RequestFormState>({ required: true })
         </Button>
       </template>
       <template v-else-if="mode === 'edit'">
-        <Button type="submit" class="w-full" :disabled="isSubmitting">
-          Save and Submit
-        </Button>
+        <Button type="button" variant="outline" :disabled="isSubmitting || !hasMeaningfulInput(form)" @click="$emit('save')">Save changes</Button>
+        <Button type="submit" class="w-full" :disabled="isSubmitting">Resubmit request</Button>
       </template>
       <template v-else>
         <Button v-if="canEdit" type="button" class="w-full" @click="$emit('edit')">

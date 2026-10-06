@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createApp, createError, defineEventHandler, H3Event, readBody, toWebHandler, useSession } from 'h3'
+import { getQuery, createApp, createError, defineEventHandler, H3Event, readBody, toWebHandler, useSession } from 'h3'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 
@@ -31,6 +31,8 @@ mockNuxtImport('useUserSession', () => () => ({
   fetch: authMiddlewareMocks.sessionFetch,
   clear: authMiddlewareMocks.sessionClear,
 }))
+
+vi.mock('../../frontend/server/utils/kongBff',()=>({kongBffFetch:async(event:any,path:string)=>{const session=await (globalThis as any).requireUserSession(event);return path==='/auth/me'?{user:session.user}:{items:[]}}}))
 
 // CS-10 — single file per story (IS212/IEEE 829). One describe per AC, all TCs together.
 // Execution log is generated deterministically via tests/scripts/compile-test-run.ts → test-runs/<date-time>.md
@@ -104,6 +106,7 @@ describe('CS-10 — TC-CS10-03 unauthenticated denied server-side', () => {
     // sealed session, 401 when no authenticated user is present.
     vi.stubGlobal('defineEventHandler', defineEventHandler)
     vi.stubGlobal('createError', createError)
+    vi.stubGlobal('getQuery', getQuery)
     vi.stubGlobal('requireUserSession', async (event: Parameters<typeof useSession>[0]) => {
       const session = await useSession(event, { password: TEST_SESSION_PASSWORD, name: 'nuxt-session' })
       if (!session.data.user)
@@ -215,6 +218,7 @@ describe('CS-10 — TC-CS10-01 BFF issues sealed session without token in body',
     vi.stubGlobal('defineEventHandler', defineEventHandler)
     vi.stubGlobal('readBody', readBody)
     vi.stubGlobal('createError', createError)
+    vi.stubGlobal('getQuery', getQuery)
     vi.stubGlobal('setUserSession', async (event: Parameters<typeof useSession>[0], data: Record<string, unknown>) => {
       const session = await useSession(event, { password: password as string, name: 'nuxt-session' })
       await session.update(data)
@@ -251,6 +255,7 @@ describe('CS-10 — TC-CS10-01 invalid credentials stay generic on the new route
     vi.stubGlobal('defineEventHandler', defineEventHandler)
     vi.stubGlobal('readBody', readBody)
     vi.stubGlobal('createError', createError)
+    vi.stubGlobal('getQuery', getQuery)
     vi.stubGlobal('setUserSession', vi.fn())
 
     try {
@@ -279,6 +284,7 @@ describe('CS-10 — TC-CS10-04 BFF revokes the sealed session', () => {
     const password = TEST_SESSION_PASSWORD
     vi.stubGlobal('defineEventHandler', defineEventHandler)
     vi.stubGlobal('createError', createError)
+    vi.stubGlobal('getQuery', getQuery)
     vi.stubGlobal('clearUserSession', async (event: Parameters<typeof useSession>[0]) => {
       const session = await useSession(event, { password: password as string, name: 'nuxt-session' })
       await session.clear()
@@ -374,6 +380,7 @@ describe('CS-10 — TC-CS10-03 authenticated request succeeds', () => {
   it('GET /api/events with a valid sealed session cookie returns 200 events', async () => {
     vi.stubGlobal('defineEventHandler', defineEventHandler)
     vi.stubGlobal('createError', createError)
+    vi.stubGlobal('getQuery', getQuery)
     vi.stubGlobal('requireUserSession', async (event: Parameters<typeof useSession>[0]) => {
       const session = await useSession(event, { password: TEST_SESSION_PASSWORD, name: 'nuxt-session' })
       if (!session.data.user)
@@ -490,6 +497,7 @@ describe('CS-10 — TC-CS10-05 unknown authorisation denied, no privileged defau
     vi.stubGlobal('defineEventHandler', defineEventHandler)
     vi.stubGlobal('readBody', readBody)
     vi.stubGlobal('createError', createError)
+    vi.stubGlobal('getQuery', getQuery)
     const setUserSessionMock = vi.fn()
     vi.stubGlobal('setUserSession', setUserSessionMock)
 
@@ -537,4 +545,15 @@ describe('CS-10 — TC-CS10-06 role-appropriate starting screen; data respects o
       expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/')
     }
   })
+})
+
+describe('CS-10 — TC-CS10-09 configuration fails closed',()=>{
+ it('unknown authentication mode is denied, with only explicit live/mock supported',async()=>{
+  const {resolveAuthMode}=await import('../../frontend/server/api/auth.post')
+  expect(resolveAuthMode('live')).toBe('live');expect(resolveAuthMode('mock')).toBe('mock')
+  for(const mode of ['misspelled-live',undefined,'']){
+   let error:any;try{resolveAuthMode(mode)}catch(e){error=e}
+   expect(error?.statusCode).toBe(503)
+  }
+ })
 })

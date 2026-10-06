@@ -49,3 +49,11 @@ Do not convert blocked cases into passing placeholders, tautologies or mocks tha
 ## Unified form template (2026-09-20 12:00:00)
 
 Create (`/requests/new`) and detail (`/requests/:id`) render one shared `RequestFormPage` shell (header + optional coordinator banner + reusable fields + one responsive action grid). The create page's separate desktop status card and sticky mobile bar are removed; TC-CS11-01 UI coverage now asserts the single action bar. Action rules: draft → Save changes + Submit request; non-draft (except REJECTED) → single Save and Submit in edit mode; REJECTED → read-only, no edit.
+
+## Source-based amendments — 2026-10-06
+
+The current CS-11 Jira AC7 and full implementation request supersede the older TC-CS11-17/18 notification-delivery expectations for this branch: both now prove a transactional pending RequestSubmitted outbox row and no duplicate on replay. Actual CS-50 delivery/retry remains **Not Executed** and outside this task. Historic records are retained; a new outbox result does not establish old delivery acceptance.
+
+C02 is still a team proposal. TC-CS11-02/03/04 use it provisionally and do not claim approval. Registration is now captured in the UI. TC-CS11-19 covers incomplete **submit** rejection; the user explicitly included CS-29, so explicit Save draft is now supported. The contradictory no-Save-draft wording is superseded, not quietly passed.
+
+The old TC-CS11-20/21/22 mock-route fixtures are replaced by actual H3→Express→Prisma tests: create/401/422/role/CSRF in 07/19/20; update/submit/private/404 in CS29-02/03 and CS27-02/03 plus service API tests; receipt/draft navigation in 08 and CS29-01/02 plus live browser. Current-row locks, rollback and concurrent duplicates are additionally proved in event-service integration tests. Old 405 edit expectations now use the shared guard's 409 state conflict; 403 ownership is retained. TC-CS11-21/22 have no new assertion with those exact IDs and are reported Not Executed with this mapping.

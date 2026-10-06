@@ -1,12 +1,5 @@
-import { createEventsResponse } from '../utils/eventMocks'
-import { listRequestRecords } from '../utils/eventRequestStore'
+import { requestCall, browserRecord, card } from '../utils/eventBff'
 
-/**
- * Data model for GET /api/events. Owned by this route file (the api layer),
- * not the mock — mocks and (via Nitro inference) pages consume this contract.
- * Status values follow the backend `EventRequestStatus` enum plus `DRAFT`;
- * `NEW` never reaches the wire — it is client-only (fresh unsaved form).
- */
 export type EventStatus
   = | 'DRAFT'
     | 'SUBMITTED'
@@ -26,31 +19,17 @@ export interface EventsResponse {
   events: OrganiserEvent[]
 }
 
-/**
- * BFF mock for GET /api/events.
- * Organiser-owner-scoped: organisers see only their own records; every other
- * role gets an empty list (coordinators work from /api/review-queue).
- * Protected server-side via nuxt-auth-utils: 401 without a sealed session.
- */
+
 export default defineEventHandler(async (event) => {
-  const session = await requireUserSession(event)
-  const user = session.user as { id?: unknown, role?: unknown } | undefined
-  if (!user || typeof user.id !== 'string')
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-
   const query = getQuery(event)
-  if (query.scope === 'booking') {
-    if (user.role === 'VENUE_STAFF')
-      return createEventsResponse(listRequestRecords())
-
-    if (user.role !== 'EVENT_COORDINATOR')
-      return { events: [] }
-
-    // Coordinator booking options remain assignment-scoped.
-    return createEventsResponse(listRequestRecords().filter(record => record.coordinatorId === user.id))
+  if(query.scope === 'booking') {
+    const result = await requestCall<{items:{id:string,title:string,status:string}[]}>(event,'/events')
+    return {events:result.items.map(item=>({...item,category:'EVENT',meta:'',status:'APPROVED' as const}))}
   }
-
-  if (user.role !== 'EVENT_ORGANISER')
-    return { events: [] }
-  return createEventsResponse(listRequestRecords().filter(record => record.organiserId === user.id))
+  // Verify live identity for the dashboard even when it is the Coordinator home.
+  const me = await requestCall<{user:{role:string,roles?:string[]}}>(event,'/auth/me')
+  const roles = me.user.roles ?? [me.user.role]
+  if(!roles.includes('EVENT_ORGANISER') && roles.includes('EVENT_COORDINATOR')) return {events:[]}
+  const result = await requestCall<{items:Record<string,unknown>[]}>(event,'/event-requests',{query})
+  return {events:result.items.map(item=>card(browserRecord(item)))}
 })

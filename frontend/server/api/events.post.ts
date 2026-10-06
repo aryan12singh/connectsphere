@@ -1,11 +1,6 @@
-import { createRequestRecord, toRecordFields, validateRequestForm } from '../utils/eventRequestStore'
+import { setResponseStatus } from 'h3'
+import { requestCall, writeOptions, browserRecord } from '../utils/eventBff'
 
-/**
- * Data model for POST /api/events. Owned by this route file (the api layer),
- * not the mock — the store, sibling routes and (via Nitro inference) pages
- * consume this contract. Statuses follow the backend `EventRequestStatus`
- * enum (uppercase); `NEW` never reaches the wire — it is client-only.
- */
 export type RequestStatus = 'DRAFT' | 'SUBMITTED' | 'RETURNED_FOR_AMENDMENT' | 'APPROVED' | 'REJECTED'
 
 export interface EventRequestForm {
@@ -56,23 +51,10 @@ export interface EventRequestRecord {
   technicalDetails: string
 }
 
-/**
- * BFF mock for POST /api/events — Save draft (`saveAs: 'draft'` → DRAFT)
- * and Submit (`saveAs: 'submit'` → SUBMITTED + coordinator assignment).
- * Protected via nuxt-auth-utils; owner is the session user.
- */
+
 export default defineEventHandler(async (event) => {
-  const session = await requireUserSession(event)
-  const user = session.user as { id?: unknown } | undefined
-  if (!user || typeof user.id !== 'string')
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-
-  const body = await readBody<EventRequestForm & { saveAs?: unknown }>(event)
-  const validationErrors = validateRequestForm(body)
-  if (validationErrors)
-    throw createError({ statusCode: 422, statusMessage: 'Validation failed', data: { errors: validationErrors } })
-
-  const status: RequestStatus = body.saveAs === 'submit' ? 'SUBMITTED' : 'DRAFT'
-  // createRequestRecord auto-assigns a coordinator on SUBMITTED.
-  return createRequestRecord({ organiserId: user.id, status, fields: toRecordFields(body) })
+  const { body, headers } = await writeOptions(event)
+  const record = await requestCall(event, '/event-requests', {method:'POST', body:{...body,saveAs:body.saveAs ?? 'submit'},headers})
+  setResponseStatus(event, 201)
+  return browserRecord(record)
 })

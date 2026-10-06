@@ -37,6 +37,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // is requested. The role is server-issued session data; BFF routes enforce
   // the actual authorization independently of this interface redirect.
   const role = user.value?.role
+  const roles = user.value?.roles ?? (role ? [role] : [])
   if (role === 'VENUE_STAFF') {
     if (to.path === '/')
       return navigateTo('/venue')
@@ -44,6 +45,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   // Organisers use the event dashboard and coordinators use the review queue.
-  if (role !== 'EVENT_ORGANISER' && role !== 'EVENT_COORDINATOR')
+  if (!roles.includes('EVENT_ORGANISER') && !roles.includes('EVENT_COORDINATOR'))
     return navigateTo('/login')
 })

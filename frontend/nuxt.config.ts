@@ -30,9 +30,9 @@ export default defineNuxtConfig({
   runtimeConfig: {
     // Where the BFF reaches the backend: Kong. In Docker this becomes http://kong:8000.
     apiBaseUrl: 'http://localhost:8000',
-    // 'mock' = login against server/utils/mockUserDb.ts (no backend needed;
-    //          matches the event mocks and existing tests).
+    // 'mock' = explicit synthetic authentication test fixture only.
+    // Event workflows always require the real authenticated service.
     // 'live' = login through the real auth-service (needs the Docker stack).
-    authMode: 'mock',
+    authMode: 'live',
   },
 })

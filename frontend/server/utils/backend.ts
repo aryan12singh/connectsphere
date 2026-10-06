@@ -101,6 +101,8 @@ export interface BackendUser {
   firstName: string
   lastName: string
   role: string
+  roles?: string[]
+  organisationId?: string | null
   company: string | null
   isActive: boolean
 }
@@ -112,6 +114,8 @@ export function toSessionUser(user: BackendUser, permissions: string[]) {
     email: user.email,
     name: `${user.firstName} ${user.lastName}`,
     role: user.role,
+    roles: user.roles ?? [user.role],
+    organisationId: user.organisationId ?? null,
     permissions,
   }
 }
