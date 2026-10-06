@@ -30,7 +30,6 @@ jobs:
       NUXT_AUTH_MODE: mock
       NUXT_SESSION_PASSWORD: isolated-ci-cookie-password-at-least-32-characters
       TEST_RUN_PHASE: GREEN
-      TEST_RESULTS_JSON: ${{ runner.temp }}/frontend-results.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,6 +49,8 @@ jobs:
         working-directory: services/booking-service
       - run: npm ci && npm run typecheck && npm run test:report && npm run build
         working-directory: frontend
+        env:
+          TEST_RESULTS_JSON: ${{ runner.temp }}/frontend-results.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
