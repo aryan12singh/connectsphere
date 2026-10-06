@@ -1,4 +1,11 @@
 const config = require('./config');
 const app = require('./app');
 
-app.listen(config.port, () => console.log(`booking-service listening on port ${config.port}`));
+const server = app.listen(config.port, (error) => {
+  if (error) {
+    console.error('booking-service failed to listen:', error.code || error.message);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`booking-service listening on port ${server.address().port}`);
+});

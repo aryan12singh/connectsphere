@@ -1,6 +1,9 @@
 import json
 import os
+import queue
+import re
 import subprocess
+import threading
 import time
 import unittest
 from urllib.error import HTTPError
@@ -22,7 +25,7 @@ class BookingServiceContractTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.port = int(os.environ.get("BOOKING_TEST_PORT", "43102"))
+        cls.port = int(os.environ.get("BOOKING_TEST_PORT", "0"))
         env = os.environ.copy()
         env.update({"PORT": str(cls.port), "NODE_ENV": "test", "DATA_MODE": "memory"})
         cls.process = subprocess.Popen(
@@ -31,21 +34,62 @@ class BookingServiceContractTest(unittest.TestCase):
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
         )
-        deadline = time.time() + 8
-        while time.time() < deadline:
-            try:
-                with urlopen(f"http://127.0.0.1:{cls.port}/health", timeout=0.2):
-                    return
-            except Exception:
+        cls.addClassCleanup(cls.stop_service)
+        cls.output = {"stdout": [], "stderr": []}
+        ready = queue.Queue()
+
+        def read_output(stream, name):
+            for line in stream:
+                cls.output[name].append(line.rstrip())
+                if name == "stdout":
+                    ready.put(line)
+
+        cls.readers = [threading.Thread(target=read_output, args=(stream, name), daemon=True)
+                       for stream, name in [(cls.process.stdout, "stdout"), (cls.process.stderr, "stderr")]]
+        for reader in cls.readers:
+            reader.start()
+        deadline = time.monotonic() + 8
+        listening = False
+        while time.monotonic() < deadline:
+            if cls.process.poll() is not None:
+                break
+            if not listening:
+                try:
+                    line = ready.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                match = re.search(r"booking-service listening on port (\d+)", line)
+                if not match:
+                    continue
+                cls.port = int(match.group(1))
+                listening = cls.port > 0
+            if listening:
+                try:
+                    with urlopen(f"http://127.0.0.1:{cls.port}/health", timeout=0.2) as response:
+                        if response.status == 200 and json.load(response) == {"status": "ok", "service": "booking-service"}:
+                            return
+                except (OSError, ValueError):
+                    pass
                 time.sleep(0.1)
-        stdout, stderr = cls.process.communicate(timeout=1)
-        raise RuntimeError(f"booking-service failed to start: {stdout!r} {stderr!r}")
+        cls.stop_service()
+        raise RuntimeError(f"booking-service failed to start (exit {cls.process.returncode}): {cls.output}")
 
     @classmethod
-    def tearDownClass(cls):
-        cls.process.terminate()
-        cls.process.wait(timeout=5)
+    def stop_service(cls):
+        if cls.process.poll() is None:
+            cls.process.terminate()
+            try:
+                cls.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                cls.process.kill()
+                cls.process.wait(timeout=5)
+        for reader in cls.readers:
+            reader.join(timeout=1)
+        cls.process.stdout.close()
+        cls.process.stderr.close()
 
     def request(self, method, path, body=None, role="EVENT_COORDINATOR", user_id="coordinator-1", key=None):
         headers = {

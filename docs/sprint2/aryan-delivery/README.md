@@ -8,6 +8,7 @@ The live Sprint 2 query found six issues assigned to Aryan and **zero unassigned
 - [Finish plan and code explanation guide](finish-plan.md)
 - [Sprint 1 integration audit, CS-67](sprint1-integration-audit.md)
 - [Instructor access evidence, CS-70](instructor-access.md)
+- [CI startup repair and regression evidence](ci-startup-repair.md)
 - [Dependency audit](dependency-audit.md)
 - [Week 7 notes for the next planning meeting](next-sprint-notes.md)
 - [Prepared PR description](PR_DESCRIPTION.md)
