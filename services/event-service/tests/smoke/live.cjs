@@ -1,6 +1,7 @@
 // Live synthetic smoke: built Nuxt -> Kong -> real auth/Keycloak -> Express -> PG16.
 // Reads only the checked-in demo credentials. Never prints tokens/cookies/passwords.
 const assert=require('node:assert/strict');
+const {loginWithBackoff}=require('./login-backoff.cjs');
 const fs=require('node:fs');const path=require('node:path');const {randomUUID,createHash}=require('node:crypto');
 const front=process.env.FRONTEND_BASE||'http://host.docker.internal:13000';
 const kong=process.env.KONG_BASE||'http://host.docker.internal:18000';
@@ -13,7 +14,7 @@ async function call(base,method,url,body,who='owner',key=randomUUID(),extra={}){
  const r=await fetch(base+url,{method,headers:{'content-type':'application/json',...(base===front?{cookie:cookies[who]||'',origin:new URL(front).origin}:{authorization:'Bearer '+(sessions[who]?.token||'')}),'Idempotency-Key':key,...extra},...(body===undefined?{}:{body:JSON.stringify(body)})});
  const text=await r.text();return {status:r.status,body:text?JSON.parse(text):null,headers:r.headers};
 }
-async function login(who,bff=false){const u=realm.users.find(u=>u.email===emails[who]);assert.ok(u,'Synthetic credential fixture missing for '+who);const body={email:u.email,password:u.credentials.find(c=>c.type==='password').value};const r=await call(bff?front:kong,'POST',bff?'/api/auth':'/auth/login',body,who);assert.equal(r.status,200,'Live login failed for '+who);if(bff)cookies[who]=r.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ');else sessions[who]=r.body;return r.body;}
+async function login(who,bff=false){const u=realm.users.find(u=>u.email===emails[who]);assert.ok(u,'Synthetic credential fixture missing for '+who);const body={email:u.email,password:u.credentials.find(c=>c.type==='password').value};const r=await loginWithBackoff(()=>call(bff?front:kong,'POST',bff?'/api/auth':'/auth/login',body,who));assert.equal(r.status,200,'Live login failed for '+who);if(bff)cookies[who]=r.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ');else sessions[who]=r.body;return r.body;}
 async function check(name,run){checks++;try{await run();console.log('ok '+checks+' - '+name)}catch(e){failures++;console.log('not ok '+checks+' - '+name+' - '+e.message.slice(0,700))}}
 (async()=>{
  let ready=false,lastReadiness={};for(let attempt=0;attempt<45;attempt++){try{const [gateway,web,events,bookings]=await Promise.all([fetch(kong+'/auth/password-policy'),fetch(front+'/login'),fetch(kong+'/event-requests'),fetch(kong+'/venue-bookings')]);lastReadiness={gateway:gateway.status,frontend:web.status,requests:events.status,bookings:bookings.status};if(gateway.status===200&&web.status===200&&events.status===401&&bookings.status===401){ready=true;break}}catch{lastReadiness={network:'unavailable'}}await new Promise(r=>setTimeout(r,1000))}
