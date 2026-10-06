@@ -7,7 +7,8 @@ _format_version: "3.0"
 #   - Everything else              -> the service that owns the data
 #   - Nothing under /internal/* is routed, so service-to-service endpoints
 #     can never be reached from outside.
-#   - user-service has no public route: only other services call it.
+#   - user-service exposes ONLY read routes under /users (Sprint 2); its
+#     /internal/* API is still for other services only.
 #
 # Every route uses `strip_path: false`, so each service receives the full
 # path (e.g. /events/123, not /123).
@@ -24,6 +25,17 @@ plugins:
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
       headers: ["Authorization", "Content-Type", "Idempotency-Key"]
       max_age: 3600
+
+  # Identity headers are set by the platform, NEVER by the caller. Strip any
+  # copy a client sends so nobody can pretend to be a Coordinator by adding
+  # `x-user-roles: EVENT_COORDINATOR`. (Sprint 2 contract: docs/api-contract.md.)
+  # Today each service derives the identity itself from the session token
+  # (auth-service /internal/sessions/validate) and ignores these headers; when
+  # the gateway starts adding them, the services can trust them.
+  - name: request-transformer
+    config:
+      remove:
+        headers: ["x-user-id", "x-user-roles", "x-organisation-id"]
 
 services:
   # ── auth-service: login, sessions, tech support admin API ─────────────
@@ -67,7 +79,23 @@ services:
         methods: ["GET", "POST", "PUT", "PATCH", "OPTIONS"]
         strip_path: false
 
+  # ── user-service: current user, Coordinator list, user by id ──────────
+  # Only these read routes are public. /internal/* is still never routed.
+  # user-service enforces who may see what (ownership rules) itself.
+  - name: user-service
+    url: http://user-service:3000
+    routes:
+      - name: user-routes
+        paths: ["/users"]
+        methods: ["GET", "OPTIONS"]
+        strip_path: false
+
   # ── orchestrator-service: multi-service flows ─────────────────────────
+  # NOTE (Sprint 2): POST /event-requests/{id}/decision is NOT here any more.
+  # Approve / reject / return only touch event-service data (the notification
+  # is carried by the outbox), so event-service owns it directly (CS-12, CS-28,
+  # CS-32). The orchestrator can wrap it later if a real multi-service step
+  # is added.
   # These paths sit inside the event/booking services' paths
   # (e.g. /events/123/confirm is under /events). They still reach the
   # orchestrator because each route here matches on path AND method, and
@@ -76,10 +104,6 @@ services:
   - name: orchestrator-service
     url: http://orchestrator-service:3000
     routes:
-      - name: decide-event-request
-        paths: ["~/event-requests/[^/]+/decision$"]
-        methods: ["POST", "OPTIONS"]
-        strip_path: false
       - name: decide-venue-booking
         paths: ["~/venue-bookings/[^/]+/decision$"]
         methods: ["POST", "OPTIONS"]
@@ -90,6 +114,10 @@ services:
         strip_path: false
 
   # ── Domain services (no `methods` = all methods, incl. OPTIONS) ───────
+  # Sprint 2 contract: services/event-service/docs/openapi.yaml
+  #   /event-requests, /event-requests/review-queue, /event-requests/{id}, …/submit,
+  #   …/resubmit, …/decision, …/reassign, …/activity, and /events, /events/{id}.
+  #   (/events/{id}/confirm is routed to the orchestrator above — CS-31.)
   - name: event-service
     url: http://event-service:3000
     routes:
@@ -97,6 +125,8 @@ services:
         paths: ["/event-requests", "/events"]
         strip_path: false
 
+  # Venue contract: services/venue-service/swagger.html (venue epic)
+  #   /venues, /venues/{id}, /venues/{id}/blocks, /venues/{id}/availability.
   - name: venue-service
     url: http://venue-service:3000
     routes:
