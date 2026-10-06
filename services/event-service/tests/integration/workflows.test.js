@@ -86,6 +86,30 @@ test('CS29: parallel stale edits cannot overwrite; invalid save preserves prior 
  const stored=await call('GET',path);assert.equal((await call('PUT',path,{expectedAttendance:'bad',version:stored.body.version})).status,422);assert.deepEqual((await call('GET',path)).body,stored.body);
 });
 async function returned(){const r=await create();const actor=r.body.currentCoordinatorId==='test-coord'?'coord':'coord2';const d=await call('POST',`/event-requests/${r.body.id}/decision`,{action:'RETURN',text:'Please increase the attendance',version:r.body.version},actor);assert.equal(d.status,200);return {record:d.body,actor};}
+test('CS27: upgraded PostgreSQL baseline rejects unchanged resubmit without business effects',async()=>{
+ const {record:r}=await returned();
+ const [legacy]=await prisma.$queryRaw`SELECT jsonb_build_object('startAt', "startAt", 'endAt', "endAt") AS times FROM event_requests WHERE id = ${r.id}::text`;
+ const stored=await prisma.eventRequest.findUnique({where:{id:r.id}});
+ await prisma.eventRequest.update({where:{id:r.id},data:{returnedBaseline:{...stored.returnedBaseline,...legacy.times}}});
+ const before=await Promise.all([prisma.activityLog.count({where:{eventRequestId:r.id}}),prisma.outbox.count({where:{aggregateId:r.id}})]);
+ const result=await call('POST',`/event-requests/${r.id}/resubmit`,{version:r.version});
+ assert.equal(result.status,409);assert.equal(result.body.error.code,'NO_CHANGES');
+ const after=await prisma.eventRequest.findUnique({where:{id:r.id}});assert.equal(after.status,'RETURNED_FOR_AMENDMENT');assert.equal(after.version,r.version);
+ assert.deepEqual(await Promise.all([prisma.activityLog.count({where:{eventRequestId:r.id}}),prisma.outbox.count({where:{aggregateId:r.id}})]),before);
+});
+test('CS29/11: instant-only overnight draft reopens and submits after adding its zone',async()=>{
+ const partial=await create({startAt:'2028-11-20T15:00:00Z',timeZone:'Asia/Singapore',saveAs:'draft'});assert.equal(partial.status,201);assert.equal(partial.body.endTime,null);
+ const draft=await create({startAt:'2028-11-20T15:00:00Z',endAt:'2028-11-20T17:00:00Z',saveAs:'draft'});assert.equal(draft.status,201);
+ const zoned=await call('PUT',`/event-requests/${draft.body.id}`,{timeZone:'Asia/Singapore',version:draft.body.version});assert.equal(zoned.status,200);
+ // Defend the DTO round trip for earlier records whose local adapter columns
+ // were absent even though their canonical instants are already persisted.
+ await prisma.eventRequest.update({where:{id:draft.body.id},data:{proposedDate:null,startTime:null,endDate:null,endTime:null}});
+ const reopened=await call('GET',`/event-requests/${draft.body.id}`);assert.equal(reopened.body.endDate,'2028-11-21');assert.equal(reopened.body.endTime,'01:00');
+ const form={eventName:'Overnight API draft',purpose:'Workshop',expectedAttendance:5,venueType:'physical',version:reopened.body.version};
+ for(const field of ['proposedDate','startTime','endDate','endTime','timeZone'])form[field]=reopened.body[field];
+ const submitted=await call('POST',`/event-requests/${draft.body.id}/submit`,form);assert.equal(submitted.status,200);assert.equal(submitted.body.id,draft.body.id);
+ assert.equal(submitted.body.startAt,'2028-11-20T15:00:00.000Z');assert.equal(submitted.body.endAt,'2028-11-20T17:00:00.000Z');
+});
 test('CS27: real assigned return → save amendments → resubmit preserves baseline, ID/coordinator and comments',async()=>{
  const {record:r,actor}=await returned();const path=`/event-requests/${r.id}`;
  assert.equal((await call('POST',path+'/resubmit',{version:r.version})).status,409);

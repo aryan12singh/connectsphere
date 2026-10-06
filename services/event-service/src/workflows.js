@@ -16,7 +16,7 @@ function read(actor,r,eventScope=false){
 }
 async function load(db,id){const r=await db.eventRequest.findUnique({where:{id},include:{event:true}});if(!r)throw fail(404,'NOT_FOUND','Request not found');return r;}
 function dto(r){
- const field=snapshot(r);if(!field.proposedDate&&r.startAt&&r.timeZone){const p=parts(r.startAt,r.timeZone);field.proposedDate=`${p.year}-${p.month}-${p.day}`;field.startTime=`${p.hour}:${p.minute}`;const e=parts(r.endAt,r.timeZone);field.endTime=`${e.hour}:${e.minute}`;}
+ const field=snapshot(r);if(!field.proposedDate&&r.startAt&&r.timeZone){const p=parts(r.startAt,r.timeZone);field.proposedDate=`${p.year}-${p.month}-${p.day}`;field.startTime=`${p.hour}:${p.minute}`;if(r.endAt){const e=parts(r.endAt,r.timeZone),date=`${e.year}-${e.month}-${e.day}`;field.endTime=`${e.hour}:${e.minute}`;field.endDate=date===field.proposedDate?null:date;}}
  return {...field,statusLabel:displayStatus({requestStatus:r.status,eventStatus:r.event?.status}),id:r.id,organiserId:r.organiserId,status:r.status,version:r.version,currentCoordinatorId:r.currentCoordinatorId,awaitingAssignment:r.status!=='DRAFT'&&!r.currentCoordinatorId,submittedAt:r.submittedAt,createdAt:r.createdAt,updatedAt:r.updatedAt,revisedAt:r.revisedAt,decisionReason:r.decisionReason,decidedAt:r.decidedAt,decidedById:r.decidedById,eventId:r.event?.id??null,eventStatus:r.event?.status??null};
 }
 function canonical(x){if(Array.isArray(x))return x.map(canonical);if(x&&typeof x==='object')return Object.fromEntries(Object.keys(x).sort().map(k=>[k,canonical(x[k])]));return x;}

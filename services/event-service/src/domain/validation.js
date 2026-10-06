@@ -5,6 +5,7 @@ const LIMITS = Object.freeze({ title:100, text:4000, options:100, option:200, pa
 const TEXT_FIELDS = ['eventName','purpose','description','timeZone','preferredLayout','venueType','venueRequirements','accessibilityDetails','technicalDetails','proposedDate','endDate','startTime','endTime'];
 const ARRAY_FIELDS = ['accessibilityNeeds','equipmentNeeds'];
 const NUMBER_FIELDS = ['expectedAttendance','minimumCapacity'];
+const INSTANT_FIELDS = ['startAt','endAt','registrationOpensAt','registrationClosesAt'];
 const FIELDS = [...TEXT_FIELDS,...ARRAY_FIELDS,...NUMBER_FIELDS,'startAt','endAt','registrationEnabled','registrationOpensAt','registrationClosesAt'];
 function fail(status,code,message,fields){return new GuardError(status,code,message,{fields});}
 function parts(instant,zone){return Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(instant).map(p=>[p.type,p.value]));}
@@ -52,7 +53,9 @@ function normalise(input,previous={},complete=false){
   data[field]=null;const date=field==='endAt'?(data.endDate||data.proposedDate):data.proposedDate;
   if(date&&data[clock]&&data.timeZone&&!errors.proposedDate&&!errors.endDate&&!errors[clock]&&!errors.timeZone)try{data[field]=localToInstant(date,data[clock],data.timeZone);}catch(e){errors[clock]=[e.message];}
  }
- if(instantProvided&&data.timeZone&&!errors.timeZone){
+ // A partial ISO draft can acquire its zone later. Retain its instants and
+ // derive the same local interval, including an overnight end date.
+ if((instantProvided||(!localProvided&&Object.hasOwn(input,'timeZone')&&!data.proposedDate))&&data.timeZone&&!errors.timeZone){
   if(data.startAt){const p=parts(new Date(data.startAt),data.timeZone);data.proposedDate=`${p.year}-${p.month}-${p.day}`;data.startTime=`${p.hour}:${p.minute}`;}else if(Object.hasOwn(input,'startAt')){data.proposedDate=null;data.startTime=null;}
   if(data.endAt){const p=parts(new Date(data.endAt),data.timeZone),date=`${p.year}-${p.month}-${p.day}`;data.endDate=date===data.proposedDate?null:date;data.endTime=`${p.hour}:${p.minute}`;}else if(Object.hasOwn(input,'endAt')){data.endDate=null;data.endTime=null;}
  }
@@ -69,6 +72,13 @@ function normalise(input,previous={},complete=false){
  if(Object.keys(errors).length)throw fail(422,'VALIDATION_FAILED','Please correct the highlighted fields',errors);
  return data;
 }
-function snapshot(record){return Object.fromEntries(FIELDS.map(f=>[f,record[f] instanceof Date?record[f].toISOString():record[f]??null]));}
+function snapshot(record){return Object.fromEntries(FIELDS.map(f=>{
+ const value=record[f];
+ // PostgreSQL JSON baselines and Prisma Dates can spell the same instant
+ // differently. Compare canonical instants, rather than formatting changes.
+ if(value instanceof Date)return [f,value.toISOString()];
+ if(INSTANT_FIELDS.includes(f)&&typeof value==='string'&&!isNaN(Date.parse(value)))return [f,new Date(value).toISOString()];
+ return [f,value??null];
+}));}
 function changes(old,newer){const a=snapshot(old),b=snapshot(newer);return Object.fromEntries(FIELDS.filter(f=>JSON.stringify(a[f])!==JSON.stringify(b[f])).map(f=>[f,{old:a[f],new:b[f]}]));}
 module.exports={normalise,localToInstant,parts,snapshot,changes,FIELDS,LIMITS,fail};
