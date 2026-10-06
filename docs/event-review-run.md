@@ -95,6 +95,11 @@ Native-browser demo (not a substitute for the real API tests):
 2. Complete name/purpose/date/time/zone/positive attendance/venue type. Optional registration opens/closes uses the event zone. Submit the same draft; record its unchanged ID, Under Review status and Coordinator. A fresh create submit shows an explicit ID receipt/link. Submitted inputs are read-only.
 3. Sign out; sign in as the assigned Aisha/Kevin/Mei Ling fixture. Queue: return with comments. As Sarah open the same request, read comments beside the form, Save changes then Resubmit. Check same Coordinator/ID and expandable old→new history. An unchanged resubmit must409; invalid attendance must422 without clearing entries.
 4. Approve as assigned Coordinator: Planning Event link has a different ID. Same-org Daniel can view actual Event history; he cannot see Sarah's private Draft or Request history. Marcus/Attendee/staff cannot read history. Staff's booking Event options show only ID/title/status.
-5. Stop only this generated project's services with `docker compose -f "$cs_review_compose" stop`. Keep its volume for reopening. Restart with `up -d` using the same file; do not reseed or delete the volume.
+5. Stop only this generated project's services and keep its volume. Reopen with the explicit built-service list below: plain `up -d` would also start the seed service. Do not reseed or delete the volume.
+
+```bash
+docker compose -f "$cs_review_compose" stop
+docker compose -f "$cs_review_compose" up -d postgres keycloak user-service auth-service event-service venue-service booking-service kong frontend
+```
 
 Clean-checkout recipe and scoped CI are supplied; teammate execution and remote CI on the eventual merge commit remain review gates. A passing build does not establish product acceptance or the full DoD.
