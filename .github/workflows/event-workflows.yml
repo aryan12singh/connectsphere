@@ -36,5 +36,8 @@ jobs:
             frontend/package-lock.json
       - run: npm ci && npm run build && npx prisma migrate deploy && npm test && npm run test:integration
         working-directory: services/event-service
+      # Preserved CS-33 frontend tests import the real venue validator/config.
+      - run: npm ci
+        working-directory: services/venue-service
       - run: npm ci && npm run typecheck && npm test && npm run build
         working-directory: frontend

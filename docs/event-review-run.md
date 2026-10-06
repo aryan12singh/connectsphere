@@ -30,6 +30,8 @@ python3 scripts/prepare-event-review.py \
 
 docker run --rm -v "$PWD:/app" -w /app/services/event-service node:22-bookworm npm ci
 docker run --rm -v "$PWD:/app" -w /app/services/event-service node:22-bookworm npm run build
+# Preserved CS-33 frontend regressions import the real venue validator/config.
+docker run --rm -v "$PWD:/app" -w /app/services/venue-service node:22-bookworm npm ci
 docker run --rm -v "$PWD:/app" -w /app/frontend node:22-bookworm npm ci
 docker run --rm -v "$PWD:/app" -w /app/frontend node:22-bookworm npm run build
 
@@ -83,7 +85,7 @@ docker run --rm "${cs_review_test_network[@]}" -v "$PWD:/app" -v "$cs_review_dir
   node:22-bookworm node tests/smoke/live.cjs --verify-restart
 ```
 
-`FRONTEND_BASE`, `KONG_BASE`, `AUTH_DATABASE_URL`, `DATABASE_URL` and `SMOKE_EVIDENCE` are the actual runner environment names. The frontend suite's explicit mock auth uses a fixture identity server while exercising real H3/Express/PostgreSQL routes. The running frontend stays in live mode. The smoke separately exercises actual Keycloak/auth, BFF and Kong. The API rollback test installs/removes a trigger in this disposable event_db; use this isolated project for it.
+`FRONTEND_BASE`, `KONG_BASE`, `AUTH_DATABASE_URL`, `DATABASE_URL` and `SMOKE_EVIDENCE` are the actual runner environment names. The full frontend regression suite also imports real venue-service validation/config, so its locked venue-service install above is required even when the backend containers have already built. The frontend suite's explicit mock auth uses a fixture identity server while exercising real H3/Express/PostgreSQL routes. The running frontend stays in live mode. The smoke separately exercises actual Keycloak/auth, BFF and Kong. The API rollback test installs/removes a trigger in this disposable event_db; use this isolated project for it.
 
 Save the source revision, start/end times, command, exit status and log for each check. `test:report` creates dated story records and retains failure results; missing legacy cases are recorded as Not Executed. Running tests creates generated records, so the checkout can become dirty after its initial clean-source snapshot. Passing automated checks is one evidence layer; execute the browser demo below and obtain independent review separately.
 

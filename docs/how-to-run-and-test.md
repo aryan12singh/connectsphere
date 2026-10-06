@@ -14,6 +14,9 @@ PostgreSQL 16 project, Node 22 locked installs, parameterised ports, actual
 live-auth smoke and a restart check. The general development instructions and
 Sprint 1 manual checks below are retained for their original context; their
 old event expectations and test counts do not describe the current branch.
+The full frontend regression suite imports the real venue-service validator;
+the isolated recipe therefore installs its locked runtime dependencies as
+well as the event-service and frontend dependencies.
 
 ---
 
