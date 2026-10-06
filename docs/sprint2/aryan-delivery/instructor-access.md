@@ -6,7 +6,7 @@ The repository is public. The active fine-grained CLI token could not list colla
 
 To finish, confirm both actual instructor GitHub usernames/emails from an authoritative course/team source; grant the card's intended access if missing; verify accepted/active access; verify Jira CS Browse Projects for those exact users; and record the date plus a sanitized screenshot in the agreed shared evidence folder. Public visibility does not by itself satisfy the card's explicit collaborator-acceptance and Jira-browse checklist. For this personal GitHub repository, check available collaborator permission levels before promising a distinct read-only collaborator role.
 
-| Required evidence | Instructor1 | Instructor2 |
+| Required evidence | Instructor 1 | Instructor 2 |
 |---|---|---|
 | Exact confirmed account | Pending | Pending |
 | GitHub accepted access | Unverified | Unverified |

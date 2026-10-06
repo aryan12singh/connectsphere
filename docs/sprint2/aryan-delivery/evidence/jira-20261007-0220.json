@@ -1,0 +1,55 @@
+{
+  "checkedAt": "2026-10-06 18:20:13 UTC",
+  "complete": true,
+  "query": "project = CS AND sprint = 4 AND (assignee = currentUser() OR assignee IS EMPTY) ORDER BY key ASC",
+  "sprint": {
+    "id": 4,
+    "name": "CS Sprint 2 — Review & Venues",
+    "end": "2026-10-08T08:48:00Z"
+  },
+  "issues": [
+    {
+      "key": "CS-11",
+      "summary": "Submit and View an Event Request",
+      "status": "In Progress",
+      "assignee": "Aryan Singh",
+      "points": 5
+    },
+    {
+      "key": "CS-27",
+      "summary": "Validate and Resubmit Returned Event Requests",
+      "status": "In Progress",
+      "assignee": "Aryan Singh",
+      "points": 3
+    },
+    {
+      "key": "CS-29",
+      "summary": "Save and Resume a Draft Event Request",
+      "status": "In Progress",
+      "assignee": "Aryan Singh",
+      "points": 3
+    },
+    {
+      "key": "CS-44",
+      "summary": "View Event Activity and Change History",
+      "status": "In Progress",
+      "assignee": "Aryan Singh",
+      "points": 5
+    },
+    {
+      "key": "CS-67",
+      "summary": "Merge the Frontend and Backend Branches into Main",
+      "status": "In Progress",
+      "assignee": "Aryan Singh",
+      "points": null
+    },
+    {
+      "key": "CS-70",
+      "summary": "Give Both Instructors Repository and Jira Access",
+      "status": "In Progress",
+      "assignee": "Aryan Singh",
+      "points": null
+    }
+  ],
+  "unassigned": 0
+}

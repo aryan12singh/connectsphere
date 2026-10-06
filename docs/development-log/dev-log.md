@@ -1,3 +1,11 @@
+# 2026-10-07 — Green remote CI and complete branch evidence
+
+CS-11/27/29/44 now have green feature CI at application revision `b9e17606ac0ae1b8fd60ab8b0489ae6ce85eb4e7`: frontend 109/109 plus typecheck/build, Event 117/117, Venue 50/50, Booking 46/46, production desktop/mobile Chromium 22/22, real auth/API smoke 10/10 and same-ID/history restart 1/1 without reseeding. [Run 37510266839](https://github.com/aryan12singh/connectsphere/actions/runs/37510266839) and the [delivery dossier](../sprint2/aryan-delivery/README.md) preserve exact source, dated records, acceptance mapping and the finish plan.
+
+Observed regressions drove required ARIA cues/unique field targets, keyboard focus and hydration guards, ordinary-booking creation permission while preserving staff operational windows, and bounded Docker gateway DNS after stale-address routing. Failed/RED attempts remain retained. Playwright reruns are disabled; authentication setup honours the existing gateway limit. Targeted compatible dependency patches reduce the source audit from 29 to 23 findings; inherited advisories remain a release review item.
+
+All six assigned Jira issues are In Progress; a complete Sprint 2 query found zero unassigned issues. Independent human review/manual acceptance, Aryan's code understanding, the PR/merge and main CI/PO gates remain. Sprint 1 PRs 2/3 and remote branch removal are verified for CS-67; CS-70 lacks confirmed instructor accounts/access proof. No PR or main merge was created. Week 7's six changes are mapped for future planning, including the proposed-document/live-Jira CS-50 key collision.
+
 # 2026-10-07 — Final local review and date regressions
 
 The frontend suite passes 105/105 without skipped tests after correcting the strict refresh-key assertion for the immediate Coordinator panel. Actual browser checks pass 16/16 for partial Draft save, invalid-input retention, same-ID submit/return/save/resubmit, Coordinator visibility, expandable captured history, unsaved Stay/Leave and explicit submission receipts. These are agent-run checks; independent teammate and PO acceptance remain required.

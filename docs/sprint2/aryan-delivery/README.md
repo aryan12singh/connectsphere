@@ -1,13 +1,17 @@
 # Aryan Sprint 2 branch delivery — 7 October 2026
 
-Branch: `feat/aryan-sprint2-event-workflows`. This dossier covers CS-11, CS-27, CS-29 and CS-44, plus assigned tasks CS-67/70. Implementation is being verified; final CI results will be recorded before publication is complete. Jira work stays In Progress until its actual completion gates are satisfied.
+**The four assigned stories, CS-11, CS-27, CS-29 and CS-44, have implemented workflows, passing desktop/mobile E2E checks and green feature CI.** All code, test records and this report are delivered on `feat/aryan-sprint2-event-workflows`. [Verified evidence and run links](verification.md) distinguish automated implementation from the team's acceptance gates.
+
+The live Sprint 2 query found six issues assigned to Aryan and **zero unassigned issues**. All six are In Progress. The four stories total **16 points pending acceptance**. CS-67's Sprint 1 merges/approvals and old remote-branch removal are verified; main CI evidence is outstanding. CS-70 still needs the instructors' exact confirmed identities and accepted GitHub/Jira access proof.
 
 - [Verification and acceptance map](verification.md)
-- [Finish plan and review guide](finish-plan.md)
-- [Instructor access evidence boundary](instructor-access.md)
+- [Finish plan and code explanation guide](finish-plan.md)
+- [Sprint 1 integration audit, CS-67](sprint1-integration-audit.md)
+- [Instructor access evidence, CS-70](instructor-access.md)
 - [Dependency audit](dependency-audit.md)
 - [Week 7 notes for the next planning meeting](next-sprint-notes.md)
 - [Prepared PR description](PR_DESCRIPTION.md)
 - [Reproducible clean-stack commands](../../event-review-run.md)
+- [Dated Jira snapshot](evidence/jira-20261007-0220.json)
 
-All current-sprint implementation is on this feature branch. Week7 changes remain future scope. The user will open the PR; this run does not merge to main.
+Read the code, obtain an independent review/manual record and resolve the documented acceptance decisions, then open the PR to main with the prepared description. The PR, merge and PO acceptance remain team steps; none was fabricated by this delivery. The original checkout and main were preserved. Week 7 changes were kept outside the running Sprint 2 commitment.
