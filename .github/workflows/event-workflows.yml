@@ -15,7 +15,7 @@ defaults:
 jobs:
   frontend:
     name: Frontend checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -35,8 +35,8 @@ jobs:
       TEST_RUN_PHASE: GREEN
       CS_VERIFY_REVISION: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -61,7 +61,7 @@ jobs:
           npm run typecheck
           npm run test:report
           npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
           name: frontend-evidence
@@ -72,7 +72,7 @@ jobs:
 
   event:
     name: Event service checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       postgres:
@@ -91,15 +91,15 @@ jobs:
       run:
         working-directory: services/event-service
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: services/event-service/package-lock.json
       - run: npm ci && npm run build && npx prisma migrate deploy
       - run: npm run test:coverage | tee "$RUNNER_TEMP/event-coverage.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
           name: event-evidence
@@ -108,7 +108,7 @@ jobs:
 
   venue_booking:
     name: ${{ matrix.service }} checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -120,8 +120,8 @@ jobs:
       run:
         working-directory: services/${{ matrix.service }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -129,7 +129,7 @@ jobs:
       - run: npm ci && npx prisma validate && npx prisma generate
       - run: npm run test:coverage | tee "$RUNNER_TEMP/coverage.txt"
       - run: npm run test:contract 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
           name: ${{ matrix.service }}-evidence
@@ -140,7 +140,7 @@ jobs:
 
   identity:
     name: ${{ matrix.service }} checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -158,8 +158,8 @@ jobs:
       run:
         working-directory: services/${{ matrix.service }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -174,11 +174,11 @@ jobs:
 
   live:
     name: Live E2E and restart checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
         with:
           node-version: '22'
           cache: npm
@@ -196,7 +196,7 @@ jobs:
           CSE2E_PROJECT: csreview-aryan-ci-${{ github.run_id }}-${{ github.run_attempt }}
           CSE2E_WORK_DIR: ${{ runner.temp }}/event-review
         run: bash scripts/run-event-review-ci.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
           name: live-browser-evidence
@@ -207,7 +207,7 @@ jobs:
     name: Sprint 2 checks
     if: always()
     needs: [frontend, event, venue_booking, identity, live]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     env:
       RESULTS: ${{ toJSON(needs) }}

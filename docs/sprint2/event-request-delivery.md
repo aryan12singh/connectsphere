@@ -34,7 +34,7 @@ Measured Node lines/branches/functions coverage was Event 98.97/93.26/96.40%, Ve
 
 ## CI and reproduction
 
-[The workflow](../../.github/workflows/event-workflows.yml) runs on PRs, main and the feature branch with Node 22, locked installs, PostgreSQL 16 and independent databases. Frontend, Event, Venue and Booking checks are separate. Auth/User each validate JavaScript, Prisma and application imports; their real authentication/profile integration is exercised by the live job. Dedicated Auth/User unit suites remain an ownership gap. The final `Sprint 2 checks` job fails if any prerequisite fails or is skipped, providing a single branch-protection gate alongside independent review.
+[The workflow](../../.github/workflows/event-workflows.yml) runs on PRs, main and the feature branch with Node 22, pinned Ubuntu 24.04, current official Actions, locked installs, PostgreSQL 16 and independent databases. Frontend, Event, Venue and Booking checks are separate. Auth/User each validate JavaScript, Prisma and application imports; their real authentication/profile integration is exercised by the live job. Dedicated Auth/User unit suites remain an ownership gap. The final `Sprint 2 checks` job fails if any prerequisite fails or is skipped, providing a single branch-protection gate alongside independent review.
 
 Artifacts retain component JSON, dated execution records, service coverage logs, production browser reports and service/restart logs for 30 days, including failed runs. Downloads can be retained in the agreed project evidence location. The [isolated clean-checkout recipe](../event-review-run.md) reproduces the real browser, authentication and restart checks without using an existing team's database.
 
