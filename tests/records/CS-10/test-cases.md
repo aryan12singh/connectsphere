@@ -25,3 +25,19 @@ Roles per AC (north star): `EVENT_ORGANISER | EVENT_COORDINATOR | VENUE_STAFF | 
 *Refresh-401 fix 2026-09-20: dashboard fetched events with plain `$fetch`, which drops browser cookies when `useAsyncData` runs on the server (hard refresh) — `requireUserSession` answered 401. Final shape (B): page loads via `useFetch('/api/events', { key: 'organiser-events' })`, which resolves relative URLs through the request-scoped fetcher automatically (verified in framework source). Interim per-call `useRequestFetch` wiring and the shared `BffFetcher`/`callBff` helper were removed again; lib clients are plain injectable `$fetch` wrappers. TC-03 keeps the unauthenticated-401 plus an authenticated (real iron-sealed cookie) 200 case. Note: `cookie` is a forbidden header — undici strips it from `new Request()` — so cookie-bearing unit tests invoke the real handler with a real `H3Event` instead.*
 
 *No-lib direction 2026-09-20: `app/lib/auth.ts` + `app/lib/events.ts` deleted (`cn` in `lib/utils.ts` stays — design-system, not BFF). Pages call `useFetch('/api/...')` directly; event contract types live in `server/api/events.get.ts` (api layer — mocks import from there); `index.vue` keeps a local payload guard for its malformed branch. TC-01/02/06 re-automated at login-page level (mocked `useFetch`); TC-04 client test removed (logout covered by TC-08 UI + DELETE handler tests); TC-05 re-automated STRONGER at the BFF boundary (ghost + missing roles → 403, no session) with a 5-role allowlist hardened into `auth.post.ts` after an observed RED (200 vs 403).*
+
+## Sprint 2 additions — 7 October 2026
+
+The five role homes are `/` (Organiser/Coordinator), `/venue`, `/support` and `/attendee`. These paths preserve the AC behavior and supersede the historical single-page implementation note. Backend inactivity uses the configured limit; the boundary below fixes settings to30minutes.
+
+| Test Case ID | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Date of Creation |
+|---|---|---|---|---|---|---|
+| TC-CS10-10 | Attendee home | Authenticated Attendee | Open root | ATTENDEE | Redirect to own-profile Attendee home | 2026-10-07 01:06:00 |
+| TC-CS10-11 | Technical Support home and unknown-role denial | Verified role fixture | Open root per role | Technical Support; unknown | Support directory; unknown role denied, no privileged fallback | 2026-10-07 01:06:00 |
+| TC-CS10-12 | Multi-role selection | Seeded Organiser+Attendee account | Select Attendee; reload; try unassigned role; select Organiser | Priya synthetic seed | Correct home; selection retained; unassigned403; no second login or grant mutation | 2026-10-07 01:06:00 |
+| TC-CS10-13 | Exact inactivity boundary | Auth settings idle30; stored session | Validate at29:59,30:00,30:01 | 1799,1800,1801seconds | 200,401,401; expired sessions durably revoked | 2026-10-07 01:06:00 |
+| TC-CS10-14 | Exact recent activity | Active session | Validate after30seconds inactivity | Last-used30seconds ago | lastUsedAt becomes actual request instant | 2026-10-07 01:06:00 |
+| TC-CS10-15 | Absolute expiry/disable/no token | Real router, isolated DB/fixtures | Call protected route under each condition | Expired, disabled, missing |401 without protected data | 2026-10-07 01:06:00 |
+| TC-CS10-16 | Forbidden typed route | Authenticated Venue Staff/Attendee | Open request review URL directly | Unrelated role | Access-denied home; API role/relationship checks remain authoritative | 2026-10-07 01:06:00 |
+
+TC05 additionally validates loss of all recognised roles on the internal session endpoint. Dedicated Node Auth tests exercise real handlers with external identity/database fixtures; PostgreSQL integration uses actual sessions/grants; browser cases use real Keycloak, BFF and cookies. Human independent verification is still required.

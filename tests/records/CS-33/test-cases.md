@@ -19,3 +19,9 @@ A booking blocks deletion only when its `venueId` matches and its status is
 `TENTATIVELY_HELD` or `CONFIRMED` with `endAt` at or after the current instant.
 This applies equally to physical, virtual, and hybrid venues. No deactivation
 operation is part of CS-33.
+
+## Sprint 2 regression additions
+
+| Test Case ID | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Date of Creation |
+|---|---|---|---|---|---|---|
+| TC-CS33-09 | Reject reversed/equal operating hours atomically | Existing venue; Venue Staff; real PostgreSQL | Invalid POST, full PUT and hours PUT; reread data/history | opens09:00, closes08:00 or09:00 |422 field guidance; no venue, hours or history mutation | 2026-10-07 00:46:00 |
