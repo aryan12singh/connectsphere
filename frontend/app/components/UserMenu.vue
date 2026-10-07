@@ -5,12 +5,30 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
+import { ROLE_LABELS, recognisedRoles, roleHome } from '~~/lib/roles'
 
 const { user, fetch: refreshSession, clear: clearSession } = useUserSession()
 
 const loadError = ref(false)
 const logoutError = ref(false)
 const isLoggingOut = ref(false)
+const isSwitchingRole = ref(false)
+const switchError = ref('')
+const roles = computed(() => recognisedRoles(user.value))
+
+async function switchRole(event: Event) {
+  const role = (event.target as HTMLSelectElement).value
+  isSwitchingRole.value = true
+  switchError.value = ''
+  try {
+    await $fetch('/api/auth/role', { method: 'POST', body: { role } })
+    clearNuxtData()
+    await refreshSession()
+    await navigateTo(roleHome(role))
+  }
+  catch { switchError.value = 'Unable to switch roles. Please try again.' }
+  finally { isSwitchingRole.value = false }
+}
 
 onMounted(async () => {
   if (user.value)
@@ -81,6 +99,13 @@ async function handleLogout() {
             {{ userEmail }}
           </p>
         </div>
+        <label v-if="roles.length > 1" class="grid gap-1 text-sm">
+          Active role
+          <select aria-label="Active role" :value="userRole" :disabled="isSwitchingRole || isLoggingOut" class="rounded-xl border border-border bg-background px-3 py-2" @change="switchRole">
+            <option v-for="role in roles" :key="role" :value="role">{{ ROLE_LABELS[role] }}</option>
+          </select>
+        </label>
+        <p v-if="switchError" role="alert" class="text-sm text-destructive">{{ switchError }}</p>
         <p v-if="logoutError" role="alert" class="text-sm text-destructive">
           Sign out failed. Please try again.
         </p>

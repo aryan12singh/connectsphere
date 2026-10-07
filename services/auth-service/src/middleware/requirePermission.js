@@ -14,6 +14,7 @@
 // Every permission name must exist in src/lib/permissions.js. A typo would
 // silently block everyone, so we check at start-up and crash loudly instead.
 const { isKnownPermission } = require('../lib/permissions');
+const { hasPermission } = require('../../../utils/role-policy');
 
 function requirePermission(permission) {
   if (!isKnownPermission(permission)) {
@@ -21,7 +22,7 @@ function requirePermission(permission) {
   }
 
   return (req, res, next) => {
-    if (!req.permissions || !req.permissions.includes(permission)) {
+    if (!hasPermission({ ...req.user, permissions: req.permissions }, permission)) {
       // 403 = "we know who you are, but you're not allowed to do this".
       return res.status(403).json({ error: 'You do not have permission to do this' });
     }

@@ -8,9 +8,13 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "test": "vitest run",
-    "test:report": "vitest run --reporter=json --outputFile=/tmp/vitest.json && tsx ../tests/scripts/compile-test-run.ts CS-10",
+    "test:report": "node ../tests/scripts/run-test-report.mjs",
+    "test:coverage": "npm run test:report -- --coverage",
+    "test:e2e": "playwright test",
     "typecheck": "nuxt typecheck",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "test:e2e:report": "node ../tests/scripts/run-browser-report.mjs",
+    "typecheck:e2e": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --esModuleInterop --skipLibCheck e2e/*.ts playwright.config.ts"
   },
   "dependencies": {
     "@lucide/vue": "^1.52.0",
@@ -28,7 +32,9 @@
   },
   "devDependencies": {
     "@nuxt/test-utils": "^4.3.2",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/vite": "^4.0.0",
+    "@vitest/coverage-v8": "5.0.0",
     "@vue/test-utils": "^2.5.0",
     "happy-dom": "^20.14.5",
     "shadcn-nuxt": "^2.5.1",

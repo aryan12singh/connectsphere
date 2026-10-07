@@ -1,8 +1,12 @@
 import json
 import os
+import queue
+import re
 import subprocess
+import threading
 import time
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -22,30 +26,85 @@ class BookingServiceContractTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.port = int(os.environ.get("BOOKING_TEST_PORT", "43102"))
+        class EventFixture(BaseHTTPRequestHandler):
+            def do_GET(self):
+                allowed = self.path == "/events/event-1/booking-access"
+                self.send_response(200 if allowed else 403)
+                self.send_header("content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"id": "event-1"} if allowed else {}).encode())
+            def log_message(self, *args):
+                pass
+        cls.event_fixture = ThreadingHTTPServer(("127.0.0.1", 0), EventFixture)
+        cls.event_thread = threading.Thread(target=cls.event_fixture.serve_forever, daemon=True)
+        cls.event_thread.start()
+        cls.addClassCleanup(cls.event_fixture.server_close)
+        cls.addClassCleanup(cls.event_fixture.shutdown)
+        cls.port = int(os.environ.get("BOOKING_TEST_PORT", "0"))
         env = os.environ.copy()
-        env.update({"PORT": str(cls.port), "NODE_ENV": "test", "DATA_MODE": "memory"})
+        env.update({"PORT": str(cls.port), "NODE_ENV": "test", "DATA_MODE": "memory", "EVENT_SERVICE_URL": f"http://127.0.0.1:{cls.event_fixture.server_port}"})
         cls.process = subprocess.Popen(
             ["node", "src/server.js"],
             cwd=os.path.join(os.path.dirname(__file__), ".."),
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
         )
-        deadline = time.time() + 8
-        while time.time() < deadline:
-            try:
-                with urlopen(f"http://127.0.0.1:{cls.port}/health", timeout=0.2):
-                    return
-            except Exception:
+        cls.addClassCleanup(cls.stop_service)
+        cls.output = {"stdout": [], "stderr": []}
+        ready = queue.Queue()
+
+        def read_output(stream, name):
+            for line in stream:
+                cls.output[name].append(line.rstrip())
+                if name == "stdout":
+                    ready.put(line)
+
+        cls.readers = [threading.Thread(target=read_output, args=(stream, name), daemon=True)
+                       for stream, name in [(cls.process.stdout, "stdout"), (cls.process.stderr, "stderr")]]
+        for reader in cls.readers:
+            reader.start()
+        deadline = time.monotonic() + 8
+        listening = False
+        while time.monotonic() < deadline:
+            if cls.process.poll() is not None:
+                break
+            if not listening:
+                try:
+                    line = ready.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                match = re.search(r"booking-service listening on port (\d+)", line)
+                if not match:
+                    continue
+                cls.port = int(match.group(1))
+                listening = cls.port > 0
+            if listening:
+                try:
+                    with urlopen(f"http://127.0.0.1:{cls.port}/health", timeout=0.2) as response:
+                        if response.status == 200 and json.load(response) == {"status": "ok", "service": "booking-service"}:
+                            return
+                except (OSError, ValueError):
+                    pass
                 time.sleep(0.1)
-        stdout, stderr = cls.process.communicate(timeout=1)
-        raise RuntimeError(f"booking-service failed to start: {stdout!r} {stderr!r}")
+        cls.stop_service()
+        raise RuntimeError(f"booking-service failed to start (exit {cls.process.returncode}): {cls.output}")
 
     @classmethod
-    def tearDownClass(cls):
-        cls.process.terminate()
-        cls.process.wait(timeout=5)
+    def stop_service(cls):
+        if cls.process.poll() is None:
+            cls.process.terminate()
+            try:
+                cls.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                cls.process.kill()
+                cls.process.wait(timeout=5)
+        for reader in cls.readers:
+            reader.join(timeout=1)
+        cls.process.stdout.close()
+        cls.process.stderr.close()
 
     def request(self, method, path, body=None, role="EVENT_COORDINATOR", user_id="coordinator-1", key=None):
         headers = {
@@ -107,6 +166,37 @@ class BookingServiceContractTest(unittest.TestCase):
         )
         self.assertEqual(status, 403)
         self.assertNotIn("id", body)
+
+    def test_venue_staff_can_create_operational_blocks_without_booking_create_permission(self):
+        for state in ["BLOCKED", "UNAVAILABLE"]:
+            with self.subTest(status=state):
+                payload = {**self.valid_payload(), "eventId": None, "status": state,
+                           "reason": "Maintenance window"}
+                key = f"staff-operational-{state}"
+                status, block = self.request("POST", "/venue-bookings", payload,
+                    role="VENUE_STAFF", user_id="staff-operations", key=key)
+                self.assertEqual(status, 201)
+                self.assertEqual(block["status"], state)
+                replay_status, replay = self.request("POST", "/venue-bookings", payload,
+                    role="VENUE_STAFF", user_id="staff-operations", key=key)
+                self.assertEqual(replay_status, 200)
+                self.assertEqual(replay["id"], block["id"])
+
+    def test_staff_decision_permission_does_not_create_ordinary_bookings_or_history(self):
+        _, before = self.request("GET", "/venue-bookings/history?venueId=venue-permission",
+                                 role="VENUE_STAFF", user_id="staff-permission")
+        for state in [None, "AVAILABLE", "TENTATIVELY_HELD", "CONFIRMED", "REJECTED", "CANCELLED"]:
+            with self.subTest(status=state):
+                payload = {**self.valid_payload(), "venueId": "venue-permission"}
+                if state is not None:
+                    payload["status"] = state
+                status, result = self.request("POST", "/venue-bookings", payload,
+                    role="VENUE_STAFF", user_id="staff-permission", key=f"staff-denied-{state}")
+                self.assertEqual(status, 403)
+                self.assertNotIn("id", result)
+        _, after = self.request("GET", "/venue-bookings/history?venueId=venue-permission",
+                                role="VENUE_STAFF", user_id="staff-permission")
+        self.assertEqual(after["items"], before["items"])
 
     def test_submission_without_reason_returns_field_level_validation(self):
         payload = self.valid_payload()

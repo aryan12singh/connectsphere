@@ -4,22 +4,7 @@
 // rather than keeping its own.
 
 // Statuses of the EventRequest (the Organiser's request).
-const REQUEST_LABELS = {
-  DRAFT: 'Draft',
-  SUBMITTED: 'Under Review',
-  RETURNED_FOR_AMENDMENT: 'Returned for Amendment',
-  APPROVED: 'Approved',
-  REJECTED: 'Rejected',
-};
-
-// Statuses of the Event (created when a request is approved).
-const EVENT_LABELS = {
-  ARRANGEMENT_PENDING: 'Planning',
-  CONFIRMED: 'Confirmed',
-  CANCELLED: 'Cancelled',
-  COMPLETED: 'Completed',
-  REJECTED: 'Rejected',
-};
+const { REQUEST_LABELS, EVENT_LABELS } = require('./statusLabels.json');
 
 /**
  * The single label to show for a request + its (optional) event.

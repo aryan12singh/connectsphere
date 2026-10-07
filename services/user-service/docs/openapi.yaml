@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ConnectSphere user-service (internal API)
-  version: 0.1.0
+  version: 0.2.0
   description: |
     User profiles and roles (user_db). **Internal only**: called by other
     services (today: auth-service), never by the browser. Kong does not route
@@ -33,6 +33,9 @@ components:
     Role:
       type: string
       enum: [EVENT_ORGANISER, EVENT_COORDINATOR, VENUE_STAFF, TECHNICAL_SUPPORT_STAFF, ATTENDEE]
+    PublicRole:
+      type: string
+      enum: [EVENT_ORGANISER, ATTENDEE]
     User:
       type: object
       properties:
@@ -41,13 +44,22 @@ components:
         firstName: { type: string }
         lastName: { type: string }
         role: { $ref: '#/components/schemas/Role' }
+        roles: { type: array, items: { $ref: '#/components/schemas/Role' }, description: Authoritative role list }
+        organisationId: { type: string, nullable: true }
         company: { type: string, nullable: true }
         isActive: { type: boolean, description: false = disabled by tech support }
         createdAt: { type: string, format: date-time }
     Error:
       type: object
       properties:
-        error: { type: string }
+        error:
+          oneOf:
+            - { type: string }
+            - type: object
+              properties:
+                code: { type: string }
+                message: { type: string }
+                fields: { type: object, additionalProperties: { type: array, items: { type: string } } }
   responses:
     Forbidden:
       description: Missing or wrong x-internal-api-key
@@ -82,7 +94,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
     post:
       summary: Create a profile
-      description: The caller (auth-service) has already validated input and created the Keycloak login. Email is stored lower-case.
+      description: Auth-service provisions Keycloak first. This boundary revalidates fields, rejects staff grants and atomically resolves an Organiser company to its organisation. Duplicate email rolls back new organisation creation. Attendees cannot claim organisation IDs. Email is stored lower-case.
       requestBody:
         required: true
         content:
@@ -94,7 +106,7 @@ paths:
                 email: { type: string, format: email }
                 firstName: { type: string }
                 lastName: { type: string }
-                role: { $ref: '#/components/schemas/Role' }
+                role: { $ref: '#/components/schemas/PublicRole' }
                 company: { type: string, nullable: true }
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
@@ -134,7 +146,7 @@ paths:
             schema:
               type: object
               properties:
-                role: { $ref: '#/components/schemas/Role' }
+                role: { $ref: '#/components/schemas/PublicRole' }
                 isActive: { type: boolean }
       responses:
         '200': { description: Updated user, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createApp, createError, defineEventHandler, H3Event, readBody, toWebHandler, useSession } from 'h3'
+import { getQuery, createApp, createError, defineEventHandler, H3Event, readBody, toWebHandler, useSession } from 'h3'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 
 const authMiddlewareMocks = vi.hoisted(() => ({
   navigateToLogin: vi.fn(),
   loggedIn: { value: false },
-  sessionUser: { value: null as null | { id: string, email: string, name: string, role: string } },
+  sessionUser: { value: null as null | { id: string, email: string, name: string, role: string, roles?: string[], permissions?: string[] } },
   sessionFetch: vi.fn(),
   sessionClear: vi.fn(),
 }))
@@ -31,6 +31,8 @@ mockNuxtImport('useUserSession', () => () => ({
   fetch: authMiddlewareMocks.sessionFetch,
   clear: authMiddlewareMocks.sessionClear,
 }))
+
+vi.mock('../../frontend/server/utils/kongBff',()=>({kongBffFetch:async(event:any,path:string)=>{const session=await (globalThis as any).requireUserSession(event);return path==='/auth/me'?{user:session.user}:{items:[]}}}))
 
 // CS-10 — single file per story (IS212/IEEE 829). One describe per AC, all TCs together.
 // Execution log is generated deterministically via tests/scripts/compile-test-run.ts → test-runs/<date-time>.md
@@ -104,6 +106,7 @@ describe('CS-10 — TC-CS10-03 unauthenticated denied server-side', () => {
     // sealed session, 401 when no authenticated user is present.
     vi.stubGlobal('defineEventHandler', defineEventHandler)
     vi.stubGlobal('createError', createError)
+    vi.stubGlobal('getQuery', getQuery)
     vi.stubGlobal('requireUserSession', async (event: Parameters<typeof useSession>[0]) => {
       const session = await useSession(event, { password: TEST_SESSION_PASSWORD, name: 'nuxt-session' })
       if (!session.data.user)
@@ -188,7 +191,9 @@ describe('CS-10 — TC-CS10-07 unauthenticated interface directs to login', () =
     expect(authMiddlewareMocks.navigateToLogin).not.toHaveBeenCalled()
   })
 
-  it('redirects other authenticated roles to /login for now', async () => {
+  // The earlier "for now" expectation contradicted CS-10 AC6 (all five
+  // homes). This correction tests the current requirement, not a login loop.
+  it('TC-CS10-10 sends an authenticated Attendee to the Attendee home', async () => {
     const middlewareModules = import.meta.glob('../../frontend/app/middleware/auth.global.ts')
     const loadAuthMiddleware = middlewareModules['../../frontend/app/middleware/auth.global.ts']
 
@@ -203,7 +208,38 @@ describe('CS-10 — TC-CS10-07 unauthenticated interface directs to login', () =
 
     await authMiddleware({ path: '/' })
 
-    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/login')
+    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/attendee')
+  })
+  it('TC-CS10-11 sends Technical Support to its own home and denies an unknown role', async () => {
+    const { default: middleware } = await import('../../frontend/app/middleware/auth.global')
+    authMiddlewareMocks.loggedIn.value = true
+    authMiddlewareMocks.sessionUser.value = { id: 'tech', email: 'tech@example.test', name: 'Tech', role: 'TECHNICAL_SUPPORT_STAFF' }
+    authMiddlewareMocks.navigateToLogin.mockClear()
+    await middleware({ path: '/' } as never)
+    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/support')
+    authMiddlewareMocks.sessionUser.value = { ...authMiddlewareMocks.sessionUser.value, role: 'UNKNOWN', roles: [] }
+    authMiddlewareMocks.navigateToLogin.mockClear()
+    await middleware({ path: '/' } as never)
+    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/access-denied')
+  })
+  it('TC-CS10-16 denies a Venue Staff member typing a Coordinator review URL', async () => {
+    const { default: middleware } = await import('../../frontend/app/middleware/auth.global')
+    authMiddlewareMocks.loggedIn.value = true
+    authMiddlewareMocks.sessionUser.value = { id: 'staff', email: 'staff@example.test', name: 'Staff', role: 'VENUE_STAFF' }
+    authMiddlewareMocks.navigateToLogin.mockClear()
+    await middleware({ path: '/requests/a-request' } as never)
+    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/access-denied')
+  })
+  it('TC-CS10-12 presents an accessible switch for every server-issued role', async () => {
+    authMiddlewareMocks.sessionUser.value = { id: 'multi', email: 'multi@example.test', name: 'Multiple Roles', role: 'EVENT_ORGANISER', roles: ['EVENT_ORGANISER', 'ATTENDEE'] }
+    const { default: UserMenu } = await import('../../frontend/app/components/UserMenu.vue')
+    const wrapper = await mountSuspended(UserMenu)
+    await wrapper.get('[aria-label="Your account"]').trigger('click')
+    await wrapper.vm.$nextTick()
+    const select = document.body.querySelector('select[aria-label="Active role"]') as HTMLSelectElement | null
+    expect(select).not.toBeNull()
+    expect([...select!.options].map(o => o.value)).toEqual(['EVENT_ORGANISER', 'ATTENDEE'])
+    wrapper.unmount()
   })
 })
 
@@ -215,6 +251,7 @@ describe('CS-10 — TC-CS10-01 BFF issues sealed session without token in body',
     vi.stubGlobal('defineEventHandler', defineEventHandler)
     vi.stubGlobal('readBody', readBody)
     vi.stubGlobal('createError', createError)
+    vi.stubGlobal('getQuery', getQuery)
     vi.stubGlobal('setUserSession', async (event: Parameters<typeof useSession>[0], data: Record<string, unknown>) => {
       const session = await useSession(event, { password: password as string, name: 'nuxt-session' })
       await session.update(data)
@@ -251,6 +288,7 @@ describe('CS-10 — TC-CS10-01 invalid credentials stay generic on the new route
     vi.stubGlobal('defineEventHandler', defineEventHandler)
     vi.stubGlobal('readBody', readBody)
     vi.stubGlobal('createError', createError)
+    vi.stubGlobal('getQuery', getQuery)
     vi.stubGlobal('setUserSession', vi.fn())
 
     try {
@@ -279,6 +317,7 @@ describe('CS-10 — TC-CS10-04 BFF revokes the sealed session', () => {
     const password = TEST_SESSION_PASSWORD
     vi.stubGlobal('defineEventHandler', defineEventHandler)
     vi.stubGlobal('createError', createError)
+    vi.stubGlobal('getQuery', getQuery)
     vi.stubGlobal('clearUserSession', async (event: Parameters<typeof useSession>[0]) => {
       const session = await useSession(event, { password: password as string, name: 'nuxt-session' })
       await session.clear()
@@ -374,6 +413,7 @@ describe('CS-10 — TC-CS10-03 authenticated request succeeds', () => {
   it('GET /api/events with a valid sealed session cookie returns 200 events', async () => {
     vi.stubGlobal('defineEventHandler', defineEventHandler)
     vi.stubGlobal('createError', createError)
+    vi.stubGlobal('getQuery', getQuery)
     vi.stubGlobal('requireUserSession', async (event: Parameters<typeof useSession>[0]) => {
       const session = await useSession(event, { password: TEST_SESSION_PASSWORD, name: 'nuxt-session' })
       if (!session.data.user)
@@ -490,6 +530,7 @@ describe('CS-10 — TC-CS10-05 unknown authorisation denied, no privileged defau
     vi.stubGlobal('defineEventHandler', defineEventHandler)
     vi.stubGlobal('readBody', readBody)
     vi.stubGlobal('createError', createError)
+    vi.stubGlobal('getQuery', getQuery)
     const setUserSessionMock = vi.fn()
     vi.stubGlobal('setUserSession', setUserSessionMock)
 
@@ -536,5 +577,30 @@ describe('CS-10 — TC-CS10-06 role-appropriate starting screen; data respects o
       expect(wrapper.text()).toContain(`Signed in as ${role}@example.com`)
       expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/')
     }
+  })
+})
+
+describe('CS-10 — TC-CS10-09 configuration fails closed',()=>{
+ it('unknown authentication mode is denied, with only explicit live/mock supported',async()=>{
+  const {resolveAuthMode}=await import('../../frontend/server/api/auth.post')
+  expect(resolveAuthMode('live')).toBe('live');expect(resolveAuthMode('mock')).toBe('mock')
+  for(const mode of ['misspelled-live',undefined,'']){
+   let error:any;try{resolveAuthMode(mode)}catch(e){error=e}
+   expect(error?.statusCode).toBe(503)
+  }
+ })
+})
+
+describe('CS-10 — TC-CS10-17 credential form hydration safety', () => {
+  it('SSR disables credential inputs and submission until handlers attach', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const { default: Page } = await import('../../frontend/app/pages/login.vue')
+    const html = await renderToString(createSSRApp(Page))
+    const container = document.createElement('div'); container.innerHTML = html
+    const fields = [...container.querySelectorAll('form input')] as HTMLInputElement[]
+    expect(fields.length).toBeGreaterThan(0)
+    expect(fields.every(field => field.disabled)).toBe(true)
+    expect((container.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(true)
   })
 })

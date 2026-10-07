@@ -1,13 +1,68 @@
 import { createRequire } from 'node:module'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { bookingDraftForExisting, bookingMutation, calendarIsoToWallTime, canCreateBlock, coordinatorBookingEditState } from '../../frontend/app/components/venue/booking-state'
 import { calendarRange, calendarSlotState, fullDayCalendarHours, intervalSegmentsForRange } from '../../frontend/app/components/venue/calendar-state'
 
 const require = createRequire(import.meta.url)
 const { availabilityRange } = require('../../services/booking-service/src/availability') as { availabilityRange: (query: Record<string, string>) => Record<string, string[]> }
 const week = calendarRange('week', new Date('2026-12-21T00:00:00Z'))
+mockNuxtImport('useFetch', () => async (path: string) => ({
+  data: { value: path.includes('availability') ? { items: [{ id: 'early-ui', title: 'Early venue maintenance', status: 'BLOCKED', startAt: '2026-12-20T16:30:00Z', endAt: '2026-12-20T17:30:00Z' }] } : { events: [] } },
+  error: { value: null }, refresh: vi.fn(),
+}))
 
 describe('CS-34 — venue availability calendar', () => {
+  it('TC-CS34-10 displays the early local-day block in the actual calendar component', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-12-21T00:00:00Z'))
+    try {
+      const { default: VenueCalendar } = await import('../../frontend/app/components/venue/VenueCalendar.vue')
+      const wrapper = await mountSuspended(VenueCalendar, { props: { venueId: 'venue', venueName: 'Venue', timeZone: 'Asia/Singapore', canCreate: false, canDecide: false } })
+      expect(wrapper.text()).toContain('Early venue maintenance')
+      await wrapper.get('select[aria-label="Calendar view"]').setValue('day')
+      expect(wrapper.text()).toContain('Early venue maintenance')
+      wrapper.unmount()
+    }
+    finally { vi.useRealTimers() }
+  })
+  it('TC-CS34-11 clearing a local date input keeps the calendar form alive with disabled save and guidance', async () => {
+    const { default: VenueCalendar } = await import('../../frontend/app/components/venue/VenueCalendar.vue')
+    const wrapper = await mountSuspended(VenueCalendar, { props: { venueId: 'venue', venueName: 'Venue', timeZone: 'Asia/Singapore', canCreate: true, canDecide: true, actorRole: 'VENUE_STAFF' } })
+    const open = wrapper.findAll('button').find(button => button.text() === 'New unavailable window')!
+    await open.trigger('click')
+    await wrapper.get('input[type="datetime-local"]').setValue('')
+    expect(wrapper.get('[role="alert"]').text()).toContain('valid, unambiguous local')
+    expect(wrapper.get('button[type="submit"]').attributes()).toHaveProperty('disabled')
+    wrapper.unmount()
+  })
+  it('TC-CS34-07 requests Monday midnight in the venue zone and retains its early block in day and week views', () => {
+    const block = { id: 'early', title: 'Early maintenance', status: 'BLOCKED', startAt: '2026-12-20T16:30:00Z', endAt: '2026-12-20T17:30:00Z' }
+    for (const mode of ['day', 'week'] as const) {
+      const range = calendarRange(mode, new Date('2026-12-21T00:00:00Z'), 'Asia/Singapore')
+      expect(range.startAt).toBe('2026-12-20T16:00:00.000Z')
+      expect(range.endAt).toBe(mode === 'day' ? '2026-12-21T16:00:00.000Z' : '2026-12-27T16:00:00.000Z')
+      expect(intervalSegmentsForRange([block], range, 'Asia/Singapore')).toMatchObject([{ day: '2026-12-21', startAt: '2026-12-20T16:30:00.000Z', endAt: '2026-12-20T17:30:00.000Z' }])
+    }
+  })
+  it('TC-CS34-08 splits only at venue midnight and clips straddling ranges without duplicating midnight endings', () => {
+    const range = calendarRange('day', new Date('2026-12-22T00:00:00Z'), 'Asia/Singapore')
+    const overnight = { id: 'overnight-local', title: 'Night maintenance', status: 'BLOCKED', startAt: '2026-12-21T15:30:00Z', endAt: '2026-12-21T17:00:00Z' }
+    expect(intervalSegmentsForRange([overnight], range, 'Asia/Singapore')).toMatchObject([{ day: '2026-12-22', startAt: '2026-12-21T16:00:00.000Z', endAt: '2026-12-21T17:00:00.000Z' }])
+    const week = calendarRange('week', new Date('2026-12-21T00:00:00Z'), 'Asia/Singapore')
+    expect(intervalSegmentsForRange([overnight], week, 'Asia/Singapore').map(s => s.day)).toEqual(['2026-12-21', '2026-12-22'])
+    expect(intervalSegmentsForRange([{ ...overnight, endAt: '2026-12-21T16:00:00Z' }], week, 'Asia/Singapore').map(s => s.day)).toEqual(['2026-12-21'])
+  })
+  it('TC-CS34-09 respects 23-hour and 25-hour days in a western venue zone', () => {
+    for (const [day, start, end] of [
+      ['2027-03-14', '2027-03-14T05:00:00.000Z', '2027-03-15T04:00:00.000Z'],
+      ['2027-11-07', '2027-11-07T04:00:00.000Z', '2027-11-08T05:00:00.000Z'],
+    ]) {
+      const range = calendarRange('day', new Date(`${day}T00:00:00Z`), 'America/New_York')
+      expect(range).toEqual({ startAt: start, endAt: end })
+      expect(intervalSegmentsForRange([{ id: day!, title: 'Full day', status: 'BLOCKED', startAt: start!, endAt: end! }], range, 'America/New_York')).toMatchObject([{ day, startAt: start, endAt: end }])
+    }
+  })
   it('TC-CS34-01 renders an ordinary booking and BLOCKED interval separately', () => {
     const segments = intervalSegmentsForRange([{ id: 'booking', title: 'Launch', status: 'CONFIRMED', startAt: '2026-12-22T09:00:00Z', endAt: '2026-12-22T10:00:00Z' }, { id: 'block', title: 'Maintenance', status: 'BLOCKED', startAt: '2026-12-22T09:30:00Z', endAt: '2026-12-22T11:00:00Z' }], week)
     expect(segments.map(segment => `${segment.booking.id}:${segment.kind}`)).toEqual(['booking:booking', 'block:block'])
@@ -43,5 +98,36 @@ describe('CS-34 — venue availability calendar', () => {
     expect(coordinatorBookingEditState({ ...existing, status: 'CANCELLED', requestedById: 'coordinator-1' }, 'coordinator-1')).toMatchObject({ canEdit: true, readOnly: false, statuses: ['TENTATIVELY_HELD', 'CANCELLED'] })
     expect(coordinatorBookingEditState({ ...existing, requestedById: 'coordinator-2' }, 'coordinator-1')).toMatchObject({ canEdit: false, readOnly: true, statuses: ['CONFIRMED'] })
     expect(coordinatorBookingEditState(null, 'coordinator-1')).toMatchObject({ canEdit: false, readOnly: false, statuses: ['TENTATIVELY_HELD'] })
+  })
+})
+
+
+describe('CS-34 — TC-CS34-13 calendar hydration safety', () => {
+  it('SSR disables calendar navigation and booking controls until handlers attach', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const { default: VenueCalendar } = await import('../../frontend/app/components/venue/VenueCalendar.vue')
+    const html = await renderToString(createSSRApp(VenueCalendar, { venueId: 'venue', venueName: 'Venue', timeZone: 'Asia/Singapore', canCreate: true, canDecide: true, actorRole: 'VENUE_STAFF' }))
+    const container = document.createElement('div'); container.innerHTML = html
+    expect((container.querySelector('select[aria-label="Calendar view"]') as HTMLSelectElement).disabled).toBe(true)
+    const buttons = [...container.querySelectorAll('button')] as HTMLButtonElement[]
+    expect(buttons.length).toBeGreaterThan(2)
+    expect(buttons.every(button => button.disabled)).toBe(true)
+  })
+})
+
+
+mockNuxtImport('useUserSession', () => () => ({ user: { value: { id: 'staff', role: 'VENUE_STAFF', permissions: ['venues.view', 'venues.manage', 'venue_bookings.decide'] } } }))
+describe('CS-34 — TC-CS34-13 venue workspace hydration safety', () => {
+  it('SSR disables venue search, tabs and delete until handlers attach', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const { default: VenueWorkspace } = await import('../../frontend/app/components/venue/VenueWorkspace.vue')
+    const html = await renderToString(createSSRApp(VenueWorkspace, { venues: [{ id: 'venue', name: 'Venue', timeZone: 'Asia/Singapore' }] }))
+    const container = document.createElement('div'); container.innerHTML = html
+    expect((container.querySelector('input[type="search"]') as HTMLInputElement).disabled).toBe(true)
+    const tabs = [...container.querySelectorAll('button')].filter(button => ['Calendar', 'Booking requests', 'Delete venue'].includes(button.textContent?.trim() ?? '')) as HTMLButtonElement[]
+    expect(tabs).toHaveLength(3)
+    expect(tabs.every(button => button.disabled)).toBe(true)
   })
 })

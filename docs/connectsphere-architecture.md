@@ -2,6 +2,96 @@
 
 Architecture is current first draft, subjected to further changes along the way.
 
+## Implemented identity and venue views — 7 October 2026
+
+The diagrams below describe this branch and supersede the historical proposed layout for these components. Signup uses compensation across Keycloak/profile provisioning; no new generic saga service was introduced. Each API connects only to its own database. Static role policy is bundled in Auth/Venue/Booking images; cross-service identity still travels over private HTTP. Shared frontend role labels are a build-time utility in `frontend/lib/roles.ts`.
+
+```mermaid
+flowchart LR
+  Roles[Five user roles] --> UI[Nuxt role homes and account menu]
+  UI --> BFF[Nuxt sealed-cookie BFF]
+  BFF --> Kong[Kong gateway]
+  Kong --> Auth[Auth service]
+  Auth --> KC[Keycloak password authority]
+  Auth --> User[User service private API]
+  Auth --> AuthDB[(auth_db sessions and grants)]
+  User --> UserDB[(user_db profiles and organisations)]
+  Kong --> Venue[Venue service]
+  Kong --> Booking[Booking service]
+  Kong --> Event[Event service]
+  Venue --> Auth
+  Booking --> Auth
+  Booking -->|current assignment with caller token| Event
+  Event --> Auth
+  Venue --> VenueDB[(venue_db hours and history)]
+  Booking --> BookingDB[(booking_db intervals and activity)]
+  Event --> EventDB[(event_db requests and events)]
+```
+
+```mermaid
+classDiagram
+  class AccountService {
+    validateNewAccount(input, policy)
+    createAccount(input)
+  }
+  class SessionService {
+    createSession(userId)
+    resolveToken(token)
+    revokeSession(sessionId)
+  }
+  class PermissionService {
+    getPermissionsForUser(user)
+  }
+  class ActionRolePolicy {
+    rolesForUser(user)
+    hasPermission(actor, action)
+  }
+  class UserProfile {
+    roles[]
+    role
+    organisationId
+  }
+  class Organisation {
+    id
+    uniqueName
+  }
+  SessionService --> PermissionService
+  PermissionService --> ActionRolePolicy
+  AccountService --> UserProfile : private API
+  UserProfile "0..*" --> "0..1" Organisation
+```
+
+```mermaid
+erDiagram
+  ORGANISATION ||--o{ USER : membership
+  ORGANISATION {
+    string id PK
+    string name UK
+  }
+  USER {
+    string id PK
+    string email UK
+    string roles_array
+    string legacy_primary_role
+    string organisationId FK
+  }
+  SESSION {
+    string tokenHash UK
+    string userId_logical_ref
+    datetime lastUsedAt
+    datetime expiresAt
+    datetime revokedAt
+  }
+  ROLE_PERMISSION {
+    string role PK
+    string permission PK
+  }
+```
+
+User/Organisation relations are within user_db; Session.userId is a logical reference in auth_db. Multi-role grants and organisation models already existed; the repair fills their runtime behavior. Only `venues.view` is added for Technical Support by a new migration. Venue operating-hour ordering adds validation without schema changes. The BFF-selected role lives in the sealed cookie and does not add a database field or an authority source.
+
+## Historical proposed architecture
+
 ## The pattern
 
 - **Kong** is the single entry point. It routes composite/multi-step
@@ -120,3 +210,7 @@ or RabbitMQ event-contract types, if that gets unwieldy later.
 - Whether any saga needs a genuine compensating action (e.g. releasing a
   venue hold if notification fails) or a retry is sufficient for this
   project's scope.
+
+## Event-workflow branch update
+
+The [changed-component sequence and ERD](event-workflows.md) describe the existing BFF/Kong/auth/event/PostgreSQL path, same transaction activity/outbox and request→Event linkage. The status guard remains shared. No new orchestration, notification or assignment service was added.

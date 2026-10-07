@@ -16,7 +16,7 @@ test('a Coordinator missing from the load map has zero active requests', () => {
   assert.equal(pickCoordinator([A, B], { a: 2 }), 'b');
 });
 
-test('tie goes to the most experienced (longest-serving) Coordinator', () => {
+test('no assignment history: creation time resolves the remaining tie', () => {
   assert.equal(pickCoordinator([C, B, A], { a: 2, b: 2, c: 2 }), 'a');
 });
 
@@ -47,7 +47,7 @@ test('does not change the input list', () => {
 });
 
 // CS-30 test case 30-06 (boundary)
-test('30-06: A has 3, B has 3 (tie) → earliest-created; then B has 4 → A', () => {
+test('30-06: without history creation time resolves ties; workload takes priority', () => {
   assert.equal(pickCoordinator([A, B], { a: 3, b: 3 }), 'a');
   assert.equal(pickCoordinator([B, A], { a: 3, b: 3 }), 'a');
   assert.equal(pickCoordinator([A, B], { a: 3, b: 4 }), 'a');
@@ -73,4 +73,18 @@ test('countsAsActive: open responsibility only', () => {
   ];
   for (const r of yes) assert.equal(countsAsActive(r), true, JSON.stringify(r));
   for (const r of no) assert.equal(countsAsActive(r), false, JSON.stringify(r));
+});
+
+// User policy selection, 2026-10-06: workload first, least recently assigned next.
+test('equal load chooses least recently assigned, including revoked/closed work', () => {
+  assert.equal(pickCoordinator([A,B], {a:2,b:2}, {a:'2026-10-05T00:00:00Z',b:'2026-10-01T00:00:00Z'}), 'b');
+});
+test('never assigned takes priority in a workload tie, then creation time/id', () => {
+  assert.equal(pickCoordinator([A,B,C], {}, {a:'2026-10-01T00:00:00Z'}), 'b');
+  assert.equal(pickCoordinator([B,A], {}, {}), 'a');
+});
+test('workload still beats last-assigned fairness and does not mutate inputs', () => {
+  const dates={a:'2026-10-05T00:00:00Z',b:'2026-10-01T00:00:00Z'};
+  assert.equal(pickCoordinator([A,B], {a:0,b:1}, dates), 'a');
+  assert.deepEqual(dates,{a:'2026-10-05T00:00:00Z',b:'2026-10-01T00:00:00Z'});
 });

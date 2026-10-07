@@ -20,6 +20,14 @@ function physicalVenue(overrides: Record<string, unknown> = {}) {
 }
 
 describe('CS-33 — venue records', () => {
+  it('TC-CS33-09 rejects closing at or before opening without accepting an overnight schedule', () => {
+    for (const closesAt of ['17:00', '18:00']) {
+      expect(validateVenue(physicalVenue({ operatingHours: [{ weekday: 'MONDAY', isClosed: false, opensAt: '18:00', closesAt }] })))
+        .toHaveProperty('operatingHours.0.time', ['Closing time must be after opening time'])
+    }
+    expect(validateVenue(physicalVenue({ operatingHours: [{ weekday: 'MONDAY', isClosed: false, opensAt: '00:00', closesAt: '23:59' }] }))).toEqual({})
+    expect(validateVenue(physicalVenue({ operatingHours: [{ weekday: 'MONDAY', isClosed: true, opensAt: '', closesAt: '' }] }))).toEqual({})
+  })
   it('TC-CS33-01 creates a complete physical-venue payload with the existing Reason or note field', async () => {
     const form = createVenueForm({ ...physicalVenue(), capacity: 500 } as never)
     expect(venuePayload(form, 'venue-staff-1')).toMatchObject({ ...physicalVenue(), capacity: 500 })
@@ -75,5 +83,19 @@ describe('CS-33 — venue records', () => {
     toastError.mockClear()
     useErrorAlert().showError({ data: { statusCode: 403, statusMessage: 'You do not have permission to do this' } }, 'Unable to save booking')
     expect(toastError).toHaveBeenCalledWith('You do not have permission to do this', { description: 'Unable to save booking' })
+  })
+})
+
+
+describe('CS-33 — TC-CS33-11 venue form hydration safety', () => {
+  it('SSR disables the native form and submit until handlers attach', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const html = await renderToString(createSSRApp(VenueForm, { venue: physicalVenue() }))
+    const container = document.createElement('div'); container.innerHTML = html
+    const fields = [...container.querySelectorAll('form input, form select, form button')] as (HTMLInputElement | HTMLSelectElement | HTMLButtonElement)[]
+    expect(fields.length).toBeGreaterThan(0)
+    expect(fields.every(field => field.disabled || field.closest('fieldset[disabled]') !== null)).toBe(true)
+    expect((container.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(true)
   })
 })

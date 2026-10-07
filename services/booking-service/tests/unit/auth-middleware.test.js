@@ -87,13 +87,24 @@ test('CS-booking-AUTH-06: auth middleware returns 401, 503, or next for the matc
 test('CS-booking-AUTH-07: any-permission middleware allows one match and rejects no matches', () => {
   const allowed = response();
   let nextCalled = false;
-  requireAnyPermission('venue_bookings.create', 'venue_bookings.decide')({ actor: { permissions: ['venue_bookings.create'] } }, allowed, () => { nextCalled = true; });
+  requireAnyPermission('venue_bookings.create', 'venue_bookings.decide')({ actor: { role: 'EVENT_COORDINATOR', permissions: ['venue_bookings.create'] } }, allowed, () => { nextCalled = true; });
   assert.equal(nextCalled, true);
   assert.equal(allowed.result.statusCode, 200);
 
   const denied = response();
   requireAnyPermission('venue_bookings.create', 'venue_bookings.decide')({ actor: { permissions: [] } }, denied, () => {});
   assert.equal(denied.result.statusCode, 403);
+});
+
+test('TC-CS26-04 booking capabilities require their specific role and accept legitimate secondary roles', () => {
+  for (const role of ['ATTENDEE', 'EVENT_ORGANISER', 'TECHNICAL_SUPPORT_STAFF']) {
+    const denied = response();
+    requireAnyPermission('venue_bookings.create', 'venue_bookings.decide')({ actor: { role, permissions: ['venue_bookings.create', 'venue_bookings.decide'] } }, denied, () => {});
+    assert.equal(denied.result.statusCode, 403);
+  }
+  const allowed = response();
+  requireAnyPermission('venue_bookings.decide')({ actor: { role: 'EVENT_COORDINATOR', roles: ['EVENT_COORDINATOR', 'VENUE_STAFF'], permissions: ['venue_bookings.decide'] } }, allowed, () => { allowed.result.next = true; });
+  assert.equal(allowed.result.next, true);
 });
 
 test('CS-booking-AUTH-08: internal routes require the private service credential', () => {

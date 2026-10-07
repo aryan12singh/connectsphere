@@ -20,3 +20,9 @@ preserved across the BFF boundary; the UI must not normalize it to another
 status. Authorization is asserted at the BFF/service boundary, not only by
 hiding a button. A client warning is not evidence that the service rejected a
 request.
+
+## Permission regression amendment — 2026-10-07
+
+TC-CS35-08: Venue Staff with the canonical `venue_bookings.decide` permission can open a new calendar window with BLOCKED initially selected and only BLOCKED/UNAVAILABLE offered. Existing booking edits preserve their prior staff status choices. `tests/specs/CS-35.spec.ts` recorded RED before the new creation-state helper; `frontend/e2e/booking-regression.spec.ts` additionally proves both operational statuses through live UI/BFF/service/PostgreSQL, and confirms ordinary create is403 without adding history. The existing booking contract's create-permission regression is retained and separately proves403. Creation requires `venue_bookings.create`, except for the explicit CS-35 operational-window path; staff decisions on existing bookings remain supported. This is a regression repair supporting the branch, not acceptance or Jira completion of a teammate's CS-35 story.
+
+The live case also recreates only the isolated booking-service container, then requires the same booking values and unchanged history through the BFF. It retains the database and live session, performs no seed, and bounds readiness waiting to 45 seconds. The local Docker gateway uses a five-second DNS cache/stale window to avoid routing to another service at a recycled container address after a rebuild.

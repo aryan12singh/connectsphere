@@ -1,49 +1,29 @@
-// Pages anyone can open without logging in.
+import { recognisedRoles, roleHome } from '~~/lib/roles'
 const PUBLIC_PAGES = ['/login', '/signup']
 
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (PUBLIC_PAGES.includes(to.path))
-    return
-
+  if (PUBLIC_PAGES.includes(to.path)) return
   const { loggedIn, user, fetch: refreshSession } = useUserSession()
-
   if (!loggedIn.value) {
-    try {
-      await refreshSession()
-    }
-    catch {
-      return navigateTo('/login')
-    }
-
-    if (!loggedIn.value)
-      return navigateTo('/login')
+    try { await refreshSession() }
+    catch { return navigateTo('/login') }
+    if (!loggedIn.value) return navigateTo('/login')
   }
-
-  // (The backend session itself is re-checked once per page load by
-  // app/plugins/verify-session.client.ts.)
-
-  // Pages that declare a permission — definePageMeta({ permission: 'users.view' })
-  // — are allowed by that permission alone. The backend enforces it again on
-  // every API call; this only avoids showing a page that would fail.
-  const required = to.meta?.permission
-  if (required) {
-    const { can } = usePermissions()
-    if (!can(required))
-      return navigateTo('/')
-    return
+  if (to.path === '/access-denied') return
+  const roles = recognisedRoles(user.value)
+  if (!roles.length) return navigateTo('/access-denied')
+  if (to.path === '/') {
+    const home = roleHome(user.value?.role ?? roles[0]!)
+    if (home !== '/') return navigateTo(home)
   }
-
-  // Venue staff land in the venue workspace when the default dashboard route
-  // is requested. The role is server-issued session data; BFF routes enforce
-  // the actual authorization independently of this interface redirect.
-  const role = user.value?.role
-  if (role === 'VENUE_STAFF') {
-    if (to.path === '/')
-      return navigateTo('/venue')
-    return
+  const { can } = usePermissions()
+  if (to.meta?.permission && !can(to.meta.permission)) return navigateTo('/access-denied')
+  if (to.path.startsWith('/requests/') || to.path.startsWith('/events/')) {
+    if (!roles.some(role => role === 'EVENT_ORGANISER' || role === 'EVENT_COORDINATOR')) return navigateTo('/access-denied')
   }
-
-  // Organisers use the event dashboard and coordinators use the review queue.
-  if (role !== 'EVENT_ORGANISER' && role !== 'EVENT_COORDINATOR')
-    return navigateTo('/login')
+  if (to.path === '/venue' || to.path.startsWith('/venue/')) {
+    if (!roles.some(role => ['EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF'].includes(role))) return navigateTo('/access-denied')
+  }
+  if (to.path === '/support' && !roles.includes('TECHNICAL_SUPPORT_STAFF')) return navigateTo('/access-denied')
+  if (to.path === '/attendee' && !roles.includes('ATTENDEE')) return navigateTo('/access-denied')
 })

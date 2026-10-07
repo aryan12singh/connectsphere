@@ -4,10 +4,15 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import AppErrorAlert from '@/components/shared/AppErrorAlert.vue'
 import { Switch } from '@/components/ui/switch'
+import { roleHome } from '~~/lib/roles'
 
 const THEME_STORAGE_KEY = 'connectsphere-theme'
 
 const route = useRoute()
+const { user } = useUserSession()
+const { can } = usePermissions()
+const isEventRole = computed(() => ['EVENT_ORGANISER', 'EVENT_COORDINATOR'].includes(user.value?.role ?? ''))
+const canRequest = computed(() => user.value?.role === 'EVENT_ORGANISER' && can('event_requests.create'))
 const isDark = ref(false)
 const isVenueRoute = computed(() => route.path === '/venue' || route.path.startsWith('/venue/'))
 
@@ -46,8 +51,9 @@ watch(isDark, (dark) => {
         </div>
 
         <nav class="hidden items-center gap-5 text-sm lg:flex" aria-label="Primary">
-          <span class="text-muted-foreground">Dashboard</span>
+          <NuxtLink :to="roleHome(user?.role ?? '')" class="text-muted-foreground">Home</NuxtLink>
           <NuxtLink
+            v-if="isEventRole && can('events.view')"
             to="/"
             :aria-current="route.path === '/' ? 'page' : undefined"
             :class="route.path === '/' ? 'font-medium text-foreground underline decoration-2 underline-offset-[6px]' : 'font-medium text-muted-foreground hover:text-foreground'"
@@ -55,13 +61,14 @@ watch(isDark, (dark) => {
             Events
           </NuxtLink>
           <NuxtLink
+            v-if="can('venues.view')"
             to="/venue"
             :aria-current="isVenueRoute ? 'page' : undefined"
             :class="isVenueRoute ? 'font-medium text-foreground underline decoration-2 underline-offset-[6px]' : 'font-medium text-muted-foreground hover:text-foreground'"
           >
             Venues
           </NuxtLink>
-          <span class="text-muted-foreground">Equipment</span>
+
         </nav>
       </div>
 
@@ -75,7 +82,7 @@ watch(isDark, (dark) => {
             :aria-label="isDark ? 'Use light mode' : 'Use dark mode'"
           />
         </div>
-        <Button as-child size="sm" class="hidden md:inline-flex">
+        <Button v-if="canRequest" as-child size="sm" class="hidden md:inline-flex">
           <NuxtLink to="/requests/new">
             New event request
           </NuxtLink>

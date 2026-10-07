@@ -6,6 +6,7 @@
 const express = require('express');
 const prisma = require('../db');
 const internalOnly = require('../middleware/internalOnly');
+const { ROLES, PUBLIC_ROLES } = require('../../../utils/role-policy');
 
 const router = express.Router();
 router.use(internalOnly);
@@ -18,12 +19,20 @@ const PUBLIC_USER_FIELDS = {
   firstName: true,
   lastName: true,
   role: true,
+  roles: true,
+  organisationId: true,
   company: true,
   isActive: true,
   createdAt: true,
 };
 
-const ROLES = ['EVENT_ORGANISER', 'EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF', 'ATTENDEE'];
+
+
+// Narrow trusted directory for the merged assignment selector; no profile dump.
+router.get('/coordinators', async (req, res) => {
+  const coordinators = await prisma.user.findMany({where:{isActive:true,roles:{has:'EVENT_COORDINATOR'}},select:{id:true,createdAt:true},orderBy:[{createdAt:'asc'},{id:'asc'}]});
+  res.json({coordinators});
+});
 
 // GET /internal/users?search=tan&role=ATTENDEE&page=1
 // Paged list for the tech support "Users" screen. 25 users per page.
@@ -34,7 +43,7 @@ router.get('/users', async (req, res) => {
   const role = ROLES.includes(req.query.role) ? req.query.role : undefined;
 
   const where = {
-    ...(role && { role }),
+    ...(role && { roles: { has: role } }),
     // Match the search text against email, first name or last name.
     ...(search && {
       OR: [
@@ -89,21 +98,29 @@ router.get('/users/:id', async (req, res) => {
 // created the matching Keycloak account.
 router.post('/users', async (req, res) => {
   const { email, firstName, lastName, role, company } = req.body || {};
-  if (!email || !firstName || !lastName || !ROLES.includes(role)) {
-    return res.status(400).json({ error: 'email, firstName, lastName and a valid role are required' });
-  }
+  const fields = {};
+  const validText = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+  if (!validText(email, 254) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) fields.email = ['A valid email is required'];
+  if (!validText(firstName, 100)) fields.firstName = ['First name is required (max 100 characters)'];
+  if (!validText(lastName, 100)) fields.lastName = ['Last name is required (max 100 characters)'];
+  if (!PUBLIC_ROLES.includes(role)) fields.role = ['Only Organiser and Attendee may be provisioned; staff roles are seed-only'];
+  if (role === 'EVENT_ORGANISER' && !validText(company, 200)) fields.company = ['Organisation is required (max 200 characters)'];
+  else if (company !== undefined && company !== null && company !== '' && !validText(company, 200)) fields.company = ['Organisation must be text (max 200 characters)'];
+  if (Object.keys(fields).length) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Profile contains invalid fields', fields } });
 
   try {
-    const user = await prisma.user.create({
-      data: { email: email.toLowerCase(), firstName, lastName, role, company: company || null },
-      select: PUBLIC_USER_FIELDS,
+    const user = await prisma.$transaction(async tx => {
+      const organisation = role === 'EVENT_ORGANISER'
+        ? await tx.organisation.upsert({ where: { name: company.trim() }, create: { name: company.trim() }, update: { name: company.trim() } })
+        : null;
+      return tx.user.create({
+        data: { email: email.trim().toLowerCase(), firstName: firstName.trim(), lastName: lastName.trim(), role, roles: [role], company: company?.trim() || null, organisationId: organisation?.id ?? null },
+        select: PUBLIC_USER_FIELDS,
+      });
     });
     res.status(201).json(user);
   } catch (err) {
-    // P2002 = unique constraint failed, i.e. the email is already used.
-    if (err.code === 'P2002') {
-      return res.status(409).json({ error: 'A user with this email already exists' });
-    }
+    if (err.code === 'P2002') return res.status(409).json({ error: { code: 'VALIDATION_ERROR', message: 'A user with this email already exists', fields: { email: ['A user with this email already exists'] } } });
     throw err;
   }
 });
@@ -114,7 +131,11 @@ router.patch('/users/:id', async (req, res) => {
   const { role, isActive } = req.body || {};
   const data = {};
   if (role !== undefined) {
-    if (!ROLES.includes(role)) return res.status(400).json({ error: 'Invalid role' });
+    if (!PUBLIC_ROLES.includes(role)) return res.status(400).json({ error: 'Staff roles are seed-only; only public roles may be changed' });
+    const existing = await prisma.user.findUnique({ where: { id: req.params.id }, select: PUBLIC_USER_FIELDS });
+    if (!existing) return res.status(404).json({ error: 'User not found' });
+    if ((existing.roles ?? [existing.role]).some(value => !PUBLIC_ROLES.includes(value))) return res.status(400).json({ error: 'Seeded staff roles cannot be changed through this endpoint' });
+    if (role === 'EVENT_ORGANISER' && !existing.organisationId) return res.status(400).json({ error: 'An organisation is required before changing to Organiser' });
     data.role = role;
   }
   if (isActive !== undefined) {

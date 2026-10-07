@@ -1,0 +1,274 @@
+name: Sprint 2 checks
+on:
+  pull_request:
+  push:
+    branches: [main, feat/aryan-sprint2-event-workflows]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sprint2-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+jobs:
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: connectsphere
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: event_db
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U connectsphere -d event_db"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/event_db
+      NUXT_AUTH_MODE: mock
+      NUXT_SESSION_PASSWORD: isolated-ci-cookie-password-at-least-32-characters
+      TEST_RUN_PHASE: GREEN
+      CS_VERIFY_REVISION: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            services/event-service/package-lock.json
+            services/venue-service/package-lock.json
+      - name: Install frontend and real boundary fixtures
+        run: |
+          npm ci --prefix services/event-service
+          npm ci --prefix services/venue-service
+          npm ci --prefix frontend
+          cd services/event-service
+          npx prisma generate
+          npx prisma migrate deploy
+      - name: Typecheck, story regression tests and production build
+        working-directory: frontend
+        env:
+          TEST_RESULTS_JSON: ${{ runner.temp }}/frontend-results.json
+          CS_COVERAGE_DIR: ${{ runner.temp }}/frontend-coverage
+        run: |
+          export CS_VERIFY_FINGERPRINT="$(git rev-parse 'HEAD^{tree}')"
+          npm run typecheck
+          npm run typecheck:e2e
+          npm run test:coverage
+          npm run build
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: frontend-evidence
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/frontend-results.json
+            ${{ runner.temp }}/frontend-coverage
+            tests/records/*/test-runs/*.md
+
+  event:
+    name: Event service checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: connectsphere
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: event_db
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U connectsphere -d event_db"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/event_db
+    defaults:
+      run:
+        shell: bash
+        working-directory: services/event-service
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/event-service/package-lock.json
+      - run: npm ci && npm run build && npx prisma migrate deploy
+      - run: npm run test:coverage | tee "$RUNNER_TEMP/event-coverage.txt"
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: event-evidence
+          retention-days: 30
+          path: ${{ runner.temp }}/event-coverage.txt
+
+  venue_booking:
+    name: ${{ matrix.service }} checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: venue-service
+            database: venue_test
+          - service: booking-service
+            database: booking_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: connectsphere
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: ${{ matrix.database }}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U connectsphere"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/${{ matrix.database }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/${{ matrix.service }}/package-lock.json
+      - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy
+      - run: npm run test:coverage | tee "$RUNNER_TEMP/coverage.txt"
+      - run: npm run test:contract 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
+      - name: PostgreSQL HTTP integration and source coverage
+        run: npm run test:integration | tee "$RUNNER_TEMP/postgres-coverage.txt"
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: ${{ matrix.service }}-evidence
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/coverage.txt
+            ${{ runner.temp }}/http-contracts.txt
+            ${{ runner.temp }}/postgres-coverage.txt
+
+  identity:
+    name: ${{ matrix.service }} checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: auth-service
+            database: auth_test
+          - service: user-service
+            database: user_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: connectsphere
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: ${{ matrix.database }}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U connectsphere"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/${{ matrix.database }}
+      INTERNAL_API_KEY: isolated-ci-only
+      KEYCLOAK_URL: http://127.0.0.1:9
+      KEYCLOAK_REALM: connectsphere
+      KEYCLOAK_CLIENT_ID: auth-service
+      KEYCLOAK_CLIENT_SECRET: isolated-ci-only
+      USER_SERVICE_URL: http://127.0.0.1:9
+    defaults:
+      run:
+        shell: bash
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/${{ matrix.service }}/package-lock.json
+      - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy
+      - name: Validate source and application imports
+        run: |
+          find src -name '*.js' -type f -print0 | xargs -0 -n 1 node --check
+          node -e 'require("./src/app")'
+      - name: Unit and HTTP boundary tests with source coverage
+        run: npm run test:coverage | tee "${{ runner.temp }}/${{ matrix.service }}-coverage.log"
+      - name: PostgreSQL HTTP integration and source coverage
+        run: npm run test:integration | tee "${{ runner.temp }}/${{ matrix.service }}-postgres.log"
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: ${{ matrix.service }}-evidence
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/${{ matrix.service }}-coverage.log
+            ${{ runner.temp }}/${{ matrix.service }}-postgres.log
+
+  live:
+    name: Live E2E and restart checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            services/event-service/package-lock.json
+            frontend/package-lock.json
+      - name: Install locked browser and smoke dependencies
+        run: |
+          npm ci --prefix services/event-service
+          npm ci --prefix frontend
+          cd frontend
+          npx playwright install --with-deps chromium
+      - name: Verify a fresh isolated production stack
+        env:
+          CSE2E_PROJECT: csreview-aryan-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          CSE2E_WORK_DIR: ${{ runner.temp }}/event-review
+        run: bash scripts/run-event-review-ci.sh
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: live-browser-evidence
+          retention-days: 30
+          path: ${{ runner.temp }}/event-review/evidence/
+
+  gate:
+    name: Sprint 2 checks
+    if: always()
+    needs: [frontend, event, venue_booking, identity, live]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    env:
+      RESULTS: ${{ toJSON(needs) }}
+    steps:
+      - name: Require every application and live check to succeed
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          results = json.loads(os.environ['RESULTS'])
+          failed = {name: job['result'] for name, job in results.items() if job['result'] != 'success'}
+          if failed:
+              print('Required checks did not succeed:', failed)
+              sys.exit(1)
+          print('All application and live checks succeeded.')
+          PY

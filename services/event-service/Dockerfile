@@ -15,6 +15,7 @@ COPY prisma ./prisma
 RUN npx prisma generate
 
 COPY src ./src
+COPY docs ./docs
 
 # Apply any pending migrations, then start. `migrate deploy` only runs
 # migrations already committed in prisma/migrations — it never creates new ones.

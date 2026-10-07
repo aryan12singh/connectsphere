@@ -1,8 +1,11 @@
 <script setup lang="ts">
+const requestFetch=useRequestFetch()
 import { computed, ref } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { operationIntent } from './request-errors'
+import { apiErrorMessage } from './shared/api-error'
 import { EQUIPMENT_OPTIONS } from './request-form-state'
 import { formatDateTime, LAYOUT_LABELS, timeAgo } from './review-queue-helpers'
 
@@ -13,6 +16,7 @@ export interface QueueOrganiser {
 
 export interface QueueItem {
   id: string
+  version: number
   title: string
   status: 'SUBMITTED'
   submittedAt: string | null
@@ -56,12 +60,16 @@ const selected = computed(() => items.value.find(item => item.id === selectedId.
 const queueFailed = computed(() => queueError.value != null)
 
 const deciding = ref(false)
+const notes = ref('')
+const intent = operationIntent()
 const decisionError = ref('')
 const hasDecisionError = computed(() => decisionError.value !== '')
 
 function select(id: string) {
   selectedId.value = id
   decisionError.value = ''
+  notes.value = ''
+  intent.clear()
 }
 
 async function decide(decision: 'approve' | 'reject' | 'amendments') {
@@ -71,20 +79,15 @@ async function decide(decision: 'approve' | 'reject' | 'amendments') {
   deciding.value = true
   decisionError.value = ''
   try {
-    const { data, error } = await useFetch(`/api/events/${item.id}/decision`, {
-      method: 'POST',
-      body: { decision },
-    })
-    if (error.value || !data.value) {
-      decisionError.value = 'Could not record your decision. Please try again.'
-      return
-    }
+    const body={decision,notes:notes.value,version:item.version}
+    await requestFetch(`/api/events/${item.id}/decision`, {method:'POST',body:{...body,operationKey:intent.keyFor({id:item.id,...body})}})
+    intent.clear();notes.value=''
     removedIds.value.push(item.id)
     selectedId.value = items.value[0]?.id ?? null
     await refreshNuxtData('coordinator-queue')
   }
-  catch {
-    decisionError.value = 'Could not record your decision. Please try again.'
+  catch (e) {
+    decisionError.value = apiErrorMessage(e,'Could not record your decision. Please retry.')
   }
   finally {
     deciding.value = false
@@ -125,7 +128,7 @@ async function decide(decision: 'approve' | 'reject' | 'amendments') {
               <span class="min-w-0 flex-1 truncate text-sm">{{ item.title }}</span>
               <Badge variant="outline" class="shrink-0 border-transparent bg-warning-soft text-warning">
                 <span aria-hidden="true" class="size-1.5 rounded-full bg-current" />
-                Submitted
+                Under Review
               </Badge>
             </span>
             <span class="mt-1 block truncate text-xs text-muted-foreground">
@@ -146,7 +149,7 @@ async function decide(decision: 'approve' | 'reject' | 'amendments') {
             </h2>
             <Badge variant="outline" class="border-transparent bg-warning-soft text-warning">
               <span aria-hidden="true" class="size-1.5 rounded-full bg-current" />
-              Submitted
+              Under Review
             </Badge>
           </div>
           <dl class="mt-4 flex flex-wrap gap-x-8 gap-y-3">
@@ -160,7 +163,7 @@ async function decide(decision: 'approve' | 'reject' | 'amendments') {
             </div>
             <div>
               <dt class="text-xs text-muted-foreground">
-                Submitted
+                Under Review
               </dt>
               <dd class="mt-0.5 text-sm">
                 {{ timeAgo(selected.submittedAt) }}
@@ -178,6 +181,9 @@ async function decide(decision: 'approve' | 'reject' | 'amendments') {
           <p v-if="hasDecisionError" role="alert" class="mt-3 text-sm text-destructive">
             {{ decisionError }}
           </p>
+          <NuxtLink :to="`/requests/${selected.id}`" class="mt-3 inline-block underline">Full request and history</NuxtLink>
+          <label for="decision-notes" class="mt-4 block text-sm">Reason / amendment comments (required for return or rejection)</label>
+          <textarea id="decision-notes" v-model="notes" maxlength="500" :disabled="deciding" class="mt-2 w-full rounded-xl border bg-input/50 p-3" />
           <div class="mt-4 flex flex-wrap gap-2.5">
             <Button size="sm" :disabled="deciding" @click="decide('approve')">
               Approve
@@ -188,6 +194,7 @@ async function decide(decision: 'approve' | 'reject' | 'amendments') {
             <Button
               size="sm"
               variant="secondary"
+              disabled
               title="Coordinator reassignment is not available yet"
             >
               Change coordinator

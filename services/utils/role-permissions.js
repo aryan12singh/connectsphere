@@ -10,7 +10,7 @@ module.exports = Object.freeze({
     'events.view', 'messages.send', 'venue_bookings.decide', 'venues.manage', 'venues.view',
   ]),
   TECHNICAL_SUPPORT_STAFF: Object.freeze([
-    'audit.view', 'permissions.manage', 'settings.manage', 'users.manage', 'users.view',
+    'audit.view', 'permissions.manage', 'settings.manage', 'users.manage', 'users.view', 'venues.view',
   ]),
   EVENT_ORGANISER: Object.freeze(['event_requests.create', 'events.view', 'messages.send']),
   ATTENDEE: Object.freeze(['attendance.register', 'events.view']),

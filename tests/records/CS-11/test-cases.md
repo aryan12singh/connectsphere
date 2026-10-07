@@ -49,3 +49,34 @@ Do not convert blocked cases into passing placeholders, tautologies or mocks tha
 ## Unified form template (2026-09-20 12:00:00)
 
 Create (`/requests/new`) and detail (`/requests/:id`) render one shared `RequestFormPage` shell (header + optional coordinator banner + reusable fields + one responsive action grid). The create page's separate desktop status card and sticky mobile bar are removed; TC-CS11-01 UI coverage now asserts the single action bar. Action rules: draft → Save changes + Submit request; non-draft (except REJECTED) → single Save and Submit in edit mode; REJECTED → read-only, no edit.
+
+## Source-based amendments — 2026-10-06
+
+The current CS-11 Jira AC7 and full implementation request supersede the older TC-CS11-17/18 notification-delivery expectations for this branch: both now prove a transactional pending RequestSubmitted outbox row and no duplicate on replay. Actual CS-50 delivery/retry remains **Not Executed** and outside this task. Historic records are retained; a new outbox result does not establish old delivery acceptance.
+
+C02 is still a team proposal. TC-CS11-02/03/04 use it provisionally and do not claim approval. Registration is now captured in the UI. TC-CS11-19 covers incomplete **submit** rejection; the user explicitly included CS-29, so explicit Save draft is now supported. The contradictory no-Save-draft wording is superseded, not quietly passed.
+
+The old TC-CS11-20/21/22 mock-route fixtures are replaced by actual H3→Express→Prisma tests: create/401/422/role/CSRF in 07/19/20; update/submit/private/404 in CS29-02/03 and CS27-02/03 plus service API tests; receipt/draft navigation in 08 and CS29-01/02 plus live browser. Current-row locks, rollback and concurrent duplicates are additionally proved in event-service integration tests. Old 405 edit expectations now use the shared guard's 409 state conflict; 403 ownership is retained. TC-CS11-21/22 have no new assertion with those exact IDs and are reported Not Executed with this mapping.
+
+## Accessibility regressions — 2026-10-07
+
+| Test Case ID | AC | Scenario | Steps and data | Expected result | Layer | Created |
+|---|---|---|---|---|---|---|
+| TC-CS11-23 | 1,2; accessibility | Mandatory-name and purpose cues preserve incomplete Draft workflow | Inspect required cues, then type purpose only | Both controls announce required-for-submit; purpose-only Save draft remains enabled | Component; real desktop/mobile browser | 2026-10-07 01:26 SGT |
+| TC-CS11-24 | 1; accessibility | Label targets remain unique and labelable | Inspect every explicit label and its target ID | Exactly one input/select/textarea for each label; section headings cannot steal a control ID | Component; real browser form completion | 2026-10-07 01:44 SGT |
+
+TC23 first failed in the dated 17:26:58Z RED record. TC24 first reached a valid assertion failure in 17:45:33Z RED after the cross-platform dependency setup was corrected; the preceding native-binding startup failure is diagnostic only. Existing test expectations have not been weakened.
+
+## Trusted permission amendment — 2026-10-07
+
+TC-CS11-21: With the same authenticated Organiser session and role, remove `event_requests.create` from the identity service's trusted permission response. New creation, same-key replay and own Draft/submission/resubmission writes return403 without new request, activity, assignment, outbox or replay rows; a caller body/header or nested user field cannot restore the grant. Keeping `events.view` permits the existing owner read. Removing `events.view` blocks lists, detail, contact and Request/Event history; missing/malformed upstream permission arrays fail503 without role fallback. Coordinator queue/decisions additionally require `event_requests.review`, preserving assignment/self-review guards. Backend real-PG regressions and two actual H3 BFF cases exercise these gates; live identity verification is separately recorded. This consumes the existing catalog rather than redefining the teammate's broader permissions administration.
+
+## HTTP transport boundary amendment — 2026-10-07
+
+Backend supplemental HTTP-01 follows the standing10KB security rule: an unauthenticated10240-byte JSON object reaches the401 authentication check, while10241 bytes return413/PAYLOAD_TOO_LARGE without a database call. HTTP-02 submits malformed JSON with private content and requires400/BAD_REQUEST plus a stable generic message. Two meaningful Node22 RED failures precede two GREEN passes; dated HTTP records supplement the main BFF/component specs. The whole request limit is independent of individual field limits.
+
+## Form hydration regression — 7 October 2026
+
+| Test Case ID | AC | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Automation layer | Date of Creation |
+|---|---|---|---|---|---|---|---|---|
+| TC-CS11-25 | 1,2,5; reliable form interaction | No native form submission before handlers attach | Production SSR or real Vue server renderer | Render all form modes before mount; use hydrated form afterward | Meaningful synthetic draft; browser session with JavaScript disabled | Inputs/actions disabled before mount; no native GET or lost early input; normal actions work after mount | SSR component + production desktop/mobile | 2026-10-07T02:43:05+00:00 |

@@ -6,6 +6,7 @@
 //   req.permissions — e.g. ["events.view", "attendance.register"]
 //   req.session     — the session row (used by logout)
 const { resolveToken } = require('../services/session.service');
+const { rolesForUser } = require('../../../utils/role-policy');
 
 function readBearerToken(req) {
   const header = req.get('authorization') || '';
@@ -19,6 +20,9 @@ async function requireAuth(req, res, next) {
     // Same message for missing, wrong, expired, idle, logged-out and
     // disabled, so callers learn nothing about which it was.
     return res.status(401).json({ error: 'Not logged in or session has expired' });
+  }
+  if (!rolesForUser(result.user).length) {
+    return res.status(403).json({ error: 'Account not authorised' });
   }
 
   req.user = result.user;

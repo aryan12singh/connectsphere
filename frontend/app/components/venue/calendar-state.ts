@@ -1,3 +1,5 @@
+import { calendarIsoToWallTime, calendarWallTimeToIso } from './booking-state'
+
 export type CalendarMode = 'week' | 'day'
 
 export interface CalendarRange {
@@ -64,19 +66,32 @@ export function calendarSlotState(day: string, hour: number, operatingHours: Cal
   return Number.isFinite(opensAt) && Number.isFinite(closesAt) && slotStart >= opensAt && slotEnd <= closesAt ? 'available' : 'unavailable'
 }
 
-export function calendarRange(mode: CalendarMode, activeDate: Date): CalendarRange {
+// activeDate is a civil-date coordinate (UTC year/month/day), not an instant.
+// Convert its boundaries separately; a venue day may contain 23 or 25 hours.
+export function calendarRange(mode: CalendarMode, activeDate: Date, timeZone = 'UTC'): CalendarRange {
   const day = startOfDay(activeDate)
   const weekday = (day.getUTCDay() + 6) % 7
   const start = mode === 'week' ? addDays(day, -weekday) : day
   const end = addDays(start, mode === 'week' ? 7 : 1)
-  return { startAt: start.toISOString(), endAt: end.toISOString() }
+  return {
+    startAt: calendarWallTimeToIso(`${start.toISOString().slice(0, 10)}T00:00`, timeZone),
+    endAt: calendarWallTimeToIso(`${end.toISOString().slice(0, 10)}T00:00`, timeZone),
+  }
+}
+
+export function calendarDaysForRange(range: CalendarRange, timeZone: string): Date[] {
+  const start = new Date(`${calendarIsoToWallTime(range.startAt, timeZone).slice(0, 10)}T00:00:00Z`)
+  const endDay = calendarIsoToWallTime(range.endAt, timeZone).slice(0, 10)
+  const days: Date[] = []
+  for (let day = start; day.toISOString().slice(0, 10) < endDay; day = addDays(day, 1)) days.push(day)
+  return days
 }
 
 export function advanceCalendarDate(mode: CalendarMode, activeDate: Date, direction: -1 | 1) {
   return addDays(startOfDay(activeDate), direction * (mode === 'week' ? 7 : 1))
 }
 
-export function intervalSegmentsForRange(bookings: CalendarBooking[], range: CalendarRange): IntervalSegment[] {
+export function intervalSegmentsForRange(bookings: CalendarBooking[], range: CalendarRange, timeZone = 'UTC'): IntervalSegment[] {
   const rangeStart = new Date(range.startAt)
   const rangeEnd = new Date(range.endAt)
   const uniqueBookings = bookings.filter((booking, index) => bookings.findIndex(candidate => candidate.id === booking.id) === index)
@@ -84,17 +99,20 @@ export function intervalSegmentsForRange(bookings: CalendarBooking[], range: Cal
     const start = new Date(booking.startAt)
     const end = new Date(booking.endAt)
     if (!(end > rangeStart && start < rangeEnd)) return []
-    const firstDay = startOfDay(new Date(Math.max(start.getTime(), rangeStart.getTime())))
+    const firstDate = calendarIsoToWallTime(new Date(Math.max(start.getTime(), rangeStart.getTime())).toISOString(), timeZone).slice(0, 10)
+    const firstDay = new Date(`${firstDate}T00:00:00Z`)
     const lastInstant = new Date(Math.min(end.getTime(), rangeEnd.getTime()) - 1)
-    const lastDay = startOfDay(lastInstant)
+    const lastDay = new Date(`${calendarIsoToWallTime(lastInstant.toISOString(), timeZone).slice(0, 10)}T00:00:00Z`)
     const segments: IntervalSegment[] = []
     for (let day = firstDay; day <= lastDay; day = addDays(day, 1)) {
       const nextDay = addDays(day, 1)
+      const dayStart = Date.parse(calendarWallTimeToIso(`${day.toISOString().slice(0, 10)}T00:00`, timeZone))
+      const dayEnd = Date.parse(calendarWallTimeToIso(`${nextDay.toISOString().slice(0, 10)}T00:00`, timeZone))
       segments.push({
         booking,
         day: day.toISOString().slice(0, 10),
-        startAt: new Date(Math.max(start.getTime(), day.getTime())).toISOString(),
-        endAt: new Date(Math.min(end.getTime(), nextDay.getTime())).toISOString(),
+        startAt: new Date(Math.max(start.getTime(), dayStart, rangeStart.getTime())).toISOString(),
+        endAt: new Date(Math.min(end.getTime(), dayEnd, rangeEnd.getTime())).toISOString(),
         kind: booking.status === 'BLOCKED' ? 'block' : 'booking',
       })
     }

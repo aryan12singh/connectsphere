@@ -1,4 +1,4 @@
-import { findUserByEmail, verifyPassword } from '../utils/mockUserDb'
+import { findUserByEmail, verifyMockPassword } from '../utils/mockUserDb'
 import { MOCK_ROLE_PERMISSIONS } from '../utils/mockPermissions'
 import type { BackendUser } from '../utils/backend'
 
@@ -8,8 +8,8 @@ import type { BackendUser } from '../utils/backend'
  * Two modes (runtimeConfig.authMode / NUXT_AUTH_MODE):
  *   live — auth-service checks the password (via Keycloak) and returns
  *          { token, user, permissions }.
- *   mock — the in-file mock users (server/utils/mockUserDb.ts). Default, so
- *          the event mocks and existing tests keep working without a backend.
+ *   mock — explicit authentication fixture for tests only. Event requests
+ *          always require the persistent live service; there is no fallback.
  *
  * Either way the result is sealed into the session cookie (nuxt-auth-utils).
  * The token goes in `secure`, which never leaves the server; the browser
@@ -44,7 +44,7 @@ async function loginWithAuthService(event: Parameters<typeof backendFetch>[0], e
 // Mock login against mockUserDb.
 function loginWithMock(email: string, password: string): LoginResult {
   const user = findUserByEmail(email)
-  if (!user || !verifyPassword(user, password))
+  if (!user || !verifyMockPassword(user, password))
     throw createError({ statusCode: 401, statusMessage: 'Invalid credentials' })
   return {
     token: 'mock-token-123',
@@ -58,6 +58,12 @@ function loginWithMock(email: string, password: string): LoginResult {
   }
 }
 
+export function resolveAuthMode(mode: unknown): 'live' | 'mock' {
+  if (mode !== 'live' && mode !== 'mock')
+    throw createError({ statusCode: 503, statusMessage: 'Authentication is not configured' })
+  return mode
+}
+
 export default defineEventHandler(async (event) => {
   const body = await readBody<{ email?: unknown, password?: unknown }>(event)
   const email = typeof body?.email === 'string' ? body.email.trim() : ''
@@ -66,7 +72,8 @@ export default defineEventHandler(async (event) => {
   if (!email || !password)
     throw createError({ statusCode: 400, statusMessage: 'Email and password are required' })
 
-  const { authMode } = useRuntimeConfig(event)
+  const authMode = resolveAuthMode(useRuntimeConfig(event).authMode)
+
   const { token, user } = authMode === 'live'
     ? await loginWithAuthService(event, email, password)
     : loginWithMock(email, password)

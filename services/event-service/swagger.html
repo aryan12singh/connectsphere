@@ -15,8 +15,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ConnectSphere Event Service — BFF Contract",
-    "version": "0.1.0",
-    "description": "Dual access: every protected operation accepts the sealed session cookie OR a bearer token (invalid bearer takes precedence, 401). Request statuses follow Prisma EventRequestStatus plus DRAFT (NEW is client-only and never sent). Reads are owner- or assignee-scoped; the organiser list is owner-scoped, coordinators work from the review queue. No 503 path: missing coordinators surface as null coordinatorId."
+    "version": "0.4.0",
+    "description": "Nuxt BFF contract for persistent Sprint 2 Requests. Organiser ownership, current Coordinator assignment, fresh capabilities, durable idempotency and optimistic versions are enforced by event-service. Approval creates a distinct Planning Event. Browsers use sealed session cookies. Canonical service endpoints and detailed schemas are in docs/openapi.yaml; unavailable dependencies return503 without partial writes."
   },
   "servers": [
     {
@@ -50,9 +50,18 @@
         ],
         "operationId": "listOwnedEvents",
         "summary": "List dashboard rows owned by the caller",
-        "tags": ["requests"],
-        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
-        "description": "Organisers see only their own records; every other role receives an empty list. Meta lines are derived from record data.",
+        "tags": [
+          "requests"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Organiser own requests only; Coordinator uses the assigned review queue. Requires events.view; other roles deny403.",
         "responses": {
           "200": {
             "description": "Dashboard rows",
@@ -77,6 +86,12 @@
           },
           "401": {
             "description": "Unauthenticated or invalid bearer"
+          },
+          "403": {
+            "description": "Wrong role, capability, owner or current assignment"
+          },
+          "503": {
+            "description": "Required backend unavailable; safe retry, no partial writes"
           }
         }
       },
@@ -91,13 +106,30 @@
               "type": "string",
               "example": "Bearer mock-token-u-organiser"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "operationId": "createEventRequest",
         "summary": "Save a draft or submit a request",
-        "tags": ["requests"],
-        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
-        "description": "status DRAFT creates a draft; status SUBMITTED creates a submitted request and assigns a coordinator. Owner is the authenticated user.",
+        "tags": [
+          "requests"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Organiser with event_requests.create only. saveAs=draft saves incomplete non-empty input; saveAs=submit runs full validation and transactional assignment. Idempotency-Key is required; owner identity is verified server-side.",
         "requestBody": {
           "required": true,
           "content": {
@@ -131,6 +163,15 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Wrong role, capability, owner or current assignment"
+          },
+          "503": {
+            "description": "Required backend unavailable; safe retry, no partial writes"
+          },
+          "409": {
+            "description": "Stale version, invalid state or conflicting idempotency key"
           }
         }
       }
@@ -161,8 +202,17 @@
         ],
         "operationId": "getEventRequest",
         "summary": "Get one request with its current coordinator",
-        "tags": ["requests"],
-        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "tags": [
+          "requests"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "Owner reads any own record; coordinators read submitted or assigned records. Everyone else is denied without contents.",
         "responses": {
           "200": {
@@ -179,10 +229,13 @@
             "description": "Unauthenticated or invalid bearer"
           },
           "403": {
-            "description": "Non-owner and not an assigned reviewer"
+            "description": "Wrong role, capability, owner or current assignment"
           },
           "404": {
             "description": "Unknown request"
+          },
+          "503": {
+            "description": "Required backend unavailable; safe retry, no partial writes"
           }
         }
       },
@@ -197,13 +250,30 @@
               "type": "string",
               "example": "Bearer mock-token-u-organiser"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "operationId": "updateEventRequest",
         "summary": "Edit a draft or submit it",
-        "tags": ["requests"],
-        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
-        "description": "Owner-only. Same payload as create: resubmitting DRAFT fields edits the draft; status SUBMITTED on a DRAFT transitions it and assigns a coordinator; other statuses are preserved by resubmission.",
+        "tags": [
+          "requests"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Owner with event_requests.create only; supply current version and Idempotency-Key. Draft and Returned saves supported. action=resubmit validates a changed Returned request and keeps its ID/Coordinator; stale or invalid-state requests return409.",
         "requestBody": {
           "required": true,
           "content": {
@@ -229,7 +299,7 @@
             "description": "Unauthenticated or invalid bearer"
           },
           "403": {
-            "description": "Non-owner"
+            "description": "Wrong role, capability, owner or current assignment"
           },
           "404": {
             "description": "Unknown request"
@@ -243,6 +313,12 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Required backend unavailable; safe retry, no partial writes"
+          },
+          "409": {
+            "description": "Stale version, invalid state or conflicting idempotency key"
           }
         }
       }
@@ -263,8 +339,17 @@
         ],
         "operationId": "listReviewQueue",
         "summary": "List submitted requests awaiting review",
-        "tags": ["review"],
-        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
+        "tags": [
+          "review"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
         "description": "EVENT_COORDINATOR only. Each item carries its organiser contact.",
         "responses": {
           "200": {
@@ -292,7 +377,10 @@
             "description": "Unauthenticated or invalid bearer"
           },
           "403": {
-            "description": "Not a coordinator"
+            "description": "Wrong role, capability, owner or current assignment"
+          },
+          "503": {
+            "description": "Required backend unavailable; safe retry, no partial writes"
           }
         }
       }
@@ -319,13 +407,30 @@
               "type": "string",
               "example": "Bearer mock-token-u-organiser"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "operationId": "decideEventRequest",
         "summary": "Record a coordinator decision",
-        "tags": ["review"],
-        "security": [{ "sessionCookie": [] }, { "bearerAuth": [] }],
-        "description": "EVENT_COORDINATOR only. approve, reject and amendments move a SUBMITTED request to APPROVED, REJECTED and RETURNED_FOR_AMENDMENT; anything else conflicts.",
+        "tags": [
+          "review"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Current assigned Coordinator with event_requests.review only; supply current version and Idempotency-Key. Approve creates Planning Event; amendments requires comments; rejection requires a reason.",
         "requestBody": {
           "required": true,
           "content": {
@@ -367,13 +472,13 @@
             "description": "Unauthenticated or invalid bearer"
           },
           "403": {
-            "description": "Not a coordinator"
+            "description": "Wrong role, capability, owner or current assignment"
           },
           "404": {
             "description": "Unknown request"
           },
           "409": {
-            "description": "Request is not submitted"
+            "description": "Stale version, invalid state or conflicting idempotency key"
           },
           "422": {
             "description": "Unknown decision",
@@ -384,6 +489,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Required backend unavailable; safe retry, no partial writes"
           }
         }
       }
@@ -417,7 +525,7 @@
       },
       "EventRequestInput": {
         "type": "object",
-        "description": "Create payload. status selects DRAFT vs SUBMITTED (which also assigns a coordinator).",
+        "description": "BFF forwards supported field names to the canonical service validator; status/owner/assignment are never caller authority. See docs/openapi.yaml RequestInput for all fields and limits.",
         "required": [
           "eventName",
           "proposedDate",
@@ -512,6 +620,17 @@
           "organiserId": {
             "type": "string",
             "description": "Mandatory owner id, sent implicitly from the authenticated session — never a manual form field. Must reference an existing user or the request is rejected."
+          },
+          "saveAs": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "submit"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
           }
         },
         "example": {
@@ -527,8 +646,12 @@
           "minimumCapacity": 220,
           "preferredLayout": "theatre",
           "venueRequirements": "Hall A, near MRT",
-          "accessibilityNeeds": ["wheelchair"],
-          "equipmentNeeds": ["projector"],
+          "accessibilityNeeds": [
+            "wheelchair"
+          ],
+          "equipmentNeeds": [
+            "projector"
+          ],
           "status": "DRAFT",
           "organiserId": "u-organiser"
         }
@@ -740,7 +863,8 @@
         "type": "object",
         "description": "Coordinator decision on a submitted request.",
         "required": [
-          "decision"
+          "decision",
+          "version"
         ],
         "properties": {
           "decision": {
@@ -753,6 +877,10 @@
           },
           "notes": {
             "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
           }
         }
       },

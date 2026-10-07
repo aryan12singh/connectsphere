@@ -8,7 +8,7 @@
 // password, email already used) before anything is written. If the profile
 // step then fails, the Keycloak login is deleted again, so we never leave a
 // login with no profile behind it.
-const { ROLES } = require('../lib/permissions');
+const { PUBLIC_ROLES } = require('../../../utils/role-policy');
 const userService = require('../clients/userService');
 const keycloakAdmin = require('../clients/keycloakAdmin');
 
@@ -25,33 +25,31 @@ function isText(value, max) {
  * @param input { email, firstName, lastName, role, company?, password }
  * @returns {{ error: string } | { profile, password }}
  */
-function validateNewAccount(input) {
-  const { email, firstName, lastName, role, company, password } = input || {};
-
-  if (!isText(email, 254) || !EMAIL_PATTERN.test(email.trim())) {
-    return { error: 'A valid email is required' };
+function validateNewAccount(input, policy = {}) {
+  const { email, firstName, lastName, company, password } = input || {};
+  const role = input?.role === undefined ? 'ATTENDEE' : input.role;
+  const fields = {};
+  if (!isText(email, 254) || !EMAIL_PATTERN.test(email.trim())) fields.email = ['A valid email is required'];
+  if (!isText(firstName, 100)) fields.firstName = ['First name is required (max 100 characters)'];
+  if (!isText(lastName, 100)) fields.lastName = ['Last name is required (max 100 characters)'];
+  if (!PUBLIC_ROLES.includes(role)) fields.role = ['Only Organiser and Attendee accounts may be created; staff roles are seed-only'];
+  if (role === 'EVENT_ORGANISER' && !isText(company, 200)) fields.company = ['Organisation is required (max 200 characters)'];
+  else if (company !== undefined && company !== null && company !== '' && !isText(company, 200)) fields.company = ['Organisation must be text (max 200 characters)'];
+  const minLength = policy.passwordMinLength ?? 8;
+  if (typeof password !== 'string' || password.length < minLength || password.length > 128) fields.password = [`Password must contain ${minLength} to 128 characters`];
+  else {
+    const rules = [
+      [policy.passwordRequireUppercase ?? true, /[A-Z]/, 'an uppercase letter'],
+      [policy.passwordRequireLowercase ?? true, /[a-z]/, 'a lowercase letter'],
+      [policy.passwordRequireDigit ?? true, /\d/, 'a number'],
+      [policy.passwordRequireSpecial ?? true, /[^A-Za-z0-9]/, 'a symbol'],
+    ];
+    for (const [required, pattern, label] of rules) if (required && !pattern.test(password)) (fields.password ??= []).push(`Password must include ${label}`);
+    if (typeof email === 'string' && password.toLowerCase() === email.trim().toLowerCase()) (fields.password ??= []).push('Password must differ from your email');
   }
-  if (!isText(firstName, 100) || !isText(lastName, 100)) {
-    return { error: 'First and last name are required (max 100 characters)' };
-  }
-  if (!ROLES.includes(role)) {
-    return { error: `Role must be one of: ${ROLES.join(', ')}` };
-  }
-  if (company !== undefined && company !== null && company !== '' && !isText(company, 200)) {
-    return { error: 'Company must be text (max 200 characters)' };
-  }
-  if (typeof password !== 'string' || password.length === 0 || password.length > 128) {
-    return { error: 'A password is required (max 128 characters)' };
-  }
-
+  if (Object.keys(fields).length) return { error: 'Account contains invalid fields', fields };
   return {
-    profile: {
-      email: email.trim().toLowerCase(),
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      role,
-      company: company ? company.trim() : null,
-    },
+    profile: { email: email.trim().toLowerCase(), firstName: firstName.trim(), lastName: lastName.trim(), role, company: company ? company.trim() : null },
     password,
   };
 }

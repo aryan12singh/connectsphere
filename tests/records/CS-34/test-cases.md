@@ -17,3 +17,15 @@ The page uses `useFetch('/api/bookings/availability')` for reads and must not
 call Kong or a service directly. Booking intervals with `status=BLOCKED` are
 rendered as blocks. Conflict indication is client-side unless a later
 approved requirement changes that rule.
+
+## Sprint 2 regression additions
+
+| Test Case ID | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Date of Creation |
+|---|---|---|---|---|---|---|
+| TC-CS34-07 | Early venue-local Monday | Singapore venue | Query day/week and read actual API/render component | local00:30–01:30; UTC previous16:30 | Booking retained in Monday day/week views | 2026-10-07 00:46:00 |
+| TC-CS34-08 | Local midnight clipping | Interval spans Singapore midnight | Split in week; clip in day; exact midnight end | local23:30–01:00 | Correct civil dates; no extra midnight ending segment | 2026-10-07 00:46:00 |
+| TC-CS34-09 | DST day duration | New York venue | Query spring/fall transition days | 2027-03-14 and2027-11-07 |23/25-hour UTC query intervals; one civil date | 2026-10-07 00:46:00 |
+| TC-CS34-10 | Actual calendar and internal read-only access | Persisted early block; live Technical Support | Open week/day desktop/mobile | Monday00:30 local | Block visible; no write controls; APIs deny writes | 2026-10-07 00:49:00 |
+| TC-CS34-11 | Incomplete datetime form | Venue Staff calendar | Open window form; clear start | Empty local time | Form survives with guidance and disabled Save | 2026-10-07 01:20:00 |
+| TC-CS34-12 | Technical Support availability grant stays read-only | Migrated auth database and persisted booking | Read default grant and availability; attempt create/decision with injected capabilities | Technical Support identity, existing booking | venues.view granted; no default write grant; read200, create/decide403 even with injected capabilities | 2026-10-07T02:48:16+00:00 |
+| TC-CS34-13 | Calendar and workspace before hydration | Real signed-in Venue Staff; server HTML; JavaScript disabled | Inspect search, tabs, calendar mode/range/create; normal live booking regression then creates both window types after mount | Seed Venue Staff | Controls disabled before handlers attach; hydrated interactions work without ignored clicks | 2026-10-07T03:00:17+00:00 |

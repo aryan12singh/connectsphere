@@ -2,7 +2,7 @@
 
 What this adds:
 
-- **auth-service**: attendee sign-up, login, logout and "who am I", permission checks, and the
+- **auth-service**: Organiser/Attendee sign-up, login, logout and "who am I", permission checks, and the
   admin API (users, role permissions, settings, audit log).
 - **user-service**: user profiles and roles.
 - **Keycloak**: checks passwords and locks accounts after repeated wrong passwords.
@@ -70,13 +70,11 @@ When a not-yet-built service gets code:
 Update the matching file whenever a route, request or response changes
 (Definition of Done, item 6).
 
-## 4b. Attendee sign-up
+## 4b. Public sign-up
 
-Rules (decided 2026-10-01):
+Current signup rules (updated 2026-10-07):
 
-- Anyone can sign up at `/signup`, but only as an **ATTENDEE**. The role is
-  fixed by auth-service; a `role` sent in the request is ignored. Staff
-  accounts are still created by tech support.
+- Anyone can choose **EVENT_ORGANISER** (organisation required) or **ATTENDEE** at `/signup`. Omitted role defaults to Attendee; invalid/staff roles return 400 with field guidance. Internal roles are seed-only, including through admin/internal provisioning. Organisers receive the server-resolved organisation ID; Attendee company text grants no membership.
 - The account works immediately (no email verification yet). After sign-up
   the user goes back to `/login` and signs in; sign-up never logs in.
 - The password must meet the current rules (section 5). The page shows them
@@ -96,7 +94,7 @@ Rules (decided 2026-10-01):
 
 | Area | What | Takes effect |
 |---|---|---|
-| Users | Create (with an initial password), change role, disable / re-enable | Immediately. Disabling also ends the user's open sessions |
+| Users | Create public accounts, change eligible public role, disable / re-enable | Immediately. Disabling also ends the user's open sessions |
 | Role permissions | Tick which permissions each of the 5 roles has | On each user's next request |
 | Settings | Session length | For logins made after the change |
 | Settings | Idle timeout (0 = off) | Immediately, for every session |
@@ -112,7 +110,7 @@ Built-in safety rules:
 
 ## 6. Protecting routes (RBAC) — the rule for every developer
 
-Routes check a **permission**, never a role name. The permission list is
+Routes check a **permission and its permitted action roles**, followed by ownership/assignment where relevant. A capability cannot waive the fixed customer role boundary. The permission list is
 in `services/auth-service/src/lib/permissions.js`.
 
 ```js
@@ -138,8 +136,7 @@ it can't silently block everyone.
 **In another service** (e.g. event-service): forward the caller's token to
 `POST http://auth-service:3000/internal/sessions/validate` with the
 `x-internal-api-key` header. You get back `{ valid, user, permissions }`.
-Then check `permissions.includes('...')`. This will be packaged as a
-copyable middleware when the first such service is built.
+Apply the fixed action-role policy as well as the trusted `permissions` array, then any record relationship guard. Venue/Booking use the shared policy; Event uses its scoped guard.
 
 ## 7. Frontend (Nuxt)
 
@@ -211,10 +208,10 @@ definePageMeta({ permission: 'users.view' })
 Hiding a button or page only keeps the screen tidy. The backend checks the
 permission on every call.
 
-Your middleware's role gate still only lets organisers and coordinators
-into pages **without** a `permission`. Tech support can open pages that
-declare an admin permission, but is sent to /login from `/`. Decide what
-tech support's home page should be when the admin screens are built.
+The middleware routes each recognised role to its functional home and checks
+permission metadata on typed routes. Technical Support opens `/support` with a
+read-only user directory and may read `/venue`; administrative mutations remain
+in the Swagger API. Backend action-role and record guards apply on every call.
 
 ## 8. Running a service without Docker (optional)
 
@@ -254,3 +251,11 @@ pgAdmin4, use `now() at time zone 'utc'`, not `now()`.
 | Admin calls return 501 | Frontend is in mock mode: set `NUXT_AUTH_MODE=live` |
 | Create user: "Password does not meet the password rules" | Check the current rules in `GET /admin/settings` |
 | `prisma generate` fails downloading engines | Your network blocks `binaries.prisma.sh`. Try another network |
+
+## Multi-role homes and local identity checks
+
+The account menu switches only among server-issued roles; `POST /api/auth/role` updates the sealed presentation role, never database grants. Homes are `/` for Organiser/Coordinator, `/venue` for Venue Staff, `/support` for Technical Support and `/attendee` for Attendee. User roles and effective permissions are refreshed by `/api/auth/me`. Unknown/empty roles are denied.
+
+Auth/User Docker builds use the `services/` context so the static action policy is available in each image; no service accesses another database. `docker compose -f infra/docker-compose.yml build auth-service user-service venue-service booking-service` follows the updated contexts.
+
+Use Node 22 and `npm ci` in each identity service, then `npm run test:unit` / `npm run test:coverage`. PostgreSQL integration requires migrations and the corresponding `auth_test` or `user_test` database; `npm run test:integration` refuses another database name. External-service fixtures in these isolated API suites are complemented by real Keycloak/User/Auth browser verification. See the root README for commands.

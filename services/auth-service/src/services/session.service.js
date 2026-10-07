@@ -6,11 +6,6 @@ const userService = require('../clients/userService');
 const settingsService = require('./settings.service');
 const permissionService = require('./permission.service');
 
-// Only write lastUsedAt if the stored value is older than this. Saves a
-// database write on every single request while keeping the idle timeout
-// accurate to within a minute.
-const LAST_USED_WRITE_INTERVAL_MS = 60 * 1000;
-
 /**
  * Starts a new session for a user. Session length comes from the admin
  * settings, so changing it affects logins made after the change.
@@ -51,7 +46,7 @@ async function resolveToken(token) {
   // Idle timeout (0 = off). A session never used since login counts from createdAt.
   const { idleTimeoutMinutes } = await settingsService.getSettings();
   const lastActivity = session.lastUsedAt || session.createdAt;
-  if (idleTimeoutMinutes > 0 && now - lastActivity > idleTimeoutMinutes * 60 * 1000) {
+  if (idleTimeoutMinutes > 0 && now - lastActivity >= idleTimeoutMinutes * 60 * 1000) {
     await revokeSession(session.id); // end it for good
     return null;
   }
@@ -63,11 +58,11 @@ async function resolveToken(token) {
     return null;
   }
 
-  if (now - lastActivity > LAST_USED_WRITE_INTERVAL_MS) {
-    await prisma.session.update({ where: { id: session.id }, data: { lastUsedAt: now } });
-  }
+  // Every successful request is activity. Throttled writes can expire a
+  // genuinely active session early, so record the exact request instant.
+  await prisma.session.update({ where: { id: session.id }, data: { lastUsedAt: now } });
 
-  const permissions = await permissionService.getPermissionsForRole(user.role);
+  const permissions = await permissionService.getPermissionsForUser(user);
   return { session, user, permissions };
 }
 

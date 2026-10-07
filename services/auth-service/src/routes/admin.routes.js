@@ -8,6 +8,7 @@ const express = require('express');
 const { requireAuth } = require('../middleware/requireAuth');
 const { requirePermission } = require('../middleware/requirePermission');
 const { ROLES, isKnownPermission } = require('../lib/permissions');
+const { PUBLIC_ROLES } = require('../../../utils/role-policy');
 const userService = require('../clients/userService');
 const keycloakAdmin = require('../clients/keycloakAdmin');
 const sessionService = require('../services/session.service');
@@ -32,9 +33,9 @@ router.get('/users', requirePermission('users.view'), async (req, res) => {
 // log in straight away with the password tech support set.
 // Same rules as self sign-up: see services/account.service.js.
 router.post('/users', requirePermission('users.manage'), async (req, res) => {
-  const checked = accountService.validateNewAccount(req.body);
+  const checked = accountService.validateNewAccount(req.body, await settingsService.getSettings());
   if (checked.error) {
-    return res.status(400).json({ error: checked.error });
+    return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: checked.error, fields: checked.fields } });
   }
 
   const user = await accountService.createAccount(checked.profile, checked.password);
@@ -45,8 +46,8 @@ router.post('/users', requirePermission('users.manage'), async (req, res) => {
 // PATCH /admin/users/:id/role   body: { role }
 router.patch('/users/:id/role', requirePermission('users.manage'), async (req, res) => {
   const { role } = req.body || {};
-  if (!ROLES.includes(role)) {
-    return res.status(400).json({ error: `Role must be one of: ${ROLES.join(', ')}` });
+  if (!PUBLIC_ROLES.includes(role)) {
+    return res.status(400).json({ error: 'Staff roles are seed-only; only public roles may be changed' });
   }
   // Stops an admin removing their own admin access by mistake, and means
   // there is always at least one tech support account left.
@@ -57,6 +58,7 @@ router.patch('/users/:id/role', requirePermission('users.manage'), async (req, r
   const existing = await userService.findUserById(req.params.id);
   if (!existing) return res.status(404).json({ error: 'User not found' });
 
+  if ((existing.roles ?? [existing.role]).some(value => !PUBLIC_ROLES.includes(value))) return res.status(400).json({ error: 'Seeded staff roles cannot be changed through this endpoint' });
   const user = await userService.updateUser(req.params.id, { role });
   await audit.record(req.user.id, audit.ACTIONS.USER_ROLE_CHANGED, user.id, { from: existing.role, to: role });
   res.json(user);

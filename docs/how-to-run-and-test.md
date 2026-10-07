@@ -8,6 +8,16 @@ Commands work in **PowerShell** (Windows) and in bash/zsh (macOS/Linux)
 unless a step says otherwise. Run them from the repo root (the folder with
 `README.md`) unless the step says `cd` somewhere.
 
+For the current Sprint 2 CS-11/29/27/44 request workflow, use the
+[isolated review recipe](event-review-run.md) first. It supplies a fresh
+PostgreSQL 16 project, Node 22 locked installs, parameterised ports, actual
+live-auth smoke and a restart check. The general development instructions and
+Sprint 1 manual checks below are retained for their original context; their
+old event expectations and test counts do not describe the current branch.
+The full frontend regression suite imports the real venue-service validator;
+the isolated recipe therefore installs its locked runtime dependencies as
+well as the event-service and frontend dependencies.
+
 ---
 
 ## Part A — One-time setup
@@ -15,11 +25,15 @@ unless a step says otherwise. Run them from the repo root (the folder with
 You need:
 
 - **Docker Desktop**, running.
-- **Node.js 20 or newer** (`node -v`).
+- **Node.js 22** (`node -v`), the verified runtime for this branch's locked dependencies.
 - **Git**. Clone the repo normally. `.gitattributes` keeps the shell script's
   line endings correct on Windows.
 
-### A2. Starting from scratch (skip on a brand-new clone)
+### A2. Legacy general-development reset (skip for isolated review)
+
+The destructive reset below belongs to the older general-development setup.
+It is unnecessary for the isolated recipe and must not be used on an existing
+shared development project while verifying these workflows.
 
 If you have run the stack before and want a clean start (or something is in
 a confusing state), wipe the old containers and **all** data first. This
@@ -172,9 +186,7 @@ Open `frontend/.env` and choose a mode:
   event pages with data: `organiser@example.com` or
   `coordinator@example.com`, password `Password123!`.
 - `NUXT_AUTH_MODE=live`. Real login through the backend from Part B, with
-  the seed users (list below). Event pages are still mock data belonging to
-  mock users, so a real organiser sees an empty list. That is expected
-  until event-service exists.
+  the seed users (list below). Event requests, drafts and history use event-service and PostgreSQL. Role homes and grants are described in [the access matrix](access-matrix.md).
 
 Leave `NUXT_API_BASE_URL=http://localhost:8000`. Leave the
 `NUXT_SESSION_PASSWORD` line commented out. Nuxt generates one on first
@@ -226,7 +238,7 @@ differs, note what you saw.
 | MT-02 | Log in as `sarah.tan@nexuslabs.sg` | Lands on **Your events** (empty list in live mode) |
 | MT-03 | Click the initials (top right), then **Sign out** | Shows Sarah Tan, `EVENT_ORGANISER`, her email. Sign out returns to /login. In pgAdmin, `auth_db.sessions`: her newest session now has `revokedAt` set |
 | MT-04 | Log in as `aisha.rahman@connectsphere.sg` | Lands on **Review queue** |
-| MT-05 | Log in as `hafiz.ismail@connectsphere.sg` (also try Venue Staff and Attendee) | Shows "Signed in as …" but stays on /login. **Correct for now**: the access matrix says these roles have no interface yet |
+| MT-05 | Log in as `hafiz.ismail@connectsphere.sg` (also try Venue Staff and Attendee) | Opens Technical Support `/support`, Venue Staff `/venue`, or Attendee `/attendee` |
 | MT-06 | Signed out, go to http://localhost:3000/ | Redirected to /login |
 | MT-07 | Log in as Aisha, then refresh the page | Still logged in |
 
@@ -239,8 +251,8 @@ differs, note what you saw.
 | MT-29 | Type a password slowly, e.g. `abc` → `Abcdefg1!` | The rules under the field tick (✓) one by one. A different confirm password gives "The passwords do not match." |
 | MT-30 | Sign up as `test.attendee@example.com`, any names, password `Str0ng!Pass` | Goes to /login with "Account created. Please sign in." In pgAdmin: `user_db.users` has the row with role **ATTENDEE**; `auth_db.audit_logs` has a `USER_REGISTERED` entry |
 | MT-31 | Sign up again with the same email, then with `sarah.tan@nexuslabs.sg` | "A user with this email already exists" both times |
-| MT-32 | Log in as `test.attendee@example.com` / `Str0ng!Pass` | "Signed in as …", stays on /login (attendees have no interface yet, like MT-05) |
-| MT-33 | In Swagger (3002), `POST /auth/register` with `"role": "TECHNICAL_SUPPORT_STAFF"` in the body | 201 and the new user's role is still **ATTENDEE** |
+| MT-32 | Log in as `test.attendee@example.com` / `Str0ng!Pass` | Opens Attendee home and its own profile |
+| MT-33 | In Swagger (3002), `POST /auth/register` with `"role": "TECHNICAL_SUPPORT_STAFF"` in the body | 400 with role guidance; no account created |
 | MT-34 | As Hafiz, `PUT /admin/settings` `{ "passwordMinLength": 12 }`, then reload /signup | The first rule now says "At least 12 characters", and an 8-character password is refused. Set it back to 8 |
 | MT-35 | `docker compose -f infra/docker-compose.yml restart keycloak`, wait a minute, log in as `test.attendee@example.com` | Still works: Keycloak kept the account in Postgres |
 
@@ -253,7 +265,7 @@ differs, note what you saw.
 
 ### Tech support admin (Swagger UI)
 
-Tech support has no screens yet, so use Swagger at http://localhost:3002/docs.
+Technical Support has a read-only user directory at `/support`; use Swagger at http://localhost:3002/docs for administrative mutations.
 Check that the server dropdown at the top shows `http://localhost:3002`.
 
 **Get a token (needed for MT-10 onwards):**
@@ -271,8 +283,8 @@ Check that the server dropdown at the top shows `http://localhost:3002`.
 | MT-13 | `PUT /admin/settings` with `{ "lockoutMaxFailures": 3 }`. Then in Keycloak admin → realm **connectsphere** → Realm settings → Security defenses → Brute force detection | Keycloak shows max login failures **3**. (Set it back to 5 afterwards.) |
 | MT-14 | `POST /admin/users` with `{ "email": "test.user@connectsphere.sg", "firstName": "Test", "lastName": "User", "role": "ATTENDEE", "password": "Short1!" }` | 400 "Password does not meet the password rules" |
 | MT-15 | Same, with password `LongerPass1!` | 201 with the new user. Copy its `id` |
-| MT-16 | On the website, log in as `test.user@connectsphere.sg` / `LongerPass1!` | Logs in (stays on /login as an attendee, like MT-05) |
-| MT-17 | `PATCH /admin/users/{id}/role` with `{ "role": "EVENT_ORGANISER" }`, then in the browser where test.user is logged in, open http://localhost:3000/ | **Your events**, without logging in again. The new role is picked up on page load |
+| MT-16 | On the website, log in as `test.user@connectsphere.sg` / `LongerPass1!` | Logs in to Attendee home |
+| MT-17 | `PATCH /admin/users/{id}/role` with `{ "role": "EVENT_ORGANISER" }`, then in the browser where test.user is logged in, open http://localhost:3000/ | 400 if the Attendee has no organisation link. Seeded staff grants cannot be changed by this endpoint; use Organiser signup for a new organisation-backed account |
 | MT-18 | `PATCH /admin/users/{id}/status` with `{ "isActive": false }`, then refresh that browser tab | Logged out. Logging in again says "Invalid credentials". Re-enable with `true` |
 | MT-19 | `PATCH /admin/users/{Hafiz's own id}/role` (id `a1000000-0000-4000-8000-000000000011`) | 400 "You cannot change your own role" |
 | MT-20 | `GET /admin/audit-logs` | One entry per change you made above, newest first |
@@ -282,7 +294,7 @@ Check that the server dropdown at the top shows `http://localhost:3002`.
 | # | Steps | Expected |
 |---|---|---|
 | MT-21 | Log in via Swagger as `aisha.rahman@connectsphere.sg` / `Aisha@CS05!`, Authorize with her token, `GET /admin/users` | **403** "You do not have permission to do this" |
-| MT-22 | As Hafiz again, `PUT /admin/roles/EVENT_COORDINATOR/permissions` with the current coordinator list **plus** `"users.view"` (see `GET /admin/permissions`) | 200. As Aisha, `GET /admin/users` now works. Put the list back afterwards |
+| MT-22 | As Hafiz again, `PUT /admin/roles/EVENT_COORDINATOR/permissions` with the current coordinator list **plus** `"users.view"` (see `GET /admin/permissions`) | 200. As Aisha, `GET /admin/users` remains403 because user administration is restricted to Technical Support. Put the list back afterwards |
 | MT-23 | As Hafiz, `PUT /admin/roles/TECHNICAL_SUPPORT_STAFF/permissions` with `{ "permissions": [] }` | 200, but `users.manage` and `permissions.manage` are still there (protected) |
 
 ### Database (pgAdmin4)
@@ -296,7 +308,7 @@ Check that the server dropdown at the top shows `http://localhost:3002`.
 
 | # | Steps | Expected |
 |---|---|---|
-| MT-26 | `cd frontend` then `npm test` | **82 passed, 20 failed** (the 82 include 7 sign-up tests in `tests/specs/signup.spec.ts`). The 20 are known and unrelated to auth: 19 CS-11 tests call routes not built yet, and 1 CS-30 test expects a disabled "Change coordinator" button. Any *other* failure is a regression |
+| MT-26 (historical Sprint 1 result) | `cd frontend` then `npm test` | At that snapshot: **82 passed, 20 failed** (including 7 sign-up passes). The obsolete CS-11 route harness and CS-30 expectation were later replaced with mapped persistent-workflow assertions. For the current branch run `npm run test:report` with the isolated PostgreSQL/fixture-auth environment in [event-review-run.md](event-review-run.md); assess the actual dated result rather than this historical count. |
 
 ---
 
@@ -324,3 +336,7 @@ and every signed-up or admin-created account is gone (redo B2 for the seed users
 | Postgres logs `$'\r': command not found` | `init-databases.sh` has Windows line endings. Run `git add --renormalize .` and re-clone, or convert the file to LF, then `down -v` and `up` |
 | Every login fails; browser dev tools show 500 "Empty password" | `frontend/.env` has `NUXT_SESSION_PASSWORD=` with nothing after it. Delete that line (or give it 32+ characters) and restart `npm run dev` |
 | Admin screens / `/api/admin/...` return 501 | Website is in mock mode. Set `NUXT_AUTH_MODE=live` |
+
+## Persistent CS-11/29/27/44 branch
+
+Follow [the isolated review recipe](event-review-run.md) for real-database/API/live-auth/browser checks. It uses Node22, PostgreSQL16, a unique project/volume, loopback ports and locked installs. Existing destructive reset commands in older instructions are **not** required for this implementation verification. The active event BFF has no mock fallback; registration capture, same-record drafts/resubmissions and authorised history are described in [event workflows](event-workflows.md).

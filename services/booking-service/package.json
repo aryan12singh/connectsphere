@@ -8,12 +8,15 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test:unit": "DATA_MODE=memory NODE_ENV=test node --test tests/unit/*.test.js",
-    "test:coverage": "DATA_MODE=memory NODE_ENV=test node --experimental-test-coverage --test tests/unit/*.test.js",
+    "test:coverage": "DATA_MODE=memory NODE_ENV=test node --experimental-test-coverage --test --test-coverage-include='src/**/*.js' tests/unit/*.test.js",
     "test:contract": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "test:integration": "node --experimental-test-coverage --test --test-coverage-include='src/**/*.js' tests/integration/*.test.js"
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@prisma/adapter-pg": "^6.19.3",
     "@prisma/client": "^6.19.3",

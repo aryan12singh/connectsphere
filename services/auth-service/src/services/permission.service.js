@@ -1,6 +1,14 @@
 // Which permissions each role has (auth_db.role_permissions).
 const prisma = require('../db');
 const { PERMISSIONS, ROLES, PROTECTED, isKnownPermission } = require('../lib/permissions');
+const { rolesForUser } = require('../../../utils/role-policy');
+
+async function getPermissionsForUser(user) {
+  const roles = rolesForUser(user);
+  if (!roles.length) return [];
+  const rows = await prisma.rolePermission.findMany({ where: { role: { in: roles } }, select: { permission: true } });
+  return [...new Set(rows.map(row => row.permission).filter(isKnownPermission))].sort();
+}
 
 // Returns an array like ["events.view", "attendance.register"].
 async function getPermissionsForRole(role) {
@@ -51,4 +59,4 @@ async function setRolePermissions(role, permissions) {
   return { before, after };
 }
 
-module.exports = { getPermissionsForRole, getMatrix, setRolePermissions };
+module.exports = { getPermissionsForRole, getPermissionsForUser, getMatrix, setRolePermissions };
