@@ -89,6 +89,7 @@ jobs:
       DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/event_db
     defaults:
       run:
+        shell: bash
         working-directory: services/event-service
     steps:
       - uses: actions/checkout@v7.0.1
@@ -118,6 +119,7 @@ jobs:
       DATABASE_URL: postgresql://fixture:fixture@127.0.0.1:9/ci_schema_validation
     defaults:
       run:
+        shell: bash
         working-directory: services/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -156,6 +158,7 @@ jobs:
       USER_SERVICE_URL: http://127.0.0.1:9
     defaults:
       run:
+        shell: bash
         working-directory: services/${{ matrix.service }}
     steps:
       - uses: actions/checkout@v7.0.1
