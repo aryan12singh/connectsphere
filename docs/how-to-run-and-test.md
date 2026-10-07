@@ -186,9 +186,7 @@ Open `frontend/.env` and choose a mode:
   event pages with data: `organiser@example.com` or
   `coordinator@example.com`, password `Password123!`.
 - `NUXT_AUTH_MODE=live`. Real login through the backend from Part B, with
-  the seed users (list below). Event pages are still mock data belonging to
-  mock users, so a real organiser sees an empty list. That is expected
-  until event-service exists.
+  the seed users (list below). Event requests, drafts and history use event-service and PostgreSQL. Role homes and grants are described in [the access matrix](access-matrix.md).
 
 Leave `NUXT_API_BASE_URL=http://localhost:8000`. Leave the
 `NUXT_SESSION_PASSWORD` line commented out. Nuxt generates one on first
@@ -240,7 +238,7 @@ differs, note what you saw.
 | MT-02 | Log in as `sarah.tan@nexuslabs.sg` | Lands on **Your events** (empty list in live mode) |
 | MT-03 | Click the initials (top right), then **Sign out** | Shows Sarah Tan, `EVENT_ORGANISER`, her email. Sign out returns to /login. In pgAdmin, `auth_db.sessions`: her newest session now has `revokedAt` set |
 | MT-04 | Log in as `aisha.rahman@connectsphere.sg` | Lands on **Review queue** |
-| MT-05 | Log in as `hafiz.ismail@connectsphere.sg` (also try Venue Staff and Attendee) | Shows "Signed in as …" but stays on /login. **Correct for now**: the access matrix says these roles have no interface yet |
+| MT-05 | Log in as `hafiz.ismail@connectsphere.sg` (also try Venue Staff and Attendee) | Opens Technical Support `/support`, Venue Staff `/venue`, or Attendee `/attendee` |
 | MT-06 | Signed out, go to http://localhost:3000/ | Redirected to /login |
 | MT-07 | Log in as Aisha, then refresh the page | Still logged in |
 
@@ -253,8 +251,8 @@ differs, note what you saw.
 | MT-29 | Type a password slowly, e.g. `abc` → `Abcdefg1!` | The rules under the field tick (✓) one by one. A different confirm password gives "The passwords do not match." |
 | MT-30 | Sign up as `test.attendee@example.com`, any names, password `Str0ng!Pass` | Goes to /login with "Account created. Please sign in." In pgAdmin: `user_db.users` has the row with role **ATTENDEE**; `auth_db.audit_logs` has a `USER_REGISTERED` entry |
 | MT-31 | Sign up again with the same email, then with `sarah.tan@nexuslabs.sg` | "A user with this email already exists" both times |
-| MT-32 | Log in as `test.attendee@example.com` / `Str0ng!Pass` | "Signed in as …", stays on /login (attendees have no interface yet, like MT-05) |
-| MT-33 | In Swagger (3002), `POST /auth/register` with `"role": "TECHNICAL_SUPPORT_STAFF"` in the body | 201 and the new user's role is still **ATTENDEE** |
+| MT-32 | Log in as `test.attendee@example.com` / `Str0ng!Pass` | Opens Attendee home and its own profile |
+| MT-33 | In Swagger (3002), `POST /auth/register` with `"role": "TECHNICAL_SUPPORT_STAFF"` in the body | 400 with role guidance; no account created |
 | MT-34 | As Hafiz, `PUT /admin/settings` `{ "passwordMinLength": 12 }`, then reload /signup | The first rule now says "At least 12 characters", and an 8-character password is refused. Set it back to 8 |
 | MT-35 | `docker compose -f infra/docker-compose.yml restart keycloak`, wait a minute, log in as `test.attendee@example.com` | Still works: Keycloak kept the account in Postgres |
 
@@ -267,7 +265,7 @@ differs, note what you saw.
 
 ### Tech support admin (Swagger UI)
 
-Tech support has no screens yet, so use Swagger at http://localhost:3002/docs.
+Technical Support has a read-only user directory at `/support`; use Swagger at http://localhost:3002/docs for administrative mutations.
 Check that the server dropdown at the top shows `http://localhost:3002`.
 
 **Get a token (needed for MT-10 onwards):**
@@ -285,8 +283,8 @@ Check that the server dropdown at the top shows `http://localhost:3002`.
 | MT-13 | `PUT /admin/settings` with `{ "lockoutMaxFailures": 3 }`. Then in Keycloak admin → realm **connectsphere** → Realm settings → Security defenses → Brute force detection | Keycloak shows max login failures **3**. (Set it back to 5 afterwards.) |
 | MT-14 | `POST /admin/users` with `{ "email": "test.user@connectsphere.sg", "firstName": "Test", "lastName": "User", "role": "ATTENDEE", "password": "Short1!" }` | 400 "Password does not meet the password rules" |
 | MT-15 | Same, with password `LongerPass1!` | 201 with the new user. Copy its `id` |
-| MT-16 | On the website, log in as `test.user@connectsphere.sg` / `LongerPass1!` | Logs in (stays on /login as an attendee, like MT-05) |
-| MT-17 | `PATCH /admin/users/{id}/role` with `{ "role": "EVENT_ORGANISER" }`, then in the browser where test.user is logged in, open http://localhost:3000/ | **Your events**, without logging in again. The new role is picked up on page load |
+| MT-16 | On the website, log in as `test.user@connectsphere.sg` / `LongerPass1!` | Logs in to Attendee home |
+| MT-17 | `PATCH /admin/users/{id}/role` with `{ "role": "EVENT_ORGANISER" }`, then in the browser where test.user is logged in, open http://localhost:3000/ | 400 if the Attendee has no organisation link. Seeded staff grants cannot be changed by this endpoint; use Organiser signup for a new organisation-backed account |
 | MT-18 | `PATCH /admin/users/{id}/status` with `{ "isActive": false }`, then refresh that browser tab | Logged out. Logging in again says "Invalid credentials". Re-enable with `true` |
 | MT-19 | `PATCH /admin/users/{Hafiz's own id}/role` (id `a1000000-0000-4000-8000-000000000011`) | 400 "You cannot change your own role" |
 | MT-20 | `GET /admin/audit-logs` | One entry per change you made above, newest first |
@@ -296,7 +294,7 @@ Check that the server dropdown at the top shows `http://localhost:3002`.
 | # | Steps | Expected |
 |---|---|---|
 | MT-21 | Log in via Swagger as `aisha.rahman@connectsphere.sg` / `Aisha@CS05!`, Authorize with her token, `GET /admin/users` | **403** "You do not have permission to do this" |
-| MT-22 | As Hafiz again, `PUT /admin/roles/EVENT_COORDINATOR/permissions` with the current coordinator list **plus** `"users.view"` (see `GET /admin/permissions`) | 200. As Aisha, `GET /admin/users` now works. Put the list back afterwards |
+| MT-22 | As Hafiz again, `PUT /admin/roles/EVENT_COORDINATOR/permissions` with the current coordinator list **plus** `"users.view"` (see `GET /admin/permissions`) | 200. As Aisha, `GET /admin/users` remains403 because user administration is restricted to Technical Support. Put the list back afterwards |
 | MT-23 | As Hafiz, `PUT /admin/roles/TECHNICAL_SUPPORT_STAFF/permissions` with `{ "permissions": [] }` | 200, but `users.manage` and `permissions.manage` are still there (protected) |
 
 ### Database (pgAdmin4)

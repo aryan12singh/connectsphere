@@ -26,7 +26,7 @@ consistent. Add a new dated entry at the top of "Entries" each time.
   by the `x-internal-api-key` header and never routed by Kong.
 - **RBAC is permission-based.** Five fixed roles (`EVENT_ORGANISER`,
   `EVENT_COORDINATOR`, `VENUE_STAFF`, `TECHNICAL_SUPPORT_STAFF`, `ATTENDEE`,
-  stored in user-service). Routes check a **permission**, never a role name:
+  stored in user-service). Routes check a **permission and fixed action-role boundaries**, then record relationships:
   `requireAuth` then `requirePermission('area.action')`. The permission
   catalog is in `auth-service/src/lib/permissions.js`. Which roles have
   which permissions is in `auth_db.role_permissions`, editable by tech support.
@@ -57,6 +57,15 @@ consistent. Add a new dated entry at the top of "Entries" each time.
 ---
 
 ## Entries
+
+### 2026-10-07 — integrated Sprint 2 identity, calendar and CI repairs
+
+Aryan branch follow-up addresses Marc CS-10/CS-26 and Alan CS-33/CS-34: five functional role homes, sealed multi-role selection, fresh permission unions, exact idle expiry, Organiser/Attendee field-guided signup, transactional/concurrent organisation resolution, seed-only staff provisioning, ordered operating hours and venue-local day/week boundaries. Booking decisions require the decision grant even for multi-role staff. Coordinator booking create/read/edit/list/history verifies current Event assignment through Event service; stale assignment denies403, outage fails503 without writes. An additive migration permits Technical Support venue reads only. Live verification also found an early native form GET before Vue hydration. Request/login/signup/venue inputs/actions and calendar/workspace controls now stay disabled until handlers mount, with actual SSR regressions and no-JavaScript browser checks. Each service retains its own database; static role policy is bundled separately in the images. No Week7 scope was added.
+
+Frontend 130/130 and all application CI jobs passed; live desktop/mobile 46/46 passed. A transient restart-login 404 led to a one-second Kong DNS cache with stale reuse disabled and two consecutive gateway/BFF readiness samples. Two subsequent retained-ID restart cycles passed without reseeding. The [delivery record](../sprint2/event-request-delivery.md) links CI and the remaining acceptance gates.
+
+CI now typechecks browser specs and runs dedicated Auth/User unit and PostgreSQL HTTP suites, PostgreSQL Venue/Booking API suites, source coverage for all five services and frontend V8 coverage. Explicit Bash defaults restore pipefail for tests piped through tee. A deliberately failing PR run verified that Auth/User/Venue failures reject CI. Automated evidence does not replace independent manual review, explanation, merge-commit CI or PO acceptance.
+
 
 ### 2026-10-07 — Persistent Sprint 2 event workflows and CI
 

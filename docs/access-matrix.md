@@ -1,5 +1,27 @@
 # Role and Event Access Matrix
 
+## Identity and venue amendment — 7 October 2026
+
+This amendment supersedes the historical single-role and interface restrictions below. Auth-service validates every role, reads a deduplicated union of current database grants on each request, and rejects missing/unknown roles. The fixed action-role policy in `services/utils/role-policy.js` is an additional boundary: assigning a capability to an unrelated role cannot turn an Attendee into Venue Staff or a Coordinator into Technical Support. Event-service also applies its owner, organisation and current-assignment guards.
+
+| Action | Organiser | Coordinator | Venue Staff | Technical Support | Attendee |
+|---|---|---|---|---|---|
+| Home | Events | Assigned queue | Venues | User directory | Own profile |
+| Public signup | Yes, organisation required | Seed only | Seed only | Seed only | Yes |
+| Venue details/calendar | No | Read | Read | Read | No |
+| Venue mutation | No | No | With manage grant | No | No |
+| Ordinary booking create | No | With create grant and current Event assignment | No, unless also Coordinator with create grant | No | No |
+| Operational BLOCKED/UNAVAILABLE window | No | No | With decision grant | No | No |
+| Booking decision | No | Own tentative/cancelled edits with current Event assignment | With decision grant | No | No |
+| User administration | No | No | No | With matching grant | No |
+
+All role homes are implemented. A multi-role account can choose an already granted presentation role in the account menu without logging in again; this affects navigation only. The backend continues to check all verified roles plus effective capabilities and record relationships. Reload preserves the selected role while it remains granted. An unassigned role selection returns 403. No System Administrator role exists.
+
+Organiser signup resolves an exact trimmed organisation name server-side in the same transaction as the profile. Matching names share an ID, including concurrent signup; duplicate email rolls back new organisation creation. Attendee company text never grants organisation membership, and client-supplied IDs/role lists are ignored. Membership is self-declared under the current signup contract; verified/invited affiliation remains a separate product decision. Staff roles can only be seeded, and the public/admin/internal provisioning endpoints reject staff grants or changes to seeded staff roles.
+
+Coordinator booking detail/list/history and edits also recheck current Event assignment via Event service. Missing/foreign assignment denies 403; an unavailable proof returns 503 without writes. Technical Support receives only `venues.view` through an additive migration. Booking availability now uses that read permission; booking/venue writes retain action-specific grants. Logout, expiry and disable invalidate the backend session; inactivity at the configured boundary is expired (`>=`), and successful requests record their exact activity time.
+
+
 ## Current event-workflow access — 2026-10-06
 
 This implemented amendment supersedes conflicting Sprint1 event/request rows below. Identity is verified at auth-service on every event call; roles array is authoritative with legacy single-role fallback. Caller role/owner/organisation headers or body fields grant nothing.
@@ -17,7 +39,7 @@ This implemented amendment supersedes conflicting Sprint1 event/request rows bel
 
 Historic Draft entries remain owner-only after publication; a Coordinator sees published values with prior Draft values marked private. Wider Event viewers receive only Event-scoped entries, filtered before cursor paging.
 
-All event routes additionally consume the top-level trusted auth-service permission array on every request. Request create/save/submit/resubmit require `event_requests.create`; Request/Event reads, history and contact require `events.view`; decisions require `event_requests.review`; the queue requires view and review. Empty permissions deny403; missing/malformed upstream permission data fails503. Cached replay, body/header grants and nested user permissions never bypass these checks. Role/relationship checks remain business constraints after the capability gate. Staff option projection requires view permission; Technical Support's current default catalog does not grant it, so this branch adds no such grant.
+All event routes additionally consume the top-level trusted auth-service permission array on every request. Request create/save/submit/resubmit require `event_requests.create`; Request/Event reads, history and contact require `events.view`; decisions require `event_requests.review`; the queue requires view and review. Empty permissions deny 403; missing/malformed upstream permission data fails503. Cached replay, body/header grants and nested user permissions never bypass these checks. Role/relationship checks remain business constraints after the capability gate. Staff option projection requires view permission; Technical Support's current default catalog does not grant it, so this branch adds no such grant.
 
 Multi-role business checks use the verified roles array; effective capabilities are exactly those returned by auth-service, with no locally invented union or role fallback. Authentication's broader permissions administration is unchanged; no self-provisioning/reassignment rights are added. Missing organisation denies same-org access. Completed/cancelled history uses the same rules. Unauthenticated/expired/revoked401; wrong actor403; right actor/wrong state or stale version409. No ordinary history update/delete route.
 

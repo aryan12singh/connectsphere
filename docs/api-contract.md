@@ -166,16 +166,18 @@ The existing auth routes keep their paths. What changes in the **session / role 
     "roles": ["EVENT_ORGANISER", "ATTENDEE"],
     "role": "EVENT_ORGANISER",
     "organisationId": "b1000000-0000-4000-8000-000000000002",
-    "permissions": ["events.create", "events.view", "attendance.register"]
+    "permissions": ["event_requests.create", "events.view", "attendance.register"]
   }
 }
 ```
 
 * `roles` (array, never empty) is the source of truth. `permissions` is the **union** of the roles' permissions.
-* `role` is **deprecated** — the first/primary role, kept only so the current frontend keeps working.
-  It will be removed once the BFF and auth-service read `roles`.
+* Auth-service returns the primary `role` for compatibility. The BFF uses it as an active navigation role and preserves an already granted selection across reload; authorization uses all verified `roles` and current capabilities, never the selected UI role.
 * `organisationId` is `null` for users without one.
-* Register / login / logout are otherwise unchanged. Sign-up still creates `ATTENDEE` only.
+* Public signup accepts only `EVENT_ORGANISER` or `ATTENDEE` (default). Organisers supply company/organisation; user-service resolves the exact trimmed name transactionally. Duplicate email or invalid fields return field messages. Staff roles come only from seed data.
+* `POST /api/auth/role` selects an already granted navigation role in the sealed cookie. It grants no database role, checks fresh `/auth/me` identity, and rejects unassigned roles with 403.
+* Inactivity expires at the configured boundary (`>=`), successful protected requests record their exact activity time, and unknown/empty role lists deny 403.
+* Services check the fixed action-role table and fresh effective permission together, then owner/organisation/current-assignment relationships. The [access matrix](access-matrix.md) and individual service OpenAPI contracts define each action.
 
 ## 11. Gateway map
 
@@ -185,4 +187,6 @@ The existing auth routes keep their paths. What changes in the **session / role 
 | `GET /users/*` | user-service | read-only; `/internal/*` never routed |
 | `/event-requests/*`, `/events/*` | event-service | `POST /events/{id}/confirm` → orchestrator (CS-31) |
 | `/venues/*` | venue-service | |
-| `/venue-bookings/*` | booking-service / orchestrator | later sprint |
+| `/venue-bookings/*` | booking-service | Coordinator owner + current Event assignment; Venue Staff decisions; internal read-only availability |
+
+Booking-service forwards the verified caller token to `GET /events/{id}/booking-access` before Coordinator creation/detail/edit/list/history. Event-service returns only the actual Event ID for its current Coordinator. Wrong/removed assignment denies 403; unavailable assignment validation returns 503 without writes. Venue Staff operational windows retain decision-only handling. CS-30 reassignment and confirmation remain separate workflows.

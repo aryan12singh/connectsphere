@@ -86,8 +86,8 @@ services:
       KONG_ADMIN_LISTEN: "0.0.0.0:8001"
       # Docker can reuse a removed service's IP for another container. Bound
       # cached addresses so the gateway recovers promptly after a local rebuild.
-      KONG_DNS_VALID_TTL: "5"
-      KONG_DNS_STALE_TTL: "5"
+      KONG_DNS_VALID_TTL: "1"
+      KONG_DNS_STALE_TTL: "0"
     volumes:
       - ../gateway/kong/kong.yml:/kong/kong.yml
     ports:
