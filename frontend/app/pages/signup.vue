@@ -1,14 +1,4 @@
 <script setup lang="ts">
-/**
- * Attendee self sign-up (decided 2026-10-01).
- *
- * - Creates an ATTENDEE account that works immediately; staff accounts are
- *   created by Technical Support, never here.
- * - Shows the current password rules (tech support can change them) and
- *   ticks each one off as the user types. The server checks them again.
- * - On success, goes to /login?registered=1 to sign in (no auto-login).
- * - Live mode only: in mock mode the server answers 501 and we say so.
- */
 import { GalleryVerticalEndIcon } from '@lucide/vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
@@ -34,6 +24,8 @@ const firstName = ref('')
 const lastName = ref('')
 const email = ref('')
 const company = ref('')
+const role = ref<'ATTENDEE' | 'EVENT_ORGANISER'>('ATTENDEE')
+const serverFields = ref<Record<string, string[]>>({})
 const password = ref('')
 const confirmPassword = ref('')
 const isSubmitting = ref(false)
@@ -77,7 +69,8 @@ const passwordsMatch = computed(() => password.value === confirmPassword.value)
 const fieldErrors = computed(() => {
   if (!triedSubmit.value)
     return {} as Record<string, string>
-  const errors: Record<string, string> = {}
+  const errors: Record<string, string> = Object.fromEntries(Object.entries(serverFields.value).map(([field, messages]) => [field, messages[0] ?? 'Invalid value']))
+  if (role.value === 'EVENT_ORGANISER' && !company.value.trim()) errors.company = 'Enter your organisation.'
   if (!firstName.value.trim())
     errors.firstName = 'Enter your first name.'
   if (!lastName.value.trim())
@@ -96,6 +89,7 @@ async function handleSubmit() {
     return
   triedSubmit.value = true
   errorMessage.value = ''
+  serverFields.value = {}
   if (Object.keys(fieldErrors.value).length > 0)
     return
 
@@ -104,6 +98,7 @@ async function handleSubmit() {
     await $fetch('/api/auth/register', {
       method: 'POST',
       body: {
+        role: role.value,
         firstName: firstName.value.trim(),
         lastName: lastName.value.trim(),
         email: email.value.trim(),
@@ -114,7 +109,8 @@ async function handleSubmit() {
     await navigateTo('/login?registered=1')
   }
   catch (error) {
-    const data = (error as { data?: { statusCode?: number, statusMessage?: string } }).data
+    const data = (error as { data?: { statusCode?: number, statusMessage?: string, data?: { error?: { fields?: Record<string, string[]> } } } }).data
+    serverFields.value = data?.data?.error?.fields ?? {}
     errorMessage.value = data?.statusCode === 429
       ? 'Too many sign-up attempts. Please wait a minute and try again.'
       : data?.statusMessage || 'Sign-up failed. Please try again.'
@@ -123,6 +119,8 @@ async function handleSubmit() {
     isSubmitting.value = false
   }
 }
+
+watch([firstName, lastName, email, company, role, password], () => { serverFields.value = {} })
 
 // ── Theme (same behaviour as the login page) ──
 const isDark = ref(false)
@@ -161,16 +159,22 @@ watch(isDark, (dark) => {
         </div>
 
         <CardTitle class="text-center">
-          <h1>Create an attendee account</h1>
+          <h1>Create an account</h1>
         </CardTitle>
         <CardDescription class="mx-auto max-w-[25rem] text-center">
-          Sign up to register for ConnectSphere events. Staff accounts are set up by Technical Support.
+          Sign up as an Attendee or Organiser. Internal staff accounts are predefined.
         </CardDescription>
       </CardHeader>
 
       <CardContent>
         <form id="signup-form" novalidate @submit.prevent="handleSubmit">
           <FieldGroup class="gap-5">
+            <Field class="gap-2">
+              <FieldLabel for="signup-role">Account type</FieldLabel>
+              <select id="signup-role" v-model="role" aria-label="Account type" :disabled="isSubmitting" class="h-9 rounded-3xl border border-border bg-background px-3 text-sm">
+                <option value="ATTENDEE">Attendee</option><option value="EVENT_ORGANISER">Organiser</option>
+              </select>
+            </Field>
             <div class="grid gap-5 sm:grid-cols-2">
               <Field class="gap-2" :data-invalid="!!fieldErrors.firstName">
                 <FieldLabel for="firstName">First name</FieldLabel>
@@ -203,8 +207,9 @@ watch(isDark, (dark) => {
             </Field>
 
             <Field class="gap-2">
-              <FieldLabel for="company">Organisation <span class="font-normal text-muted-foreground">(optional)</span></FieldLabel>
-              <Input id="company" v-model="company" name="company" autocomplete="organization" maxlength="200" :disabled="isSubmitting" />
+              <FieldLabel for="company">Organisation <span v-if="role === 'ATTENDEE'" class="font-normal text-muted-foreground">(optional)</span></FieldLabel>
+              <Input id="company" v-model="company" name="company" autocomplete="organization" maxlength="200" :disabled="isSubmitting" :required="role === 'EVENT_ORGANISER'" :aria-invalid="!!fieldErrors.company" :aria-describedby="fieldErrors.company ? 'company-error' : undefined" />
+              <FieldError v-if="fieldErrors.company" id="company-error">{{ fieldErrors.company }}</FieldError>
             </Field>
 
             <Field class="gap-2" :data-invalid="!!fieldErrors.password">

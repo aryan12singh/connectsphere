@@ -6,6 +6,7 @@ import subprocess
 import threading
 import time
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -25,9 +26,23 @@ class BookingServiceContractTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        class EventFixture(BaseHTTPRequestHandler):
+            def do_GET(self):
+                allowed = self.path == "/events/event-1/booking-access"
+                self.send_response(200 if allowed else 403)
+                self.send_header("content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"id": "event-1"} if allowed else {}).encode())
+            def log_message(self, *args):
+                pass
+        cls.event_fixture = ThreadingHTTPServer(("127.0.0.1", 0), EventFixture)
+        cls.event_thread = threading.Thread(target=cls.event_fixture.serve_forever, daemon=True)
+        cls.event_thread.start()
+        cls.addClassCleanup(cls.event_fixture.server_close)
+        cls.addClassCleanup(cls.event_fixture.shutdown)
         cls.port = int(os.environ.get("BOOKING_TEST_PORT", "0"))
         env = os.environ.copy()
-        env.update({"PORT": str(cls.port), "NODE_ENV": "test", "DATA_MODE": "memory"})
+        env.update({"PORT": str(cls.port), "NODE_ENV": "test", "DATA_MODE": "memory", "EVENT_SERVICE_URL": f"http://127.0.0.1:{cls.event_fixture.server_port}"})
         cls.process = subprocess.Popen(
             ["node", "src/server.js"],
             cwd=os.path.join(os.path.dirname(__file__), ".."),

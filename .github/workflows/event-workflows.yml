@@ -56,10 +56,11 @@ jobs:
         working-directory: frontend
         env:
           TEST_RESULTS_JSON: ${{ runner.temp }}/frontend-results.json
+          CS_COVERAGE_DIR: ${{ runner.temp }}/frontend-coverage
         run: |
           export CS_VERIFY_FINGERPRINT="$(git rev-parse 'HEAD^{tree}')"
           npm run typecheck
-          npm run test:report
+          npm run test:coverage
           npm run build
       - uses: actions/upload-artifact@v7.0.1
         if: always()
@@ -68,6 +69,7 @@ jobs:
           retention-days: 30
           path: |
             ${{ runner.temp }}/frontend-results.json
+            ${{ runner.temp }}/frontend-coverage
             tests/records/*/test-runs/*.md
 
   event:
@@ -114,9 +116,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [venue-service, booking-service]
+        include:
+          - service: venue-service
+            database: venue_test
+          - service: booking-service
+            database: booking_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: connectsphere
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: ${{ matrix.database }}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U connectsphere"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://fixture:fixture@127.0.0.1:9/ci_schema_validation
+      DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/${{ matrix.database }}
     defaults:
       run:
         shell: bash
@@ -128,9 +145,11 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: services/${{ matrix.service }}/package-lock.json
-      - run: npm ci && npx prisma validate && npx prisma generate
+      - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy
       - run: npm run test:coverage | tee "$RUNNER_TEMP/coverage.txt"
       - run: npm run test:contract 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
+      - name: PostgreSQL HTTP integration and source coverage
+        run: npm run test:integration | tee "$RUNNER_TEMP/postgres-coverage.txt"
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
@@ -139,6 +158,7 @@ jobs:
           path: |
             ${{ runner.temp }}/coverage.txt
             ${{ runner.temp }}/http-contracts.txt
+            ${{ runner.temp }}/postgres-coverage.txt
 
   identity:
     name: ${{ matrix.service }} checks
@@ -147,9 +167,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [auth-service, user-service]
+        include:
+          - service: auth-service
+            database: auth_test
+          - service: user-service
+            database: user_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: connectsphere
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: ${{ matrix.database }}
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U connectsphere"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql://fixture:fixture@127.0.0.1:9/ci_schema_validation
+      DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/${{ matrix.database }}
       INTERNAL_API_KEY: isolated-ci-only
       KEYCLOAK_URL: http://127.0.0.1:9
       KEYCLOAK_REALM: connectsphere
@@ -167,24 +202,28 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: services/${{ matrix.service }}/package-lock.json
-      - run: npm ci && npx prisma validate && npx prisma generate
+      - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy
       - name: Validate source and application imports
         run: |
           find src -name '*.js' -type f -print0 | xargs -0 -n 1 node --check
           node -e 'require("./src/app")'
       - name: Unit and HTTP boundary tests with source coverage
         run: npm run test:coverage | tee "${{ runner.temp }}/${{ matrix.service }}-coverage.log"
+      - name: PostgreSQL HTTP integration and source coverage
+        run: npm run test:integration | tee "${{ runner.temp }}/${{ matrix.service }}-postgres.log"
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
           name: ${{ matrix.service }}-evidence
           retention-days: 30
-          path: ${{ runner.temp }}/${{ matrix.service }}-coverage.log
+          path: |
+            ${{ runner.temp }}/${{ matrix.service }}-coverage.log
+            ${{ runner.temp }}/${{ matrix.service }}-postgres.log
 
   live:
     name: Live E2E and restart checks
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.0.0

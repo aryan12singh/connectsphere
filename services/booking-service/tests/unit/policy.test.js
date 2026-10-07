@@ -91,7 +91,7 @@ test('CS-booking-POL-06b: a confirmed booking cannot be cancelled through the co
 
 test('CS-booking-POL-07: venue staff can replace a booking with every persisted status', () => {
   const booking = tentativeBooking({ status: 'CONFIRMED' });
-  const actor = { id: 'venue-staff-1', role: 'VENUE_STAFF' };
+  const actor = { id: 'venue-staff-1', role: 'VENUE_STAFF', permissions: ['venue_bookings.decide'] };
 
   for (const status of REQUIRED_PERSISTED_STATUSES) {
     assert.deepEqual(canReplace(booking, actor, status), { allowed: true }, status);

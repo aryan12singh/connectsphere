@@ -1,3 +1,4 @@
+import { localToInstant } from '../../../../services/event-service/src/domain/validation.js'
 import type { CalendarBooking } from './calendar-state'
 
 export interface BookingDraft {
@@ -120,21 +121,7 @@ export function calendarWallTimeToIso(value: string, timeZone: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value)
   if (!match) return new Date(value).toISOString()
 
-  const [, year, month, day, hour, minute] = match
-  const wallTime = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute))
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(new Date(wallTime))
-  const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
-  const zonedTime = Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), Number(values.hour), Number(values.minute), Number(values.second))
-  return new Date(wallTime - (zonedTime - wallTime)).toISOString()
+  return localToInstant(value.slice(0, 10), value.slice(11, 16), timeZone)!.toISOString()
 }
 
 /**

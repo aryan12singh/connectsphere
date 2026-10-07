@@ -11,7 +11,7 @@
 const PERMISSIONS = Object.freeze({
   // Admin (tech support)
   'users.view': 'See the list of users',
-  'users.manage': 'Create users, change roles, disable or re-enable accounts',
+  'users.manage': 'Manage public accounts and disable or re-enable accounts',
   'permissions.manage': 'Change which permissions each role has',
   'settings.manage': 'Change login and password settings',
   'audit.view': 'See the admin audit log',
@@ -34,13 +34,7 @@ const PERMISSIONS = Object.freeze({
 });
 
 // The fixed roles (they match the UserRole enum in user-service).
-const ROLES = Object.freeze([
-  'EVENT_ORGANISER',
-  'EVENT_COORDINATOR',
-  'VENUE_STAFF',
-  'TECHNICAL_SUPPORT_STAFF',
-  'ATTENDEE',
-]);
+const { ROLES } = require('../../../utils/role-policy');
 
 // Tech support always keeps these, so nobody can accidentally lock every
 // admin out of the admin screens.

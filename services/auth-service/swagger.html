@@ -9,14 +9,14 @@
 </head>
 <body>
   <nav><a href="../user-service/swagger.html">User service API</a><a href="../event-service/swagger.html">Event service API</a><strong>ConnectSphere Auth Service — BFF Contract</strong></nav>
-  <aside>Frontend (BFF) contract, v0.3. Protected routes use the sealed session cookie only; the token is never returned to the browser. To try calls by hand, use the backend Swagger UI at http://localhost:3002/docs. These pages do not run backend services.</aside>
+  <aside>Frontend (BFF) contract, v0.4. Protected routes use the sealed session cookie only; the token is never returned to the browser. To try calls by hand, use the backend Swagger UI at http://localhost:3002/docs. These pages do not run backend services.</aside>
   <div id="swagger-ui"></div>
   <script id="openapi-spec" type="application/json">{
   "openapi": "3.1.0",
   "info": {
     "title": "ConnectSphere Auth Service — BFF Contract",
-    "version": "0.3.0",
-    "description": "Routes the Nuxt frontend calls for attendee sign-up, login, session and tech-support administration. **Cookie only**: every protected route is authorised by the sealed `nuxt-session` cookie set at login. The backend session token lives in the cookie's server-only part and is never returned to the browser (CS-10 / CS-11 assert that login bodies contain no token).\n\n**Modes** (`NUXT_AUTH_MODE` in frontend/.env): `mock` (default) logs in the mock users in server/utils/mockUserDb.ts, e.g. organiser@example.com; `live` logs in through auth-service + Keycloak with the seed users, e.g. sarah.tan@nexuslabs.sg / Sarah@CS01!. Mock users use Password123!; each seed user has their own password (row comments in backend/seed_data/01_user_db.sql).\n\n**Access control**: pages and buttons use `permissions` (see `usePermissions().can()`); the backend re-checks every call. Roles are the five Prisma UserRole values; unknown roles are denied at login.\n\n**Hand execution**: this page documents the contract and does not run services. To try calls by hand, log in on the website and open GET routes in the same browser, or use the backend Swagger UI at http://localhost:3002/docs (bearer token from its POST /auth/login)."
+    "version": "0.4.0",
+    "description": "Routes the Nuxt frontend calls for Organiser/Attendee sign-up, login, session and tech-support administration. **Cookie only**: every protected route is authorised by the sealed `nuxt-session` cookie set at login. The backend session token lives in the cookie's server-only part and is never returned to the browser (CS-10 / CS-11 assert that login bodies contain no token).\n\n**Modes** (`NUXT_AUTH_MODE` in frontend/.env): `mock` (explicit test fixture) logs in the mock users in server/utils/mockUserDb.ts, e.g. organiser@example.com; `live` logs in through auth-service + Keycloak with the seed users, e.g. sarah.tan@nexuslabs.sg / Sarah@CS01!. Mock users use Password123!; each seed user has their own password (row comments in backend/seed_data/01_user_db.sql).\n\n**Access control**: pages and buttons use `permissions` (see `usePermissions().can()`); the backend re-checks every call. Roles are the five Prisma UserRole values; unknown roles are denied at login.\n\n**Hand execution**: this page documents the contract and does not run services. To try calls by hand, log in on the website and open GET routes in the same browser, or use the backend Swagger UI at http://localhost:3002/docs (bearer token from its POST /auth/login)."
   },
   "servers": [
     {
@@ -202,11 +202,11 @@
     "/api/auth/register": {
       "post": {
         "operationId": "register",
-        "summary": "Attendee sign-up (public)",
+        "summary": "Organiser/Attendee signup",
         "tags": [
           "auth"
         ],
-        "description": "Used by app/pages/signup.vue. Creates an ATTENDEE account that can log in straight away; staff accounts are created by tech support. Only email, firstName, lastName, company and password are forwarded, so a `role` in the body is dropped (auth-service also forces ATTENDEE). No cookie is set: the page goes to /login?registered=1 and the user signs in. Live mode only.",
+        "description": "Public roles only: EVENT_ORGANISER requires company; ATTENDEE is the omitted-role default. Internal roles are seed-only. Only whitelisted role/email/name/company/password fields are forwarded. No cookie is set; sign in afterwards. Field errors are at data.error.fields. Live mode only.",
         "requestBody": {
           "required": true,
           "content": {
@@ -242,6 +242,14 @@
                     "type": "string",
                     "maxLength": 128,
                     "description": "Must meet GET /api/auth/password-policy"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "EVENT_ORGANISER",
+                      "ATTENDEE"
+                    ],
+                    "default": "ATTENDEE"
                   }
                 }
               },
@@ -270,7 +278,10 @@
                         },
                         "role": {
                           "type": "string",
-                          "const": "ATTENDEE"
+                          "enum": [
+                            "EVENT_ORGANISER",
+                            "ATTENDEE"
+                          ]
                         }
                       }
                     }
@@ -540,7 +551,7 @@
             "sessionCookie": []
           }
         ],
-        "description": "Creates the Keycloak login and the user-service profile. The user can log in immediately with the password given, which must meet the current password rules. If the profile step fails, the Keycloak account is removed again. Note: the backend answers 201; the BFF proxy returns 200.\n\nRequired permission: `users.manage`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
+        "description": "Technical Support with users.manage may provision/change eligible public roles only. Staff roles are seed-only. Organisers require an organisation link. User status administration remains available.",
         "responses": {
           "200": {
             "description": "Created user",
@@ -649,7 +660,7 @@
             "sessionCookie": []
           }
         ],
-        "description": "Takes effect on the user's next request. You cannot change your own role (so at least one tech support account always remains).\n\nRequired permission: `users.manage`. The BFF adds the session token and forwards to auth-service `/admin/...`, which checks the permission.",
+        "description": "Technical Support with users.manage may provision/change eligible public roles only. Staff roles are seed-only. Organisers require an organisation link. User status administration remains available.",
         "responses": {
           "200": {
             "description": "Updated user",
@@ -737,7 +748,11 @@
                 ],
                 "properties": {
                   "role": {
-                    "$ref": "#/components/schemas/Role"
+                    "type": "string",
+                    "enum": [
+                      "EVENT_ORGANISER",
+                      "ATTENDEE"
+                    ]
                   }
                 }
               },
@@ -1302,6 +1317,49 @@
             }
           }
         ]
+      }
+    },
+    "/api/auth/role": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Switch the sealed presentation role without changing grants",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Live mode refreshes auth-service roles first. Only an already granted role is selectable; unassigned/unknown and cross-origin requests return403. Reload preserves a still-granted selection.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "$ref": "#/components/schemas/Role"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated sealed session user; no token returned"
+          },
+          "401": {
+            "description": "No valid session"
+          },
+          "403": {
+            "description": "Role not assigned or cross-origin request"
+          }
+        }
       }
     }
   },

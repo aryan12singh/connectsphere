@@ -28,6 +28,12 @@ app.get('/events',requirePermission('events.view'),async(req,res)=>{
  // Option projection for booking integration. Contains no private request fields.
  const events=await prisma.event.findMany({where,select:{id:true,title:true,status:true}});res.json({items:events});
 });
+// Minimal assignment proof for booking-service, using the caller's own token.
+app.get('/events/:id/booking-access',requirePermission('events.view','venue_bookings.create'),async(req,res)=>{
+ const event=await prisma.event.findUnique({where:{id:req.params.id},include:{eventRequest:true}});
+ if(!has(req.actor,'EVENT_COORDINATOR')||!event||event.eventRequest.currentCoordinatorId!==req.actor.id)throw fail(403,'FORBIDDEN','Event is not assigned to you');
+ res.json({id:event.id});
+});
 app.get('/events/:id/activity',requirePermission('events.view'),async(req,res)=>{
  const event=await prisma.event.findUnique({where:{id:req.params.id}});if(!event)throw fail(404,'NOT_FOUND','Event not found');const r=await load(prisma,event.eventRequestId);res.json(await history(req.actor,r,req.query,true));
 });

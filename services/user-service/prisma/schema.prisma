@@ -20,8 +20,8 @@ datasource db {
   url      = env("DATABASE_URL") // -> user_db
 }
 
-// The five roles. Fixed (decided 2026-09-28): tech support can move users
-// between roles and change what each role may do, but not add new roles.
+// The five fixed customer roles. Public/admin/internal provisioning only grants
+// Organiser or Attendee; Coordinator, Venue Staff and Technical Support are seeded.
 enum UserRole {
   EVENT_ORGANISER
   EVENT_COORDINATOR
@@ -54,12 +54,12 @@ model User {
   // Multi-role (Session 2): one account may hold several roles, e.g.
   // EVENT_ORGANISER + ATTENDEE. `roles` is the source of truth.
   //
-  // `role` is the DEPRECATED "primary role". It stays only so auth-service
-  // and the frontend (which still read `role`) keep working during the
-  // migration. A database trigger (see migration 20261002000000) keeps the
+  // `role` is the compatibility primary role. Auth-service authorizes all
+  // verified `roles`; the BFF can choose an already granted navigation role.
+  // A database trigger (see migration 20261002000000) keeps the
   // two in step: role is always one of roles; inserting/updating only
   // `role` rewrites `roles` to [role]. Remove `role` and the trigger once
-  // auth-service reads `roles`.
+  // all remaining compatibility consumers no longer need the primary column.
   roles        UserRole[] @default([])
   role         UserRole
 

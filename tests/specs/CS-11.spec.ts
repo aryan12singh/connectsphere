@@ -7,7 +7,9 @@ const entryMocks = vi.hoisted(() => ({
   requestFetch: vi.fn(),
   data: { value: { events: [] } as unknown },
   error: { value: null as unknown },
-  sessionUser: { value: { id: 'u-organiser', email: 'organiser@example.com', name: 'Organiser One', role: 'EVENT_ORGANISER' } },
+  // The authorised Organiser fixture includes the real default grants; role
+  // alone is not an authority source for the navbar's create action.
+  sessionUser: { value: { id: 'u-organiser', email: 'organiser@example.com', name: 'Organiser One', role: 'EVENT_ORGANISER', permissions: ['event_requests.create', 'events.view'] } },
   navigateTo: vi.fn(),
   refreshNuxtData: vi.fn(),
 }))

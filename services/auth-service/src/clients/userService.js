@@ -18,9 +18,10 @@ function callUserService(path, options = {}) {
 // Thrown when user-service rejects the input (400/404/409). Routes pass the
 // status and message straight on to the caller.
 class UserServiceError extends Error {
-  constructor(status, message) {
+  constructor(status, message, fields) {
     super(message);
     this.status = status;
+    this.fields = fields;
   }
 }
 
@@ -29,7 +30,8 @@ async function readBody(response, what) {
   const body = await response.json().catch(() => ({}));
   if (response.ok) return body;
   if (response.status >= 400 && response.status < 500) {
-    throw new UserServiceError(response.status, body.error || 'Request rejected');
+    const error = body.error;
+    throw new UserServiceError(response.status, typeof error === 'string' ? error : error?.message || 'Request rejected', error?.fields);
   }
   throw new Error(`user-service ${what} failed with ${response.status}`);
 }

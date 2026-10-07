@@ -84,7 +84,7 @@ test('TC-CS10-01 real login creates a hashed session and returns every recognise
   assert.notEqual(sessions[0].tokenHash, result.body.token);
   assert.ok(result.body.permissions.includes('attendance.register'));
 });
-test('TC-CS10-04 wrong password and unknown account return the same error and no session', async () => {
+test('TC-CS10-02 wrong password and unknown account return the same error and no session', async () => {
   passwordValid = false;
   const wrong = await http('/auth/login', { method: 'POST', body: { email: user.email, password: 'wrong' } });
   passwordValid = true;
@@ -99,25 +99,31 @@ test('TC-CS10-05 unknown or empty roles return 403 without starting a session', 
     assert.equal(result.status, 403); assert.equal(sessions.length, 0);
   }
 });
-test('TC-CS10-06 logout revokes the actual token for both public and internal validation', async () => {
+test('TC-CS10-05 losing every recognised role also denies internal session validation', async () => {
+  const token = storedToken(0);
+  user.role = 'SYSTEM_ADMINISTRATOR'; user.roles = [];
+  const result = await http('/internal/sessions/validate', { method: 'POST', internal: true, body: { token } });
+  assert.equal(result.status, 403); assert.equal(result.body.valid, false);
+});
+test('TC-CS10-04 logout revokes the actual token for both public and internal validation', async () => {
   const token = storedToken(0);
   assert.equal((await http('/auth/logout', { method: 'POST', token })).status, 204);
   assert.equal((await http('/auth/me', { token })).status, 401);
   assert.equal((await http('/internal/sessions/validate', { method: 'POST', internal: true, body: { token } })).status, 401);
 });
 for (const [age, status] of [[1_799_000, 200], [1_800_000, 401], [1_801_000, 401]]) {
-  test(`TC-CS10-07 inactivity ${age / 1000}s has status ${status} at the 30-minute boundary`, async () => {
+  test(`TC-CS10-13 inactivity ${age / 1000}s has status ${status} at the 30-minute boundary`, async () => {
     const token = storedToken(age);
     assert.equal((await http('/auth/me', { token })).status, status);
     if (status === 401) assert.ok(sessions[0].revokedAt);
   });
 }
-test('TC-CS10-08 even a request within one minute records its exact last activity', async () => {
+test('TC-CS10-14 even a request within one minute records its exact last activity', async () => {
   const token = storedToken(30_000);
   assert.equal((await http('/auth/me', { token })).status, 200);
   assert.equal(sessions[0].lastUsedAt.getTime(), NOW);
 });
-test('TC-CS10-09 absolute expiry, disabled user and missing token deny protected access', async () => {
+test('TC-CS10-15 absolute expiry, disabled user and missing token deny protected access', async () => {
   assert.equal((await http('/auth/me')).status, 401);
   const token = storedToken(0, { expiresAt: new Date(NOW) });
   assert.equal((await http('/auth/me', { token })).status, 401);

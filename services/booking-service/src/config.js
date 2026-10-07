@@ -12,6 +12,7 @@ module.exports = {
   // tests opt into DATA_MODE=memory explicitly so they remain deterministic.
   dataMode,
   databaseUrl,
+  eventServiceUrl: process.env.EVENT_SERVICE_URL || 'http://localhost:3003',
   venueServiceUrl: process.env.VENUE_SERVICE_URL || 'http://localhost:3003',
   authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3002',
   internalApiKey: process.env.INTERNAL_API_KEY || 'change-me-dev-internal-key',

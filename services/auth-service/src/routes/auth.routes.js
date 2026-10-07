@@ -8,6 +8,7 @@ const accountService = require('../services/account.service');
 const settingsService = require('../services/settings.service');
 const audit = require('../services/audit.service');
 const { requireAuth } = require('../middleware/requireAuth');
+const { rolesForUser } = require('../../../utils/role-policy');
 
 const router = express.Router();
 
@@ -54,10 +55,12 @@ router.post('/login', async (req, res) => {
     return res.status(401).json(LOGIN_FAILED);
   }
 
+  if (!rolesForUser(user).length) return res.status(403).json({ error: 'Account not authorised' });
+
   // 4. Start a session and hand back the token, plus what this user may do
   //    (the frontend uses `permissions` to decide which screens to show).
   const { token, expiresAt } = await sessionService.createSession(user.id);
-  const permissions = await permissionService.getPermissionsForRole(user.role);
+  const permissions = await permissionService.getPermissionsForUser(user);
   res.status(200).json({ token, expiresAt, user, permissions });
 });
 
@@ -74,17 +77,12 @@ router.get('/me', requireAuth, (req, res) => {
   res.json({ user: req.user, permissions: req.permissions, expiresAt: req.session.expiresAt });
 });
 
-// POST /auth/register   body: { email, firstName, lastName, company?, password }
-// Self sign-up (decided 2026-10-01): creates an ATTENDEE that can log in
-// straight away. The role is fixed here — anything sent in the body is
-// ignored — so nobody can sign themselves up as staff. Staff accounts are
-// created by tech support (POST /admin/users).
-// Kong rate-limits this route, like login.
+// Public provisioning is restricted to Organiser/Attendee. Staff roles come
+// only from the checked-in seed; body role lists and organisation IDs are ignored.
 router.post('/register', async (req, res) => {
-  const { email, firstName, lastName, company, password } = req.body || {};
-  const checked = accountService.validateNewAccount({ email, firstName, lastName, company, password, role: 'ATTENDEE' });
+  const checked = accountService.validateNewAccount(req.body, await settingsService.getSettings());
   if (checked.error) {
-    return res.status(400).json({ error: checked.error });
+    return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: checked.error, fields: checked.fields } });
   }
 
   // Errors such as a weak password (400) or an email already used (409)

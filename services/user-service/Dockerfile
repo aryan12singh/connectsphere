@@ -1,5 +1,5 @@
 FROM node:22-alpine
-WORKDIR /app
+WORKDIR /app/user-service
 
 # Prisma's migrate tool needs OpenSSL, which the Alpine image leaves out.
 RUN apk add --no-cache openssl
@@ -7,14 +7,15 @@ RUN apk add --no-cache openssl
 # Install exact versions from package-lock.json (npm ci), so every
 # teammate and every build gets the same dependencies. Done first so Docker
 # can cache this layer.
-COPY package*.json ./
+COPY user-service/package*.json ./
 RUN npm ci --omit=dev
 
 # Generate the Prisma client from the schema.
-COPY prisma ./prisma
+COPY user-service/prisma ./prisma
 RUN npx prisma generate
 
-COPY src ./src
+COPY user-service/src ./src
+COPY utils ../utils
 
 # Apply any pending migrations, then start. `migrate deploy` only runs
 # migrations already committed in prisma/migrations — it never creates new ones.

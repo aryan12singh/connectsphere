@@ -12,6 +12,8 @@ export const emails = {
   attendee: 'ethan.goh@gmail.com',
   coordinator: 'aisha.rahman@connectsphere.sg',
   staff: 'ravi.kumar@marinaconvention.sg',
+  support: 'hafiz.ismail@connectsphere.sg',
+  multi: 'priya.raman@greenleaf.org.sg',
 }
 
 function credentials(email: string) {
@@ -32,9 +34,9 @@ async function rateLimitPause(headers: Record<string, string>) {
   await new Promise(resolve => setTimeout(resolve, seconds * 1000))
 }
 
-export async function signIn(page: Page, email = emails.owner) {
+export async function signIn(page: Page, email = emails.owner, password?: string, expectedHome?: string) {
   await page.goto('/login')
-  const fixture = credentials(email)
+  const fixture = password ? { email, password } : credentials(email)
   await field(page, 'Email').fill(fixture.email)
   await field(page, 'Password').fill(fixture.password)
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -45,7 +47,7 @@ export async function signIn(page: Page, email = emails.owner) {
     expect(attempt, 'Gateway kept rate limiting live login').toBeLessThan(2)
     await rateLimitPause(response.headers())
   }
-  await expect(page).toHaveURL(new URL(email === emails.staff ? '/venue' : '/', baseURL).href)
+  await expect(page).toHaveURL(new URL(expectedHome ?? (email === emails.staff ? '/venue' : email === emails.attendee ? '/attendee' : email === emails.support ? '/support' : '/'), baseURL).href)
 }
 
 export async function session(request: APIRequest, email = emails.owner) {

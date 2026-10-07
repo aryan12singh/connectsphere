@@ -87,13 +87,23 @@ test('CS-venue-AUTH-05: auth middleware returns 401, 503, or next for the matchi
 test('CS-venue-AUTH-06: any-permission middleware allows one match and rejects no matches', () => {
   const allowed = response();
   let nextCalled = false;
-  requireAnyPermission('venues.view', 'venues.manage')({ actor: { permissions: ['venues.manage'] } }, allowed, () => { nextCalled = true; });
+  requireAnyPermission('venues.view', 'venues.manage')({ actor: { role: 'VENUE_STAFF', permissions: ['venues.manage'] } }, allowed, () => { nextCalled = true; });
   assert.equal(nextCalled, true);
   assert.equal(allowed.result.statusCode, 200);
 
   const denied = response();
   requireAnyPermission('venues.view', 'venues.manage')({ actor: { permissions: [] } }, denied, () => {});
   assert.equal(denied.result.statusCode, 403);
+});
+
+test('TC-CS26-04 venue capabilities never let a public role impersonate staff', () => {
+  for (const role of ['ATTENDEE', 'EVENT_ORGANISER']) {
+    for (const permission of ['venues.view', 'venues.manage']) {
+      const denied = response();
+      requireAnyPermission(permission)({ actor: { role, permissions: [permission] } }, denied, () => {});
+      assert.equal(denied.result.statusCode, 403);
+    }
+  }
 });
 
 test('CS-venue-AUTH-07: internal routes require the private service credential', () => {

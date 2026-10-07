@@ -1,5 +1,6 @@
 const config = require('./config');
 const path = require('node:path');
+const { hasPermission } = require('../../utils/role-policy');
 
 const ROLE_PERMISSIONS = require(
   process.env.ROLE_PERMISSIONS_PATH || path.resolve(__dirname, '../../utils/role-permissions'),
@@ -47,7 +48,7 @@ function requireAuth() {
 
 function requireAnyPermission(...permissions) {
   return (req, res, next) => {
-    if (!permissions.some((permission) => req.actor.permissions.includes(permission))) {
+    if (!permissions.some((permission) => hasPermission(req.actor, permission))) {
       return res.status(403).json({ error: 'You do not have permission to do this' });
     }
     return next();

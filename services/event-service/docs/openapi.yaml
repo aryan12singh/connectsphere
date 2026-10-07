@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ConnectSphere event-service — implemented request workflows
-  version: 0.3.1
+  version: 0.4.0
   description: CS-11/29/27/44 persistent implementation. Authentication uses live opaque session
     validation with internal key, never caller identity headers. No competing transition/assignment
     engine. Deliberate draft-contract amendments and pending matrix/limits/history granularity are
@@ -946,6 +946,39 @@ paths:
                 $ref: "#/components/schemas/Error"
       x-required-permissions:
         - events.view
+  /events/{id}/booking-access:
+    get:
+      summary: Prove current Coordinator assignment to booking-service
+      operationId: get_events_id_booking_access
+      description: Caller must hold Coordinator role, events.view and venue_bookings.create, and be
+        the actual Event's current assigned Coordinator. Returns only the Event ID. Unknown or
+        foreign Event denies403. Uses the forwarded opaque session; no caller-supplied identity.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      x-required-permissions:
+        - events.view
+        - venue_bookings.create
+      responses:
+        "200":
+          description: Current assigned Event
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id:
+                    type: string
+        "401":
+          description: Missing, expired or revoked session
+        "403":
+          description: Wrong role, capability or current assignment
+        "503":
+          description: Required identity dependency unavailable
   /events/{id}/activity:
     get:
       summary: History through actual Event identity

@@ -1,5 +1,6 @@
 import type { H3Event } from 'h3'
 import { FetchError, ofetch } from 'ofetch'
+import { recognisedRoles } from '~~/lib/roles'
 
 /**
  * The BFF's one door to the real backend (auth-service and friends, reached
@@ -108,13 +109,15 @@ export interface BackendUser {
 }
 
 /** Converts a backend user + permissions into what we keep in the session. */
-export function toSessionUser(user: BackendUser, permissions: string[]) {
+export function toSessionUser(user: BackendUser, permissions: string[], activeRole?: string) {
+  const roles = recognisedRoles(user)
+  if (!roles.length) throw createError({ statusCode: 403, statusMessage: 'Account not authorised' })
   return {
     id: user.id,
     email: user.email,
     name: `${user.firstName} ${user.lastName}`,
-    role: user.role,
-    roles: user.roles ?? [user.role],
+    role: activeRole && roles.includes(activeRole as typeof roles[number]) ? activeRole : user.role,
+    roles,
     organisationId: user.organisationId ?? null,
     permissions,
   }

@@ -216,3 +216,21 @@ test('CS11: missing or malformed trusted permissions fail closed without role fa
  }}finally{permissionOverrides.delete('owner');}
  assert.deepEqual(await Promise.all([prisma.eventRequest.count(),prisma.activityLog.count(),prisma.outbox.count()]),before);
 });
+
+test('TC-CS26-14 booking access authorises the currently assigned Coordinator and rejects other roles/assignments', async () => {
+ const request=await create();const row=await prisma.eventRequest.findUnique({where:{id:request.body.id}});
+ const who=row.currentCoordinatorId===actors.coord.id?'coord':'coord2';
+ const approved=await call('POST',`/event-requests/${row.id}/decision`,{action:'APPROVE',version:row.version},who);
+ assert.equal(approved.status,200);
+ const event=await prisma.event.findUnique({where:{eventRequestId:row.id}});
+ assert.equal((await call('GET',`/events/${event.id}/booking-access`,undefined,who)).status,200);
+ for(const other of ['owner','same','staff','attendee',who==='coord'?'coord2':'coord']) assert.equal((await call('GET',`/events/${event.id}/booking-access`,undefined,other)).status,403,other);
+ const next=who==='coord'?'coord2':'coord';
+ // Simulate the authoritative assignment changing in this isolated database.
+ // This test does not add or claim the later reassignment UI/workflow.
+ await prisma.eventRequest.update({where:{id:row.id},data:{currentCoordinatorId:actors[next].id}});
+ try {
+  assert.equal((await call('GET',`/events/${event.id}/booking-access`,undefined,who)).status,403);
+  assert.equal((await call('GET',`/events/${event.id}/booking-access`,undefined,next)).status,200);
+ } finally {await prisma.eventRequest.update({where:{id:row.id},data:{currentCoordinatorId:actors[who].id}});}
+});

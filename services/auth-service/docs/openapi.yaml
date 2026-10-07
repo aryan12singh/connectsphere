@@ -1,13 +1,13 @@
 openapi: 3.0.3
 info:
   title: ConnectSphere auth-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
-    Attendee sign-up, login, logout, "who am I", and the tech support admin API.
+    Organiser/Attendee sign-up, login, logout, "who am I", and the tech support admin API.
 
     - Passwords are checked by Keycloak; this service issues its own session tokens.
     - Send the token on every request as `Authorization: Bearer <token>`.
-    - Access is permission-based. Each route lists the permission it needs.
+    - Access requires the permission and its fixed action-role boundary; multi-role grants form a union.
       By default only TECHNICAL_SUPPORT_STAFF has the admin permissions.
 servers:
   # First = default in Swagger UI. /docs is served by auth-service on 3002,
@@ -41,6 +41,9 @@ components:
     Role:
       type: string
       enum: [EVENT_ORGANISER, EVENT_COORDINATOR, VENUE_STAFF, TECHNICAL_SUPPORT_STAFF, ATTENDEE]
+    PublicRole:
+      type: string
+      enum: [EVENT_ORGANISER, ATTENDEE]
     User:
       type: object
       properties:
@@ -49,6 +52,8 @@ components:
         firstName: { type: string }
         lastName: { type: string }
         role: { $ref: '#/components/schemas/Role' }
+        roles: { type: array, items: { $ref: '#/components/schemas/Role' }, description: Authoritative role list }
+        organisationId: { type: string, nullable: true }
         company: { type: string, nullable: true }
         isActive: { type: boolean }
         createdAt: { type: string, format: date-time }
@@ -72,7 +77,14 @@ components:
     Error:
       type: object
       properties:
-        error: { type: string }
+        error:
+          oneOf:
+            - { type: string }
+            - type: object
+              properties:
+                code: { type: string }
+                message: { type: string }
+                fields: { type: object, additionalProperties: { type: array, items: { type: string } } }
         details: { type: array, items: { type: string }, description: Only on invalid settings }
   responses:
     Unauthorised:
@@ -128,11 +140,12 @@ paths:
   /auth/register:
     post:
       tags: [Auth]
-      summary: Attendee self sign-up (no login needed)
+      summary: Organiser or Attendee self sign-up (no login needed)
       description: |
-        Creates an ATTENDEE account that can log in straight away. The role is
-        always ATTENDEE; a `role` in the body is ignored. Staff accounts are
-        created by tech support (POST /admin/users). No session is created:
+        Creates EVENT_ORGANISER (company required) or ATTENDEE (default when role omitted).
+        Internal roles are seed-only; staff/unknown role requests return400 with field guidance.
+        Organisation membership is resolved server-side by exact trimmed company name.
+        Duplicate email returns409 with error.fields.email. No session is created;
         call /auth/login afterwards. Kong limits this route to 5 calls/minute.
       requestBody:
         required: true
@@ -142,6 +155,7 @@ paths:
               type: object
               required: [email, firstName, lastName, password]
               properties:
+                role: { type: string, enum: [EVENT_ORGANISER, ATTENDEE], default: ATTENDEE }
                 email: { type: string, format: email, maxLength: 254, example: new.attendee@example.com }
                 firstName: { type: string, maxLength: 100, example: New }
                 lastName: { type: string, maxLength: 100, example: Attendee }
@@ -162,7 +176,9 @@ paths:
                       email: { type: string }
                       firstName: { type: string }
                       lastName: { type: string }
-                      role: { type: string, enum: [ATTENDEE] }
+                      role: { $ref: '#/components/schemas/PublicRole' }
+                      roles: { type: array, items: { $ref: '#/components/schemas/Role' } }
+                      organisationId: { type: string, nullable: true }
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { description: Email already used, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '429': { description: Too many sign-up attempts from this client (Kong rate limit) }
@@ -241,7 +257,7 @@ paths:
     post:
       tags: [Admin - users]
       summary: Create a user (Keycloak login + profile). Needs users.manage
-      description: The user can log in immediately with the password given. It must meet the current password rules.
+      description: Creates only public roles. Organiser company is required; staff roles are seed-only. Password must meet current rules.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -254,7 +270,7 @@ paths:
                 email: { type: string, format: email, example: new.staff@connectsphere.sg }
                 firstName: { type: string, maxLength: 100 }
                 lastName: { type: string, maxLength: 100 }
-                role: { $ref: '#/components/schemas/Role' }
+                role: { $ref: '#/components/schemas/PublicRole' }
                 company: { type: string, maxLength: 200, nullable: true }
                 password: { type: string, maxLength: 128, example: LongerPass1! }
       responses:
@@ -269,14 +285,14 @@ paths:
     patch:
       tags: [Admin - users]
       summary: Change a user's role. Needs users.manage
-      description: You cannot change your own role. Takes effect on the user's next request.
+      description: Only eligible public-role accounts may change between public roles. Staff grants are seed-only; an Organiser needs an existing organisation link. You cannot change your own role.
       security: [{ bearerAuth: [] }]
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [role], properties: { role: { $ref: '#/components/schemas/Role' } } }
+            schema: { type: object, required: [role], properties: { role: { $ref: '#/components/schemas/PublicRole' } } }
       responses:
         '200': { description: Updated user, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -448,5 +464,5 @@ paths:
             application/json:
               schema: { type: object, properties: { valid: { type: boolean, enum: [false] } } }
         '403':
-          description: Missing or wrong x-internal-api-key
+          description: Missing/wrong private key, or a session user without recognised roles
           content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }

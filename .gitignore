@@ -227,6 +227,7 @@ node_modules/
 logs/
 frontend/test-results/
 frontend/playwright-report/
+coverage/
 
 # Local environment variants
 .env.*

@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
 
   const token = await getSessionToken(event)
   const me = await backendFetch<{ user: BackendUser, permissions: string[] }>(event, '/auth/me', { token })
-  const user = toSessionUser(me.user, me.permissions)
+  const user = toSessionUser(me.user, me.permissions, session.user.role)
 
   await replaceUserSession(event, { user, secure: { token } })
   return { user }

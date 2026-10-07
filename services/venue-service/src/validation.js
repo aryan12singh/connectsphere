@@ -73,6 +73,8 @@ function validateHours(body) {
     if (!WEEKDAYS.includes(item?.weekday)) errors[`operatingHours.${index}.weekday`] = ['Unknown weekday'];
     if (item?.isClosed !== true && (!/^([01]\d|2[0-3]):[0-5]\d$/.test(item?.opensAt || '') || !/^([01]\d|2[0-3]):[0-5]\d$/.test(item?.closesAt || ''))) {
       errors[`operatingHours.${index}.time`] = ['Open and close times must use HH:mm'];
+    } else if (item?.isClosed !== true && item.closesAt <= item.opensAt) {
+      errors[`operatingHours.${index}.time`] = ['Closing time must be after opening time'];
     }
   }
   const weekdays = body.map((item) => item?.weekday).filter(Boolean);

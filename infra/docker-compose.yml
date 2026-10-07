@@ -104,7 +104,9 @@ services:
   # ── Built services ────────────────────────────────────────────────────
 
   user-service:
-    build: ../services/user-service
+    build:
+      context: ../services
+      dockerfile: user-service/Dockerfile
     restart: unless-stopped
     environment:
       PORT: 3000
@@ -117,7 +119,9 @@ services:
         condition: service_healthy
 
   auth-service:
-    build: ../services/auth-service
+    build:
+      context: ../services
+      dockerfile: auth-service/Dockerfile
     restart: unless-stopped
     environment:
       PORT: 3000
@@ -188,6 +192,7 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/booking_db
       AUTH_SERVICE_URL: http://auth-service:3000
+      EVENT_SERVICE_URL: http://event-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
       DATA_MODE: prisma
       ROLE_PERMISSIONS_PATH: /app/utils/role-permissions.js

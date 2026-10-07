@@ -1,13 +1,41 @@
 import { createRequire } from 'node:module'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { bookingDraftForExisting, bookingMutation, calendarIsoToWallTime, canCreateBlock, coordinatorBookingEditState } from '../../frontend/app/components/venue/booking-state'
 import { calendarRange, calendarSlotState, fullDayCalendarHours, intervalSegmentsForRange } from '../../frontend/app/components/venue/calendar-state'
 
 const require = createRequire(import.meta.url)
 const { availabilityRange } = require('../../services/booking-service/src/availability') as { availabilityRange: (query: Record<string, string>) => Record<string, string[]> }
 const week = calendarRange('week', new Date('2026-12-21T00:00:00Z'))
+mockNuxtImport('useFetch', () => async (path: string) => ({
+  data: { value: path.includes('availability') ? { items: [{ id: 'early-ui', title: 'Early venue maintenance', status: 'BLOCKED', startAt: '2026-12-20T16:30:00Z', endAt: '2026-12-20T17:30:00Z' }] } : { events: [] } },
+  error: { value: null }, refresh: vi.fn(),
+}))
 
 describe('CS-34 — venue availability calendar', () => {
+  it('TC-CS34-10 displays the early local-day block in the actual calendar component', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-12-21T00:00:00Z'))
+    try {
+      const { default: VenueCalendar } = await import('../../frontend/app/components/venue/VenueCalendar.vue')
+      const wrapper = await mountSuspended(VenueCalendar, { props: { venueId: 'venue', venueName: 'Venue', timeZone: 'Asia/Singapore', canCreate: false, canDecide: false } })
+      expect(wrapper.text()).toContain('Early venue maintenance')
+      await wrapper.get('select[aria-label="Calendar view"]').setValue('day')
+      expect(wrapper.text()).toContain('Early venue maintenance')
+      wrapper.unmount()
+    }
+    finally { vi.useRealTimers() }
+  })
+  it('TC-CS34-11 clearing a local date input keeps the calendar form alive with disabled save and guidance', async () => {
+    const { default: VenueCalendar } = await import('../../frontend/app/components/venue/VenueCalendar.vue')
+    const wrapper = await mountSuspended(VenueCalendar, { props: { venueId: 'venue', venueName: 'Venue', timeZone: 'Asia/Singapore', canCreate: true, canDecide: true, actorRole: 'VENUE_STAFF' } })
+    const open = wrapper.findAll('button').find(button => button.text() === 'New unavailable window')!
+    await open.trigger('click')
+    await wrapper.get('input[type="datetime-local"]').setValue('')
+    expect(wrapper.get('[role="alert"]').text()).toContain('valid, unambiguous local')
+    expect(wrapper.get('button[type="submit"]').attributes()).toHaveProperty('disabled')
+    wrapper.unmount()
+  })
   it('TC-CS34-07 requests Monday midnight in the venue zone and retains its early block in day and week views', () => {
     const block = { id: 'early', title: 'Early maintenance', status: 'BLOCKED', startAt: '2026-12-20T16:30:00Z', endAt: '2026-12-20T17:30:00Z' }
     for (const mode of ['day', 'week'] as const) {

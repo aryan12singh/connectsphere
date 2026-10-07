@@ -3,6 +3,7 @@
 const express = require('express');
 const internalOnly = require('../middleware/internalOnly');
 const { resolveToken } = require('../services/session.service');
+const { rolesForUser } = require('../../../utils/role-policy');
 
 const router = express.Router();
 router.use(internalOnly);
@@ -17,6 +18,7 @@ router.post('/sessions/validate', async (req, res) => {
   if (!result) {
     return res.status(401).json({ valid: false });
   }
+  if (!rolesForUser(result.user).length) return res.status(403).json({ valid: false });
   res.json({
     valid: true,
     user: result.user,

@@ -47,7 +47,8 @@ app.use((err, req, res, next) => {
   // Input rejected by Keycloak or user-service (weak password, email taken,
   // user not found...). These messages are written for the admin to read.
   if (err.status >= 400 && err.status < 500) {
-    return res.status(err.status).json({ error: err.message });
+    const fields = err.fields || (err.status === 409 ? { email: [err.message] } : err.status === 400 ? { password: [err.message] } : undefined);
+    return res.status(err.status).json({ error: fields ? { code: 'VALIDATION_ERROR', message: err.message, fields } : err.message });
   }
   // Keycloak or user-service unreachable / timed out.
   if (err.name === 'TimeoutError' || err.message === 'fetch failed') {
