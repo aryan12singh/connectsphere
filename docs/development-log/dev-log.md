@@ -21,7 +21,8 @@ consistent. Add a new dated entry at the top of "Entries" each time.
   Swagger (`docs/openapi.yaml` per service), Docker Compose (`infra/`),
   Keycloak for passwords, RabbitMQ only for notifications, Playwright later.
 - **Keep code simple and commented.** Other devs must be able to follow it.
-- **Security defaults for every service:** `helmet()`, JSON body limit 10kb,
+- **Security defaults for every service:** `helmet()`, JSON body limit 10kb
+  (venue/booking use 50kb),
   generic error messages (details only in logs), `/internal/*` routes guarded
   by the `x-internal-api-key` header and never routed by Kong.
 - **RBAC is permission-based.** Five fixed roles (`EVENT_ORGANISER`,
@@ -38,23 +39,387 @@ consistent. Add a new dated entry at the top of "Entries" each time.
 - **Timestamps are UTC** in every database. In pgAdmin4 use
   `now() at time zone 'utc'`.
 - **Ask when a business rule is unclear** instead of guessing.
-- Seed data lives in `services/<name>-service/prisma/seed/NN_<db>.sql`. Load
-  order: user_db, auth_db, venue_db, event_db, booking_db, attendance_db,
-  messaging_db, notification_db. All seed users' password: `Password123!`.
+- Seed data: user, auth and event seeds live in
+  `services/<name>-service/prisma/seed/`; venue and booking seeds live in
+  `backend/seed_data/` (03_venue_db.sql, 04_booking_db.sql). The compose
+  `seed` service (`infra/seed/run-seeds.sh`) loads user, auth, venue and
+  event automatically after each service has migrated. **booking_db is not in
+  that list yet** (see 2026-10-07). Each seed user has their own password
+  (row comments in 01_user_db.sql); mock-mode users use `Password123!`.
+- **Line endings:** commit with LF. `.gitattributes` forces LF for `*.sh`,
+  `Dockerfile`, `*.yml`, `*.yaml`, `*.sql`. A Windows editor that saves other
+  files as CRLF makes `git status` show whole-file changes with no real edit.
 
 ## Service map (current)
 
 | Service | Database | Status |
 |---|---|---|
-| user-service | user_db | Built (internal: lookup, list, create, update role/active) |
-| auth-service | auth_db | Built (attendee sign-up, login, logout, me, password policy, internal validate, admin API) |
-| frontend (Nuxt BFF) | — | Team's app. Auth wired in: live/mock login, /signup page, usePermissions, useAdminApi, admin proxy |
+| user-service | user_db | Built (internal: lookup, list, create, update role/active). Schema has multi-role `roles[]` + organisations (2026-10-06). Public `GET /users/*` routes are in Kong and the contract but **not built** |
+| auth-service | auth_db | Built (attendee sign-up, login, logout, me, password policy, internal validate, admin API). Does **not** return `roles`/`organisationId` yet (Sprint 2 contract §10) |
+| venue-service | venue_db | Built (PR #5): venue CRUD, operating hours, history, options. Swagger: `services/venue-service/swagger.html` |
+| booking-service | booking_db | Built (PR #5): bookings/blocks, idempotent create, status rules, history, availability, internal venue-links |
+| event-service | event_db | **Scaffold only** (PR #6): schema, migrations, seed, domain rules + 89 unit tests, OpenAPI contract. Only `/health` answers; every other route is 404 |
+| frontend (Nuxt BFF) | — | Auth (login, sign-up, permissions, admin proxy) + venue workspace and booking pages (live mode). Event pages still use mock data |
 | Keycloak | keycloak_db | Stores its accounts in Postgres (since 2026-10-01) |
-| event / venue / booking / attendance / messaging / notification / orchestrator | own db each | Not started |
+| orchestrator / attendance / messaging / notification | own db each | Not started (`not-built-yet` profile). Kong already routes two orchestrator paths, which answer 503 until it exists |
 
 ---
 
 ## Entries
+
+### 2026-10-07 — Review and end-to-end test of PR #4, #5 and #6
+
+Reviewed `main` at `6a31cae` (after PR #6). Checked each feature, ran every
+test suite, and ran the whole stack end to end.
+
+**How it was tested.** Docker images could not be pulled in the review
+environment, so the stack ran natively with the same settings as
+`infra/docker-compose.yml`:
+- PostgreSQL 16 with all ten databases; every migration and every seed file loaded.
+- **Real Keycloak 26.3 on Postgres** (`keycloak_db`). The realm file imported
+  on first start, which confirms the 2026-10-01 change.
+- Real user, auth, event, venue and booking services.
+- A stand-in for Kong built from `gateway/kong/kong.yml` (same routes,
+  methods, header stripping and rate limits; no CORS).
+- Nuxt in live mode, driven by Playwright.
+- Not covered: the Docker builds themselves, `prisma migrate deploy` (the SQL
+  was applied directly), and real Kong.
+
+**Results**
+
+| Suite | Result |
+|---|---|
+| venue-service unit (`npm run test:unit`) | 40 / 40 pass |
+| booking-service unit | 32 / 32 pass |
+| event-service unit (`npm test`) | 89 / 89 pass |
+| venue-service HTTP contract (Python) | 10 / 10 pass |
+| booking-service HTTP contract (Python) | 11 / 12. Fails: `test_venue_staff_cannot_create_without_auth_service_create_permission` (see finding 4) |
+| frontend `npm test` | 91 pass, 25 fail. Was 20 known fails; **5 new** (see finding 5). CS-33/34/35 specs pass |
+| `nuxt typecheck` | clean |
+| `tests/specs/signup.spec.ts` | 7 / 7 pass, but the file is **not in the repo** (see finding 9) |
+| API end to end (52 checks through the gateway) | 35 pass, 8 fail, 9 notes. The 8 fails come from findings 1–3 |
+| UI end to end (Playwright, 15 checks) | 15 / 15 pass |
+
+What works end to end:
+- All 20 seed users log in with their own passwords against real Keycloak.
+- Lockout after 5 wrong passwords works.
+- Sign-up through the gateway and through the `/signup` page creates an ATTENDEE.
+- Settings changes reach Keycloak.
+- Tech support can create, disable and change the role of a user. The new
+  `users_sync_roles` trigger keeps `roles` in step with `role`.
+- Venue staff land on `/venue`, see the seeded venues, can edit a venue (the
+  reason is asked in a popover), and can approve a pending booking request.
+- Coordinators can view venues but not edit them.
+- Organisers, attendees and tech support are kept out of `/venue`.
+- Venue and booking permission checks all behave:
+  - 401 with no token; 403 for the wrong role.
+  - A coordinator cannot create a CONFIRMED booking, cannot read another
+    coordinator's booking, and cannot change a CONFIRMED booking.
+  - Idempotency-Key is required.
+  - Hours changes need a reason.
+  - Field-level 422 errors are returned.
+  - Forged `x-test-user-id` headers are ignored outside test mode.
+
+**Findings (most important first). Nothing was changed; these are for the team.**
+
+1. **Deleting a venue always fails in Docker (503).** `venue-service` has
+   no `BOOKING_SERVICE_URL` in `docker-compose.yml`, so it calls
+   `http://localhost:3001` inside its own container. Verified: with the URL
+   set, delete returns 204 when the venue has no bookings and 409
+   `VENUE_HAS_BLOCKING_BOOKINGS` when it has one.
+   - Fix: add `BOOKING_SERVICE_URL: http://booking-service:3000` under venue-service.
+2. **Idempotent booking retries return 409 instead of the first booking.**
+   `findIdempotency` compares the new request with the stored row. The
+   stored dates come back as `…T02:00:00.000Z`, so a retry only matches when
+   the client sent exactly that format. In practice:
+   - `…Z` without milliseconds → 409.
+   - `+08:00` (the format `api-contract.md` §3 asks for) → 409.
+   - The Nuxt UI is unaffected because it sends `toISOString()`.
+   - Unit tests miss this because memory mode stores the raw string.
+   - Fix: normalise `startAt`/`endAt` with `new Date(x).toISOString()`
+     before fingerprinting.
+3. **Creating a venue with operating-hour ids that already exist → 500.**
+   `createVenue` trusts `hour.id` from the request. Fix: ignore client ids on
+   create (always generate them).
+4. **Conflicting rule: may Venue Staff create bookings?** The route allows
+   `venue_bookings.decide` to create, which CS-35 needs for BLOCKED periods.
+   The contract test says Venue Staff must get 403. One of them must change.
+   The test looks outdated. **Team to decide.**
+5. **5 frontend tests broke in PR #5** (CS-10 TC-CS10-03 and four CS-30
+   cases). `server/api/events.get.ts` now calls `getQuery`, which these
+   tests do not stub (`ReferenceError: getQuery is not defined`). The app
+   itself works. Fix: add `vi.stubGlobal('getQuery', getQuery)` in those
+   tests, or `import { getQuery } from 'h3'` in the route.
+6. **Booking conflicts are only checked in the browser.** The server
+   accepted a coordinator booking inside a BLOCKED period (201).
+   - TC-CS35-06 says this is client-side by design. But any API client
+     (Postman, a script) can double-book.
+   - Recommend a server-side overlap check against BLOCKED, TENTATIVELY_HELD
+     and CONFIRMED. **Business rule needed.**
+7. **Availability shows other coordinators' bookings in full.**
+   `GET /venue-bookings/availability` returns every booking for the venue,
+   including `requestedById`, `title` and `reason`. TC-CS34-04 says
+   coordinators should see only permitted details. Recommend returning only
+   times and status for bookings the caller does not own.
+8. **booking_db is not seeded automatically.** `infra/seed/run-seeds.sh`
+   lists user, auth, venue and event only. Also, two different files are
+   numbered 04 (`04_booking_db.sql` and `04_event_db.sql`). Fix: add a
+   `booking_db|venue_booking_requests|/seed/backend/04_booking_db.sql` line
+   and `booking-service` to the seed service's `depends_on`; renumber one file.
+9. **Things that were lost in the PR #4 merge.**
+   - `tests/specs/signup.spec.ts` (7 passing sign-up tests) was never
+     committed.
+   - `services/auth-service/.env.example` and `user-service/.env.example`
+     now have empty `DATABASE_URL` (and an empty `INTERNAL_API_KEY` in
+     user-service), so `npm start` outside Docker fails until filled in.
+   - `frontend/.env.example` now defaults to `NUXT_AUTH_MODE=live` and still
+     says the seed password is `Password123!` (each seed user has their own).
+10. **`how-to-run-and-test.md` was garbled by the PR #5 merge.**
+    - Part B2 starts mid-way through B1 (the Keycloak upgrade note and the
+      Kong restart now sit inside B2).
+    - The log-watching step appears twice.
+    - It does not mention event-service, the automatic `seed` service, or
+      that booking seeds must be loaded by hand.
+11. **Friendly error messages were dropped from `server/utils/backend.ts`**
+    (PR #5).
+    - The 502/503/504 → "The ConnectSphere service is unavailable…"
+      mapping is gone.
+    - So is the fallback to Kong's `message`. A Kong 429 or 502 now shows
+      "Request failed" (the sign-up page still special-cases 429).
+12. **Routes in Kong or the contract that have no code behind them.** These
+    all answer 404 or 503 today:
+    - `GET /users/*` (user-service has no public routes).
+    - All `/event-requests/*` and `/events/*` routes.
+    - The two orchestrator routes (`/venue-bookings/{id}/decision`, `/events/{id}/confirm`).
+    - Expected for unbuilt stories. Listed so nobody thinks they are broken.
+13. **Smaller items**
+    - **Internal route through Kong:** `/venues/{id}/internal` sits under
+      `/venues`, so Kong routes it publicly. It is still protected by the
+      internal key (403). The standing rule is `/internal/*` paths only;
+      consider moving it.
+    - **Test identity headers:** venue- and booking-service accept
+      `x-test-user-id` / `x-test-role` when `AUTH_MODE=mock` or
+      `NODE_ENV=test`. Never set either in compose. Kong does not strip these
+      headers.
+    - **Delete venue:** "Delete venue" deletes immediately, with no
+      confirmation step.
+    - **Fake pagination:** the venue list shows static "1 … 3" pagination
+      that does nothing.
+    - **Raw ids in booking requests:** the Booking requests tab shows venue,
+      organiser and coordinator ids instead of names.
+    - **Nav and buttons by role:**
+      - The top nav shows Venues and Equipment to every role. An organiser
+        clicking Venues is sent back to `/`.
+      - Venue staff see a "New event request" button they cannot use.
+    - **Organiser field:** the booking request card's "Organiser" field
+      shows the coordinator's id.
+    - **Dangling reference:** `event-service/prisma/schema.prisma` points to
+      `schema-decisions.md`, which does not exist.
+    - **Stale Kong comment:** `kong.yml` mentions `/venues/{id}/blocks` and
+      `/venues/{id}/availability`, which do not exist. Blocks are bookings
+      with status BLOCKED.
+    - **Line-ending noise:** the working copy that was reviewed had 115 files
+      with CRLF-only changes and no real edits. Run `git restore .` (or
+      `git add --renormalize .`) before committing, so a commit doesn't
+      rewrite whole files.
+
+**Still open from earlier entries.**
+- Auth-service does not return `roles` / `organisationId` (contract §10).
+  Priya's `/auth/me` still shows only `role: EVENT_ORGANISER`.
+- The `role` → `roles` switch needs auth-service, the BFF and the frontend
+  together.
+- The access matrix still lacks rows for sign-up, the admin API, venues and
+  bookings.
+- Rate limits count per calling IP. Through the BFF that is the Nuxt server,
+  so they apply to the whole site.
+
+### 2026-10-06 — Event-service groundwork, multi-role users, organisations (PR #6, javierseah)
+
+Sprint 2 groundwork for CS-10/11, CS-30 (assignment), CS-32 (status guard),
+CS-12 (approve), CS-28 (reject/return) and CS-44 (activity history). **No
+event API is built yet:** `src/app.js` only has `/health`.
+
+**event-service (new)**
+- Prisma schema and migration for:
+  - `EventRequest` (DRAFT → SUBMITTED "Under Review" → RETURNED_FOR_AMENDMENT
+    / APPROVED / REJECTED).
+  - `Event` (ARRANGEMENT_PENDING "Planning" → CONFIRMED / CANCELLED /
+    COMPLETED / REJECTED).
+  - `CoordinatorAssignment` (AUTO or REASSIGNED; one current coordinator
+    per request).
+  - `ActivityLog`, `Outbox` (domain events written in the same transaction)
+    and `IdempotencyRecord`.
+- `src/domain/transitions.js`: one guard that encodes the whole status table.
+  - Check order: 403 wrong person → 409 wrong status → 422 bad input → 409
+    conditions.
+  - A multi-role user can never decide on their own request.
+- `src/domain/assignment.js`: least-loaded coordinator.
+- `src/domain/statusLabels.js`: the one shared label map.
+- 89 unit tests.
+- `docs/openapi.yaml`: the agreed contract for `/event-requests`
+  (create, review-queue, get, submit, resubmit, decision, reassign, activity)
+  and `/events`.
+- Seed `prisma/seed/04_event_db.sql` (event requests in every status).
+
+**user-service:** migration `20261002000000_roles_and_organisations`.
+- Adds an `organisations` table, `users.roles` (array, source of truth) and
+  `users.organisationId`.
+- `role` stays as a deprecated "primary role".
+- A trigger (`users_sync_roles`) keeps `roles` in step when old code changes
+  only `role`.
+- Checks: at least one role, and `role` must be inside `roles`.
+- Seed changes:
+  - Sarah and Daniel share Nexus Labs (Daniel's company changed from
+    BrightPath Academy).
+  - Priya is the multi-role example (EVENT_ORGANISER + ATTENDEE).
+
+**Shared docs and infra**
+- `docs/api-contract.md` (new): Sprint 2 conventions.
+  - Identity headers `x-user-id`, `x-user-roles`, `x-organisation-id`,
+    stripped by Kong. Each service gets them from
+    `/internal/sessions/validate` today.
+  - UUID ids; ISO 8601 times with an offset (a time without one is a 422).
+  - Error shape; idempotency on creates only; `version`-based concurrency;
+    lists of 20 per page.
+  - Outbox; auth-service additions (`roles`, `organisationId`); the gateway map.
+- Kong:
+  - The `request-transformer` plugin strips the identity headers.
+  - New public `GET /users` route.
+  - The event-request decision moved from the orchestrator to event-service.
+- docker-compose:
+  - event-service is now built (port 3003).
+  - New one-shot `seed` service running `infra/seed/run-seeds.sh`.
+
+**Decisions (proposed, need team sign-off).** These were written in
+`docs/decisions-sprint2-events.md`, which was deleted in the next commit.
+It can still be read with
+`git show e129741:docs/decisions-sprint2-events.md`. Summary:
+- **D1 Unassigned requests.** An unassigned SUBMITTED request shows
+  "Awaiting assignment". Every coordinator sees it and can claim it via
+  `/reassign`.
+- **D2 Idempotency-Key on creates only.** Accepted on create and submit
+  only. A repeated approval returns 409.
+- **D3 Coordinator load and tie-break.**
+  - "Active" load counts SUBMITTED, RETURNED and APPROVED requests whose
+    event is in Planning or Confirmed.
+  - Ties go to the longest-serving coordinator (earliest `createdAt`), then
+    the lowest id. This replaces story 3's "assigned least recently".
+- **D4 Reject from Planning** closes both the request and the event
+  (new `EventStatus.REJECTED`).
+- **D5 Cancel** changes only the event.
+- **D6 Approve after the event date** fails with 409 `EVENT_DATE_PASSED`
+  (compared by calendar day in the event's time zone).
+- **D7 Confirm** needs an empty list of outstanding arrangements; an unknown
+  list counts as blocked.
+- **D8 Not exposed yet:** cancel and "significant change approved" are in
+  the guard but have no endpoint.
+- **D10 Activity lists:** newest first, 20 per page.
+- **D11 Activity entries:** submit → return → resubmit logs 4 entries
+  (including "coordinator assigned").
+- **D12 Resubmit changes:** the resubmit entry lists the changed fields.
+- **D13–D19:**
+  - Identity comes from the headers.
+  - The stack stays the same.
+  - A `version` column handles concurrency.
+  - One current coordinator per request.
+  - Reasons are 1–500 characters, trimmed.
+  - The outbox is written in the same transaction.
+  - There is one shared status label map.
+- Follow-ups listed there:
+  - Update `access-matrix.md` for D1.
+  - Reword test cases 30-06 and 44-01.
+  - Update the frontend label map.
+
+### 2026-10-05 — Venue management, venue bookings and availability blocks (PR #5, Alan Sebastian Bun)
+
+Stories CS-33 (manage venue records), CS-34 (availability calendar) and
+CS-35 (availability blocks). Each has `tests/records/CS-3x/test-cases.md`
+and `tests/specs/CS-3x.spec.ts`.
+
+**venue-service (new, venue_db)**
+- Routes (Kong `/venues`):
+  - `GET /venues/options`; `GET`/`POST /venues`.
+  - `GET`/`PUT`/`DELETE /venues/{id}`.
+  - `GET`/`PUT /venues/{id}/operating-hours` (a reason is required; the list
+    may not be empty).
+  - `GET /venues/{id}/history`; `GET /venues/{id}/internal` (internal key).
+- Permissions: `venues.view` to read, `venues.manage` to change. Checked via
+  auth-service `/internal/sessions/validate`.
+- Capacity limit comes from `MAX_VENUE_CAPACITY` (default 10000).
+- Every change writes `venue_history` with actor, role, reason and the changes.
+- Delete asks booking-service how many blocking bookings the venue has
+  (TENTATIVELY_HELD or CONFIRMED that end now or later):
+  - If there are any → 409 `VENUE_HAS_BLOCKING_BOOKINGS`.
+  - If booking-service cannot be reached → 503 (fails closed).
+- Validation errors are 422 `{ error: { code: 'VALIDATION_ERROR', fields } }`.
+- `DATA_MODE=memory` is for tests; compose uses `prisma`.
+- Docs and tests: Swagger page `swagger.html`, a Postman collection, 40 unit
+  tests and 10 Python HTTP contract tests.
+
+**booking-service (new, booking_db)**
+- Routes (Kong `/venue-bookings`):
+  - `GET`/`POST /venue-bookings` (POST requires an `Idempotency-Key` header).
+  - `GET`/`PUT /venue-bookings/{id}`.
+  - `GET /venue-bookings/history?venueId=`.
+  - `GET /venue-bookings/availability?venueId=&startAt=&endAt=`.
+  - `GET /internal/venue-links/{venueId}`.
+- Statuses: AVAILABLE, TENTATIVELY_HELD, CONFIRMED, BLOCKED, UNAVAILABLE,
+  REJECTED, CANCELLED.
+- Rules (`src/policy.js`):
+  - Coordinators (`venue_bookings.create`) create TENTATIVELY_HELD (or
+    CANCELLED) bookings, and these need an `eventId`.
+  - Coordinators see and edit only their own bookings, and only while they
+    are tentative or cancelled.
+  - Venue staff (`venue_bookings.decide`) may create and set any status,
+    including BLOCKED periods (CS-35), and see all bookings.
+- Every change writes `venue_booking_activity`.
+- Conflict detection is **client-side only** (`conflictDetection: 'client-only'`).
+- Docs and tests: Swagger page, a Postman collection, 32 unit tests and 12
+  Python contract tests.
+
+**Shared**
+- `services/utils/role-permissions.js` mirrors the default role permissions.
+  It is used only by the test/mock identity adapters. Each service copies it
+  in its Docker image.
+- Both services are built with `context: ../services` so they can include `utils/`.
+
+**Frontend**
+- New pages:
+  - `/venue`: venue list, week/day calendar, details, delete, "Booking
+    requests" tab for venue staff.
+  - `/venue/new` and `/venue/{id}`: the venue form; the reason is asked in a
+    popover before saving.
+- Components live in `app/components/venue/`. New shared error alert
+  (`AppErrorAlert`, `useErrorAlert`, `api-error.ts`) and a sonner toast.
+- BFF proxies (`server/utils/kongBff.ts`) forward the session token to Kong.
+  The browser only calls `/api/*`.
+  - `/api/venues/*` maps to `/venues/*`.
+  - `/api/bookings/*` maps to `/venue-bookings/*`.
+  - `/api/venues/{id}/history/combined` merges venue and booking history,
+    newest first.
+  - Contract: `docs/frontend-bff-venue-booking.md`.
+- `auth.global.ts`: venue staff now go to `/venue` instead of `/login`.
+  Coordinators reach `/venue` through the existing page-permission check
+  (`definePageMeta({ permission: 'venues.view' })`).
+- `/api/events?scope=booking`: event options for the booking form (still
+  mock data).
+- `backend.ts` can send extra headers (Idempotency-Key). Its error mapping
+  changed (finding 11 above).
+
+**Seeds**
+- `backend/seed_data/03_venue_db.sql`: 3 venues with hours and history.
+- `backend/seed_data/04_booking_db.sql`: 7 bookings, one in each status.
+
+**Docs:** the run guide (B1/B2 seed steps, a Postman section), the ERD
+(`docs/erd/schema-updated.prisma`) and the frontend agent skill.
+
+### 2026-10-02 — Login and auth merged to main (PR #4, Marcang0802)
+
+Everything from 2026-09-28 to 2026-10-01 below was merged as PR #4
+(`a625a23`). Differences from the reviewed working copy:
+- `tests/specs/signup.spec.ts` was left out.
+- The `.env.example` files were changed (finding 9 in the 2026-10-07 entry).
+- This log lost its last paragraph, which is now restored below.
 
 ### 2026-10-01 — Attendee self sign-up + Keycloak data kept in Postgres
 
@@ -126,6 +491,10 @@ v0.4.0 (`/auth/register`, `/auth/password-policy`). Both validated.
   and add a test record when the story exists (DoD Sprint 2).
 - Deleting `keycloak_db` deletes signed-up users' logins but not their
   `user_db` rows. There is no "re-sync" script yet.
+
+**Run guide follow-up (same day):** added Part A2 "Starting from scratch"
+(`down -v`, check `frontend/.env`) and moved the Kong restart to after the
+services report ready, at Shadow's request.
 
 ### 2026-10-01 — New seed data: every user has their own password
 
