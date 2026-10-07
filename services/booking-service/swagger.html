@@ -11,21 +11,537 @@
   <div id="swagger-ui"></div>
   <script id="openapi-spec" type="application/json">
 {
-  "openapi":"3.1.0",
-  "info":{"title":"ConnectSphere Booking Service","version":"0.1.0","description":"Venue booking contract. The seven persisted statuses are AVAILABLE, TENTATIVELY_HELD, CONFIRMED, BLOCKED, UNAVAILABLE, REJECTED and CANCELLED. CONFLICT is client-only."},
-  "servers":[{"url":"/"}],"security":[{"bearerAuth":[]}],
-  "paths":{
-    "/venue-bookings":{"get":{"summary":"List bookings","parameters":[{"name":"venueId","in":"query","schema":{"type":"string"}},{"name":"eventId","in":"query","schema":{"type":"string"}},{"name":"status","in":"query","schema":{"type":"string"}}],"responses":{"200":{"description":"Owner-scoped booking list"}}},"post":{"summary":"Create a booking","description":"The optional status is persisted without normalization. Venue Staff and Technical Support Staff may request any persisted status; Event Coordinators may request TENTATIVELY_HELD or CANCELLED. A role-disallowed status returns 403.","parameters":[{"$ref":"#/components/parameters/IdempotencyKey"}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/BookingInput"}}}},"responses":{"201":{"description":"Created","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Booking"}}}},"200":{"description":"Idempotent retry returns the original booking"},"403":{"description":"Requested status is not permitted for the actor"},"409":{"description":"Idempotency key reused with a different payload"},"422":{"$ref":"#/components/responses/ValidationError"}}}},
-    "/venue-bookings/{bookingId}":{"parameters":[{"$ref":"#/components/parameters/BookingId"}],"get":{"summary":"Get an owner-scoped booking","responses":{"200":{"description":"Booking"},"403":{"description":"Not the owner or venue staff"}}},"put":{"summary":"Replace a booking","description":"Venue staff may set any persisted status. Event coordinators may only cancel their own TENTATIVELY_HELD booking. reason is mandatory.","requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/BookingInput"}}}},"responses":{"200":{"description":"Updated booking"},"403":{"description":"Forbidden transition"},"422":{"$ref":"#/components/responses/ValidationError"}}}},
-    "/venue-bookings/history":{"get":{"summary":"List booking activity for a venue","parameters":[{"name":"venueId","in":"query","required":true,"schema":{"type":"string"}}],"responses":{"200":{"description":"Booking history; BFF merges with venue history"}}}},
-    "/venue-bookings/availability":{"get":{"summary":"List booking intervals for client conflict indication","parameters":[{"name":"venueId","in":"query","schema":{"type":"string"}}],"responses":{"200":{"description":"Bookings and conflictDetection=client-only"}}}},
-    "/internal/venue-links/{venueId}":{"parameters":[{"name":"venueId","in":"path","required":true,"schema":{"type":"string"}}],"get":{"summary":"Count blocking bookings for a venue","description":"Private service-to-service endpoint. Counts linked TENTATIVELY_HELD or CONFIRMED bookings whose endAt is now or later.","security":[{"internalApiKey":[]}],"parameters":[{"name":"blockingOnly","in":"query","schema":{"type":"boolean","default":true}}],"responses":{"200":{"description":"Blocking booking count"},"403":{"description":"Missing internal service credential"}}}}
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ConnectSphere Booking Service",
+    "version": "0.2.0",
+    "description": "Venue booking contract. Business rules (2026-10-07): only Event Coordinators create bookings, always TENTATIVELY_HELD; only Venue Staff change a booking's status (TENTATIVELY_HELD, CONFIRMED, REJECTED, UNAVAILABLE, CANCELLED \u2014 not BLOCKED or AVAILABLE); a coordinator may edit details of their own TENTATIVELY_HELD booking but never its status; overlapping bookings are refused by the service (409 BOOKING_CONFLICT), inside a per-venue lock; other coordinators' bookings are returned only as NOT_AVAILABLE slots with times. All ids are UUIDs; times are ISO 8601 with an offset. Persisted statuses: AVAILABLE, TENTATIVELY_HELD, CONFIRMED, BLOCKED, UNAVAILABLE, REJECTED, CANCELLED."
   },
-  "components":{
-    "securitySchemes":{"bearerAuth":{"type":"http","scheme":"bearer"},"internalApiKey":{"type":"apiKey","in":"header","name":"x-internal-api-key"}},
-    "parameters":{"BookingId":{"name":"bookingId","in":"path","required":true,"schema":{"type":"string"}},"IdempotencyKey":{"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string"}}},
-    "responses":{"ValidationError":{"description":"Field-level validation","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ValidationError"}}}}},
-    "schemas":{"Booking":{"type":"object","required":["id","venueId","requestedById","title","reason","startAt","endAt","timeZone","status"],"properties":{"id":{"type":"string"},"eventId":{"type":"string","nullable":true},"venueId":{"type":"string"},"requestedById":{"type":"string"},"title":{"type":"string"},"reason":{"type":"string"},"startAt":{"type":"string","format":"date-time"},"endAt":{"type":"string","format":"date-time"},"timeZone":{"type":"string"},"status":{"type":"string","enum":["AVAILABLE","TENTATIVELY_HELD","CONFIRMED","BLOCKED","UNAVAILABLE","REJECTED","CANCELLED"]},"statusChangedById":{"type":"string","nullable":true},"statusChangedRole":{"type":"string","enum":["EVENT_ORGANISER","EVENT_COORDINATOR","VENUE_STAFF","ATTENDEE","TECHNICAL_SUPPORT_STAFF"],"nullable":true},"statusChangedAt":{"type":"string","format":"date-time","nullable":true}}},"BookingInput":{"type":"object","required":["venueId","title","reason","startAt","endAt","timeZone"],"properties":{"eventId":{"type":"string"},"venueId":{"type":"string"},"title":{"type":"string"},"reason":{"type":"string"},"startAt":{"type":"string","format":"date-time"},"endAt":{"type":"string","format":"date-time"},"timeZone":{"type":"string"},"status":{"type":"string","enum":["AVAILABLE","TENTATIVELY_HELD","CONFIRMED","BLOCKED","UNAVAILABLE","REJECTED","CANCELLED"]}}},"ValidationError":{"type":"object","required":["error"],"properties":{"error":{"type":"object","properties":{"code":{"type":"string"},"message":{"type":"string"},"fields":{"type":"object","additionalProperties":{"type":"array","items":{"type":"string"}}}}}}}}
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/venue-bookings": {
+      "get": {
+        "summary": "List bookings (Venue Staff: all; coordinators: their own)",
+        "parameters": [
+          {
+            "name": "venueId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-scoped booking list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a booking (Event Coordinators only, needs venue_bookings.create)",
+        "description": "Always created as TENTATIVELY_HELD; sending any other status returns 403 STATUS_NOT_PERMITTED. eventId is required. The venue must exist and be active (checked with venue-service). A same Idempotency-Key retry with the same booking (times compared as instants) returns the original booking with 200.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Booking"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent retry returns the original booking"
+          },
+          "403": {
+            "description": "Caller may not create bookings, or asked for a status other than TENTATIVELY_HELD"
+          },
+          "409": {
+            "description": "BOOKING_CONFLICT (time overlaps a booking that makes the venue unavailable) or IDEMPOTENCY_KEY_REUSE"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "503": {
+            "description": "venue-service unreachable (nothing is created)"
+          }
+        }
+      }
+    },
+    "/venue-bookings/{bookingId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/BookingId"
+        }
+      ],
+      "get": {
+        "summary": "Get an owner-scoped booking",
+        "responses": {
+          "200": {
+            "description": "Booking"
+          },
+          "403": {
+            "description": "Not the coordinator who made it, and not Venue Staff"
+          }
+        }
+      },
+      "put": {
+        "summary": "Change a booking",
+        "description": "Venue Staff (venue_bookings.decide): send {status, reason} only; other fields are kept. Allowed statuses: TENTATIVELY_HELD, CONFIRMED, REJECTED, UNAVAILABLE, CANCELLED. The coordinator who created the booking: send the full booking to edit details while it is TENTATIVELY_HELD; the status cannot change (403 STATUS_NOT_PERMITTED).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/StatusChange"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BookingInput"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated booking"
+          },
+          "403": {
+            "description": "Not allowed (wrong person, booking no longer pending, or status not permitted)"
+          },
+          "409": {
+            "description": "BOOKING_CONFLICT"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      }
+    },
+    "/venue-bookings/history": {
+      "get": {
+        "summary": "Booking activity for a venue (Venue Staff: all; coordinators: their own bookings only)",
+        "parameters": [
+          {
+            "name": "venueId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Booking history; BFF merges with venue history"
+          }
+        }
+      }
+    },
+    "/venue-bookings/availability": {
+      "get": {
+        "summary": "Calendar intervals for a venue",
+        "parameters": [
+          {
+            "name": "venueId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "startAt",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "endAt",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ items }. The caller's own bookings (and every booking for Venue Staff) are returned in full; other people's bookings that make the venue unavailable are returned as NotAvailableSlot; other people's REJECTED/CANCELLED/AVAILABLE rows are left out.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "$ref": "#/components/schemas/Booking"
+                          },
+                          {
+                            "$ref": "#/components/schemas/NotAvailableSlot"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      }
+    },
+    "/internal/venue-links/{venueId}": {
+      "parameters": [
+        {
+          "name": "venueId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Count blocking bookings for a venue",
+        "description": "Private service-to-service endpoint. Counts linked TENTATIVELY_HELD or CONFIRMED bookings whose endAt is now or later.",
+        "security": [
+          {
+            "internalApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "blockingOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blocking booking count"
+          },
+          "403": {
+            "description": "Missing internal service credential"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      },
+      "internalApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-internal-api-key"
+      }
+    },
+    "parameters": {
+      "BookingId": {
+        "name": "bookingId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._:-]{8,100}$"
+        }
+      }
+    },
+    "responses": {
+      "ValidationError": {
+        "description": "Field-level validation",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ValidationError"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Booking": {
+        "type": "object",
+        "required": [
+          "id",
+          "venueId",
+          "requestedById",
+          "title",
+          "reason",
+          "startAt",
+          "endAt",
+          "timeZone",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string",
+            "nullable": true
+          },
+          "venueId": {
+            "type": "string"
+          },
+          "requestedById": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "AVAILABLE",
+              "TENTATIVELY_HELD",
+              "CONFIRMED",
+              "BLOCKED",
+              "UNAVAILABLE",
+              "REJECTED",
+              "CANCELLED"
+            ]
+          },
+          "statusChangedById": {
+            "type": "string",
+            "nullable": true
+          },
+          "statusChangedRole": {
+            "type": "string",
+            "enum": [
+              "EVENT_ORGANISER",
+              "EVENT_COORDINATOR",
+              "VENUE_STAFF",
+              "ATTENDEE",
+              "TECHNICAL_SUPPORT_STAFF"
+            ],
+            "nullable": true
+          },
+          "statusChangedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "statusReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Reason Venue Staff gave for the last status change"
+          }
+        }
+      },
+      "BookingInput": {
+        "type": "object",
+        "required": [
+          "venueId",
+          "title",
+          "reason",
+          "startAt",
+          "endAt",
+          "timeZone"
+        ],
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,100}$"
+          },
+          "venueId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-20T09:00:00+08:00"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-20T17:00:00+08:00"
+          },
+          "timeZone": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "TENTATIVELY_HELD"
+            ],
+            "description": "Optional; only TENTATIVELY_HELD is accepted"
+          }
+        }
+      },
+      "ValidationError": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "fields": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "StatusChange": {
+        "type": "object",
+        "required": [
+          "status",
+          "reason"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "TENTATIVELY_HELD",
+              "CONFIRMED",
+              "REJECTED",
+              "UNAVAILABLE",
+              "CANCELLED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "NotAvailableSlot": {
+        "type": "object",
+        "description": "Someone else's booking, shown without any details",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Built from the times; not the booking id"
+          },
+          "venueId": {
+            "type": "string"
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NOT_AVAILABLE"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "enum": [
+              "Not available"
+            ]
+          }
+        }
+      }
+    }
   }
 }
   </script>

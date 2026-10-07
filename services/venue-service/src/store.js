@@ -7,6 +7,21 @@ const prisma = isMemory ? null : require('./db');
 const state = { venues: new Map(), history: [] };
 
 function id() { return crypto.randomUUID(); }
+// Picks the id for each operating-hour row. An id from the request is kept
+// only if it already belongs to this venue (an edit) and is not used twice;
+// anything else gets a new id. Trusting any id from the request would let a
+// reused id from another venue fail the insert (500).
+function hourIds(hours, existingHours = []) {
+  const allowed = new Set(existingHours.map((hour) => hour.id));
+  const used = new Set();
+  return hours.map((hour) => {
+    const keep = hour.id && allowed.has(hour.id) && !used.has(hour.id);
+    const value = keep ? hour.id : id();
+    used.add(value);
+    return value;
+  });
+}
+
 function now() { return new Date().toISOString(); }
 function iso(value) { return value instanceof Date ? value.toISOString() : value; }
 function safeJson(value) { return JSON.parse(JSON.stringify(value)); }
@@ -82,7 +97,7 @@ function createVenue(input, actor) {
       facilities: [...input.facilities], accessibilityTags: [...input.accessibilityTags],
       timeZone: input.timeZone, isActive: input.isActive ?? true,
       managedById: input.managedById,
-      operatingHours: input.operatingHours.map((hour) => ({ ...hour, id: hour.id || id() })),
+      operatingHours: input.operatingHours.map((hour) => ({ ...hour, id: id() })),
       createdAt: timestamp, updatedAt: timestamp,
     };
     state.venues.set(venue.id, venue);
@@ -100,7 +115,7 @@ function createVenue(input, actor) {
     });
     await tx.venueOperatingHour.createMany({
       data: input.operatingHours.map((hour) => ({
-        id: hour.id || id(),
+        id: id(), // a new venue has no hours yet, so every id is new
         venueId: created.id,
         weekday: hour.weekday,
         isClosed: Boolean(hour.isClosed),
@@ -130,7 +145,7 @@ function replaceVenue(idValue, input, actor) {
       venueType: input.venueType, supportedLayouts: [...input.supportedLayouts],
       facilities: [...input.facilities], accessibilityTags: [...input.accessibilityTags],
       timeZone: input.timeZone, isActive: input.isActive, managedById: input.managedById, updatedAt: now(),
-      operatingHours: input.operatingHours.map((hour) => ({ ...hour, id: hour.id || id(), venueId: idValue })),
+      operatingHours: (() => { const ids = hourIds(input.operatingHours, current.operatingHours); return input.operatingHours.map((hour, index) => ({ ...hour, id: ids[index], venueId: idValue })); })(),
     };
     state.venues.set(idValue, updated);
     recordHistory(idValue, actor, 'VENUE_UPDATED', input.reason || 'Venue updated', { before: current, after: updated });
@@ -148,10 +163,11 @@ function replaceVenue(idValue, input, actor) {
         timeZone: input.timeZone, isActive: input.isActive, managedById: input.managedById,
       },
     });
+    const ids = hourIds(input.operatingHours, current.operatingHours);
     await tx.venueOperatingHour.deleteMany({ where: { venueId: idValue } });
     await tx.venueOperatingHour.createMany({
-      data: input.operatingHours.map((hour) => ({
-        id: hour.id || id(),
+      data: input.operatingHours.map((hour, index) => ({
+        id: ids[index],
         venueId: idValue,
         weekday: hour.weekday,
         isClosed: Boolean(hour.isClosed),
@@ -178,7 +194,8 @@ function setOperatingHours(venueId, hours, actor, reason) {
     const venue = state.venues.get(venueId);
     if (!venue) return null;
     const before = venue.operatingHours;
-    venue.operatingHours = hours.map((hour) => ({ ...hour, id: hour.id || id(), venueId }));
+    const ids = hourIds(hours, before);
+    venue.operatingHours = hours.map((hour, index) => ({ ...hour, id: ids[index], venueId }));
     venue.updatedAt = now();
     recordHistory(venueId, actor, 'OPERATING_HOURS_UPDATED', reason, { before, after: venue.operatingHours });
     return venue.operatingHours;
@@ -187,10 +204,11 @@ function setOperatingHours(venueId, hours, actor, reason) {
     const venue = await tx.venue.findUnique({ where: { id: venueId }, include: { operatingHours: true } });
     if (!venue) return null;
     const before = toApiHours(venue.operatingHours);
+    const ids = hourIds(hours, venue.operatingHours);
     await tx.venueOperatingHour.deleteMany({ where: { venueId } });
     await tx.venueOperatingHour.createMany({
-      data: hours.map((hour) => ({
-        id: hour.id || id(), venueId, weekday: hour.weekday, isClosed: Boolean(hour.isClosed),
+      data: hours.map((hour, index) => ({
+        id: ids[index], venueId, weekday: hour.weekday, isClosed: Boolean(hour.isClosed),
         opensAt: hour.opensAt || null, closesAt: hour.closesAt || null,
       })),
     });

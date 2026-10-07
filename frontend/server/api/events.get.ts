@@ -1,3 +1,6 @@
+// Explicit import (Nuxt also auto-imports it) so the CS-10/CS-30 tests, which
+// run this handler outside Nuxt, can call it.
+import { getQuery } from 'h3'
 import { createEventsResponse } from '../utils/eventMocks'
 import { listRequestRecords } from '../utils/eventRequestStore'
 
@@ -40,9 +43,9 @@ export default defineEventHandler(async (event) => {
 
   const query = getQuery(event)
   if (query.scope === 'booking') {
-    if (user.role === 'VENUE_STAFF')
-      return createEventsResponse(listRequestRecords())
-
+    // Event options for the booking form. Only Event Coordinators create
+    // venue bookings (2026-10-07), so only they get any; Venue Staff change
+    // booking status and do not need the event list.
     if (user.role !== 'EVENT_COORDINATOR')
       return { events: [] }
 

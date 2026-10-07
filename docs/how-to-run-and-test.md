@@ -50,25 +50,12 @@ docker compose -f infra/docker-compose.yml ps
 ```
 
 You should see `postgres`, `pgadmin`, `rabbitmq`, `keycloak`, `kong`,
-`user-service`, `auth-service`, `venue-service` and `booking-service` running.
+`user-service`, `auth-service`, `event-service`, `venue-service` and
+`booking-service` running. `seed` runs once and then shows as exited (B2).
 
 Keycloak takes about 30–60 seconds to be ready. Until then, logins return
 "temporarily unavailable".
 
-To watch the authentication, venue and booking services start:
-
-```powershell
-docker compose -f infra/docker-compose.yml logs -f auth-service user-service venue-service booking-service
-```
-
-Wait for `auth-service listening on port 3000` and
-`Keycloak lockout and password rules synced from auth_db`, then press Ctrl+C.
-
-### B2. Load the seed data (once)
-
-The user and auth tables are created by their migrations when the services
-start. Then load the seed rows. `docker compose cp` works in both PowerShell
-and bash (PowerShell has no `<` redirect):
 Keycloak keeps its accounts in Postgres (`keycloak_db`), so accounts made by
 sign-up or by tech support survive `down`/`up` and rebuilds. It imports
 `infra/keycloak/connectsphere-realm.json` only when `keycloak_db` is empty.
@@ -76,17 +63,17 @@ sign-up or by tech support survive `down`/`up` and rebuilds. It imports
 **Upgrading from an older version of this repo (before 2026-10-01)?** Your
 Postgres volume has no `keycloak_db` yet (the init script only runs on an empty
 volume), and Keycloak will keep restarting. Either wipe everything with
-`down -v` and redo B2, or keep your data and create it once:
+`down -v` and start again, or keep your data and create it once:
 
 ```powershell
 docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d postgres -c "CREATE DATABASE keycloak_db"
 docker compose -f infra/docker-compose.yml restart keycloak
 ```
 
-To watch the two services start:
+To watch the services start:
 
 ```powershell
-docker compose -f infra/docker-compose.yml logs -f auth-service user-service
+docker compose -f infra/docker-compose.yml logs -f auth-service user-service venue-service booking-service
 ```
 
 Wait for `auth-service listening on port 3000` (3000 is its port inside the
@@ -101,47 +88,55 @@ requests to the old containers, and logins fail with a 502 until you do:
 docker compose -f infra/docker-compose.yml restart kong
 ```
 
-The tables are created automatically when the services start. Then load the
-seed rows. `docker compose cp` works in both PowerShell and bash (PowerShell
-has no `<` redirect):
+### B2. Seed data (loads automatically)
+
+Each service creates its own tables when it starts (`prisma migrate deploy`).
+The one-shot `seed` container then waits for those tables and loads the demo
+data into `user_db`, `auth_db`, `venue_db`, `event_db` and `booking_db`
+(`infra/seed/run-seeds.sh`). Check that it finished:
+
+```powershell
+docker compose -f infra/docker-compose.yml logs seed
+```
+
+The last line should be `[seed] done`. The seeds are safe to run again:
+
+```powershell
+docker compose -f infra/docker-compose.yml up seed
+```
+
+If you prefer to load them by hand (same files, same result). `docker compose
+cp` works in both PowerShell and bash (PowerShell has no `<` redirect):
 
 ```powershell
 docker compose -f infra/docker-compose.yml cp backend/seed_data/01_user_db.sql postgres:/tmp/01_user_db.sql
 docker compose -f infra/docker-compose.yml cp backend/seed_data/02_auth_db.sql postgres:/tmp/02_auth_db.sql
+docker compose -f infra/docker-compose.yml cp backend/seed_data/03_venue_db.sql postgres:/tmp/03_venue_db.sql
+docker compose -f infra/docker-compose.yml cp backend/seed_data/05_booking_db.sql postgres:/tmp/05_booking_db.sql
 docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d user_db -f /tmp/01_user_db.sql
 docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d auth_db -f /tmp/02_auth_db.sql
-```
-
-Each should end with `COMMIT`. Running them twice is safe.
-
-The venue and booking seed files are also available:
-
-```powershell
-docker compose -f infra/docker-compose.yml cp backend/seed_data/03_venue_db.sql postgres:/tmp/03_venue_db.sql
-docker compose -f infra/docker-compose.yml cp backend/seed_data/04_booking_db.sql postgres:/tmp/04_booking_db.sql
 docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d venue_db -f /tmp/03_venue_db.sql
-docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d booking_db -f /tmp/04_booking_db.sql
+docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d booking_db -f /tmp/05_booking_db.sql
 ```
 
-Run those two commands after the venue and booking Prisma migrations have
-created their tables. Compose now runs both services with `DATA_MODE=prisma`,
-so requests and history are persisted in `venue_db` and `booking_db` just as
-auth and user data are persisted in their service-owned databases. The seed
-files are idempotent and can be rerun after a database reset.
+Each should end with `COMMIT`. The event seed is
+`services/event-service/prisma/seed/04_event_db.sql` (event-service has no
+API yet, so the website does not show these rows).
 
-The remaining databases are reserved for services still marked
-`not-built-yet` in the compose file.
+The remaining databases (attendance, messaging, notification, orchestrator)
+are reserved for services still marked `not-built-yet` in the compose file.
 
 ### B3. Postman collections
 
 Import the collection for the service you want to exercise:
 
-- `services/booking-service/postman/booking-service.postman_collection.json` — logs in through Kong, then covers booking creation, idempotent retry, retrieval, cancellation, history and availability.
+- `services/booking-service/postman/booking-service.postman_collection.json` — logs in through Kong as a coordinator and Venue Staff, then covers booking creation (coordinator), idempotent retry, retrieval, a Venue Staff status change, history and availability.
 - `services/venue-service/postman/venue-service.postman_collection.json` — logs in through Kong as an Event Coordinator and Venue Staff, then covers venue options, listing, CRUD, operating-hours replacement, history and empty-hours validation.
 
-The booking collection defaults to the seeded coordinator and venue. The event
-collection defaults to the mock BFF credentials (`organiser@example.com` and
-`coordinator@example.com`).
+Both collections log in as the seed users Aisha (coordinator, `Aisha@CS05!`)
+and Ravi (Venue Staff, `Ravi@CS08!`) and use the seeded Marina Convention
+Centre. Change the `coordinatorPassword` / `venueStaffPassword` variables if
+you use other accounts.
 
 ### B4. Useful addresses
 
@@ -226,7 +221,7 @@ differs, note what you saw.
 | MT-02 | Log in as `sarah.tan@nexuslabs.sg` | Lands on **Your events** (empty list in live mode) |
 | MT-03 | Click the initials (top right), then **Sign out** | Shows Sarah Tan, `EVENT_ORGANISER`, her email. Sign out returns to /login. In pgAdmin, `auth_db.sessions`: her newest session now has `revokedAt` set |
 | MT-04 | Log in as `aisha.rahman@connectsphere.sg` | Lands on **Review queue** |
-| MT-05 | Log in as `hafiz.ismail@connectsphere.sg` (also try Venue Staff and Attendee) | Shows "Signed in as …" but stays on /login. **Correct for now**: the access matrix says these roles have no interface yet |
+| MT-05 | Log in as `hafiz.ismail@connectsphere.sg` (also try Attendee `ethan.goh@gmail.com`) | Shows "Signed in as …" but stays on /login. **Correct for now**: the access matrix says these roles have no interface yet. (Venue Staff now land on /venue — see MT-36) |
 | MT-06 | Signed out, go to http://localhost:3000/ | Redirected to /login |
 | MT-07 | Log in as Aisha, then refresh the page | Still logged in |
 
@@ -243,6 +238,29 @@ differs, note what you saw.
 | MT-33 | In Swagger (3002), `POST /auth/register` with `"role": "TECHNICAL_SUPPORT_STAFF"` in the body | 201 and the new user's role is still **ATTENDEE** |
 | MT-34 | As Hafiz, `PUT /admin/settings` `{ "passwordMinLength": 12 }`, then reload /signup | The first rule now says "At least 12 characters", and an 8-character password is refused. Set it back to 8 |
 | MT-35 | `docker compose -f infra/docker-compose.yml restart keycloak`, wait a minute, log in as `test.attendee@example.com` | Still works: Keycloak kept the account in Postgres |
+
+### Venues and venue bookings (website, live mode)
+
+Rules (decided 2026-10-07): only Event Coordinators create bookings; only
+Venue Staff change a booking's status; coordinators see other people's
+bookings only as "Not available"; the server refuses overlaps.
+
+| # | Steps | Expected |
+|---|---|---|
+| MT-36 | Log in as Venue Staff `ravi.kumar@marinaconvention.sg` / `Ravi@CS08!` | Lands on **Manage venues** with 3 venues. No **New booking** button; dragging on the calendar does nothing |
+| MT-37 | As Ravi: **Edit venue** on one-north Innovation Hub, change capacity to 190, **Save changes**, give a reason, **Continue** | Back on /venue; the card shows Max. 190. `venue_db.venue_history` has a `VENUE_UPDATED` row with your reason |
+| MT-38 | As Ravi: **Add new venue**, create "Test Hall", then **Delete venue** on it | Created, then deleted (no 503). Deleting Marina Convention Centre instead gives "Venue has current or future tentative or confirmed bookings" |
+| MT-39 | Log in as Coordinator `aisha.rahman@connectsphere.sg` / `Aisha@CS05!`, open **Venues** | Venue list and calendar, but no Edit/Delete/Add venue buttons |
+| MT-40 | As Aisha: **New booking** on Marina Convention Centre, pick an event, title and reason, save | Booking appears dashed (Tentatively held). The form had no status picker |
+| MT-41 | As Aisha: try a booking that overlaps one already on the calendar | Save is disabled: "This booking overlaps an unavailable interval." |
+| MT-42 | Log in as the other coordinator `kevin.ong@connectsphere.sg` / `Kevin@CS06!`, open the same venue and week | Aisha's booking shows only as **Not available** (no title, reason or name) and does not open. In dev tools → Network → `availability`, the item has only id, venueId, startAt, endAt, status, title "Not available" |
+| MT-43 | As Ravi: **Booking requests** tab → **Approve** Aisha's booking | It turns Confirmed. `booking_db.venue_booking_activity` has `STATUS_CHANGED` with reason "Approved by venue staff" |
+| MT-44 | As Ravi: click a booking on the calendar | A "Change booking status" form: only status (no Blocked option) and a reason can change |
+| MT-45 | Swagger/Postman: as Ravi, `POST /venue-bookings` with a valid body and an `Idempotency-Key` | **403** — Venue Staff cannot create bookings |
+| MT-46 | As Aisha, `POST /venue-bookings` over a time Kevin already holds (same venue) | **409 `BOOKING_CONFLICT`** "The venue is not available for the selected time" — nothing about Kevin's booking |
+| MT-47 | As Aisha, `PUT /venue-bookings/{her booking id}` with `"status": "CANCELLED"` | **403 `STATUS_NOT_PERMITTED`** — only Venue Staff change status |
+| MT-48 | As Ravi: edit a venue and untick **Venue is active**. As Aisha, try to book it | The card shows **Inactive**; saving the booking says "This venue is not accepting bookings". Tick it again afterwards |
+| MT-49 | Log in as an organiser (`sarah.tan@nexuslabs.sg`) and open http://localhost:3000/venue | Sent back to **Your events** |
 
 ### Security rules (website)
 
@@ -296,7 +314,8 @@ Check that the server dropdown at the top shows `http://localhost:3002`.
 
 | # | Steps | Expected |
 |---|---|---|
-| MT-26 | `cd frontend` then `npm test` | **82 passed, 20 failed** (the 82 include 7 sign-up tests in `tests/specs/signup.spec.ts`). The 20 are known and unrelated to auth: 19 CS-11 tests call routes not built yet, and 1 CS-30 test expects a disabled "Change coordinator" button. Any *other* failure is a regression |
+| MT-26 | `cd frontend` then `npm test` | **103 passed, 20 failed** (includes the CS-33/34/35 venue tests and 7 sign-up tests). The 20 are known and unrelated: 19 CS-11 tests call routes not built yet, and 1 CS-30 test expects a disabled "Change coordinator" button. Any *other* failure is a regression |
+| MT-26b | In each of `services/venue-service`, `services/booking-service`: `npm run test:unit`, then `npm run test:contract` (needs Python 3). In `services/event-service`: `npm test` | venue 40 + 10, booking 42 + 21, event 89 — all pass |
 
 ---
 
@@ -324,3 +343,7 @@ and every signed-up or admin-created account is gone (redo B2 for the seed users
 | Postgres logs `$'\r': command not found` | `init-databases.sh` has Windows line endings. Run `git add --renormalize .` and re-clone, or convert the file to LF, then `down -v` and `up` |
 | Every login fails; browser dev tools show 500 "Empty password" | `frontend/.env` has `NUXT_SESSION_PASSWORD=` with nothing after it. Delete that line (or give it 32+ characters) and restart `npm run dev` |
 | Admin screens / `/api/admin/...` return 501 | Website is in mock mode. Set `NUXT_AUTH_MODE=live` |
+| Deleting a venue always says "Unable to verify linked bookings" (503) | Your `docker-compose.yml` is older than 2026-10-07: venue-service needs `BOOKING_SERVICE_URL: http://booking-service:3000`. Pull, then `up -d --build venue-service` and `restart kong` |
+| Venue pages say "Request failed" or 401 in mock mode | Venue and booking pages need `NUXT_AUTH_MODE=live` and the backend running |
+| A booking is refused with "The venue is not available for the selected time" | Another booking (or Venue Staff marking the time unavailable) already holds that time. Pick another time, or ask Venue Staff |
+| `seed` exited with `TIMEOUT: … never appeared` | A service failed to migrate. Check `docker compose -f infra/docker-compose.yml logs <service>`, fix, then `up seed` |

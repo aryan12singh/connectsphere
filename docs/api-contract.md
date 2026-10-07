@@ -177,4 +177,4 @@ The existing auth routes keep their paths. What changes in the **session / role 
 | `GET /users/*` | user-service | read-only; `/internal/*` never routed |
 | `/event-requests/*`, `/events/*` | event-service | `POST /events/{id}/confirm` → orchestrator (CS-31) |
 | `/venues/*` | venue-service | |
-| `/venue-bookings/*` | booking-service / orchestrator | later sprint |
+| `/venue-bookings/*` | booking-service | Built. Coordinators create, Venue Staff decide status; `POST /venue-bookings/{id}/decision` → orchestrator (not built) |

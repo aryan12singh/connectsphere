@@ -17,6 +17,7 @@ LIST=(
   "auth_db|sessions|$SEEDS/auth-service/prisma/seed/02_auth_db.sql"
   "venue_db|venue_operating_hours|/seed/backend/03_venue_db.sql"
   "event_db|activity_log|$SEEDS/event-service/prisma/seed/04_event_db.sql"
+  "booking_db|venue_booking_requests|/seed/backend/05_booking_db.sql"
 )
 
 for entry in "${LIST[@]}"; do

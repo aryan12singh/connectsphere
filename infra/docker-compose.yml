@@ -166,6 +166,9 @@ services:
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/venue_db
       MAX_VENUE_CAPACITY: ${MAX_VENUE_CAPACITY:-10000}
       AUTH_SERVICE_URL: http://auth-service:3000
+      # Asked before deleting a venue: does it still have bookings? Without
+      # this, every delete failed with 503 (fixed 2026-10-07).
+      BOOKING_SERVICE_URL: http://booking-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
       DATA_MODE: prisma
       ROLE_PERMISSIONS_PATH: /app/utils/role-permissions.js
@@ -184,6 +187,8 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/booking_db
       AUTH_SERVICE_URL: http://auth-service:3000
+      # Checks a venue exists and is active before it is booked.
+      VENUE_SERVICE_URL: http://venue-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
       DATA_MODE: prisma
       ROLE_PERMISSIONS_PATH: /app/utils/role-permissions.js
@@ -217,6 +222,8 @@ services:
       event-service:
         condition: service_started
       venue-service:
+        condition: service_started
+      booking-service:
         condition: service_started
 
   attendance-service:

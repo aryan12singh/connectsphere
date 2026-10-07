@@ -12,7 +12,8 @@ module.exports = {
   // tests opt into DATA_MODE=memory explicitly so they remain deterministic.
   dataMode,
   databaseUrl,
-  venueServiceUrl: process.env.VENUE_SERVICE_URL || 'http://localhost:3003',
+  // venue-service, to check a venue exists and is active before booking it.
+  venueServiceUrl: process.env.VENUE_SERVICE_URL || 'http://localhost:3004',
   authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3002',
   internalApiKey: process.env.INTERNAL_API_KEY || 'change-me-dev-internal-key',
   isTest: process.env.NODE_ENV === 'test',

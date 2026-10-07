@@ -81,13 +81,18 @@ test('CS-venue-DATA-04: operating-hour replacement persists hours and creates hi
   assert.equal(store.listHistory(venue.id)[0].action, 'OPERATING_HOURS_UPDATED');
 });
 
-test('CS-venue-DATA-04b: supplied operating-hour IDs are preserved on replacement', () => {
+test('CS-venue-DATA-04b: an operating-hour ID is kept on replacement only if it belongs to the venue', () => {
   const venue = store.createVenue(venueInput({ isActive: false }), ACTOR);
+  const other = store.createVenue(venueInput(), ACTOR);
+  const ownId = store.getVenue(venue.id).operatingHours[0].id;
+  const foreignId = store.getVenue(other.id).operatingHours[0].id;
   const hours = store.setOperatingHours(venue.id, [
-    { id: 'hours-1', weekday: 'TUESDAY', opensAt: '10:00', closesAt: '17:00', isClosed: false },
+    { id: ownId, weekday: 'TUESDAY', opensAt: '10:00', closesAt: '17:00', isClosed: false },
+    { id: foreignId, weekday: 'WEDNESDAY', opensAt: '10:00', closesAt: '17:00', isClosed: false },
   ], ACTOR, 'Updated hours');
 
-  assert.equal(hours[0].id, 'hours-1');
+  assert.equal(hours[0].id, ownId);
+  assert.notEqual(hours[1].id, foreignId);
   assert.equal(store.getVenue(venue.id).isActive, false);
 });
 
