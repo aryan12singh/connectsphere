@@ -169,8 +169,14 @@ jobs:
         run: |
           find src -name '*.js' -type f -print0 | xargs -0 -n 1 node --check
           node -e 'require("./src/app")'
-      # Live authentication/profile behaviour is also required by the live job.
-      # Dedicated Auth/User unit suites remain work for their owners.
+      - name: Unit and HTTP boundary tests with source coverage
+        run: npm run test:coverage | tee "${{ runner.temp }}/${{ matrix.service }}-coverage.log"
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: ${{ matrix.service }}-evidence
+          retention-days: 30
+          path: ${{ runner.temp }}/${{ matrix.service }}-coverage.log
 
   live:
     name: Live E2E and restart checks

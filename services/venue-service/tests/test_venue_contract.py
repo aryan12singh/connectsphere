@@ -170,6 +170,25 @@ class VenueServiceContractTest(unittest.TestCase):
         self.assertEqual(body["facilities"], ["PROJECTOR", "PA_SYSTEM"])
         self.assertEqual(body["accessibilityTags"], ["WHEELCHAIR_ACCESS"])
 
+    def test_reversed_hours_reject_create_and_both_edits_without_data_or_history_changes(self):
+        bad_hours = [{"weekday": "MONDAY", "isClosed": False, "opensAt": "18:00", "closesAt": "17:00"}]
+        _, before_list = self.request("GET", "/venues")
+        status, error = self.request("POST", "/venues", self.venue_payload(operatingHours=bad_hours))
+        self.assertEqual(status, 422)
+        self.assertIn("operatingHours.0.time", error["error"]["fields"])
+        self.assertEqual(self.request("GET", "/venues")[1], before_list)
+        status, venue = self.request("POST", "/venues", self.venue_payload())
+        self.assertEqual(status, 201)
+        path = f"/venues/{venue['id']}"
+        _, before_history = self.request("GET", f"{path}/history")
+        for route, body in [(path, {**venue, "operatingHours": bad_hours}),
+                            (f"{path}/operating-hours", {"items": bad_hours, "reason": "Changed schedule"})]:
+            status, error = self.request("PUT", route, body)
+            self.assertEqual(status, 422)
+            self.assertIn("operatingHours.0.time", error["error"]["fields"])
+            self.assertEqual(self.request("GET", path)[1], venue)
+            self.assertEqual(self.request("GET", f"{path}/history")[1], before_history)
+
     def test_any_venue_staff_can_replace_a_venue_over_http(self):
         status, venue = self.request("POST", "/venues", self.venue_payload(
             name="SMU Hall", address="Bras Basah", capacity=100,

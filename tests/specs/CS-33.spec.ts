@@ -20,6 +20,14 @@ function physicalVenue(overrides: Record<string, unknown> = {}) {
 }
 
 describe('CS-33 — venue records', () => {
+  it('TC-CS33-09 rejects closing at or before opening without accepting an overnight schedule', () => {
+    for (const closesAt of ['17:00', '18:00']) {
+      expect(validateVenue(physicalVenue({ operatingHours: [{ weekday: 'MONDAY', isClosed: false, opensAt: '18:00', closesAt }] })))
+        .toHaveProperty('operatingHours.0.time', ['Closing time must be after opening time'])
+    }
+    expect(validateVenue(physicalVenue({ operatingHours: [{ weekday: 'MONDAY', isClosed: false, opensAt: '00:00', closesAt: '23:59' }] }))).toEqual({})
+    expect(validateVenue(physicalVenue({ operatingHours: [{ weekday: 'MONDAY', isClosed: true, opensAt: '', closesAt: '' }] }))).toEqual({})
+  })
   it('TC-CS33-01 creates a complete physical-venue payload with the existing Reason or note field', async () => {
     const form = createVenueForm({ ...physicalVenue(), capacity: 500 } as never)
     expect(venuePayload(form, 'venue-staff-1')).toMatchObject({ ...physicalVenue(), capacity: 500 })

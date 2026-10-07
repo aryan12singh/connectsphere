@@ -8,6 +8,33 @@ const { availabilityRange } = require('../../services/booking-service/src/availa
 const week = calendarRange('week', new Date('2026-12-21T00:00:00Z'))
 
 describe('CS-34 — venue availability calendar', () => {
+  it('TC-CS34-07 requests Monday midnight in the venue zone and retains its early block in day and week views', () => {
+    const block = { id: 'early', title: 'Early maintenance', status: 'BLOCKED', startAt: '2026-12-20T16:30:00Z', endAt: '2026-12-20T17:30:00Z' }
+    for (const mode of ['day', 'week'] as const) {
+      const range = calendarRange(mode, new Date('2026-12-21T00:00:00Z'), 'Asia/Singapore')
+      expect(range.startAt).toBe('2026-12-20T16:00:00.000Z')
+      expect(range.endAt).toBe(mode === 'day' ? '2026-12-21T16:00:00.000Z' : '2026-12-27T16:00:00.000Z')
+      expect(intervalSegmentsForRange([block], range, 'Asia/Singapore')).toMatchObject([{ day: '2026-12-21', startAt: '2026-12-20T16:30:00.000Z', endAt: '2026-12-20T17:30:00.000Z' }])
+    }
+  })
+  it('TC-CS34-08 splits only at venue midnight and clips straddling ranges without duplicating midnight endings', () => {
+    const range = calendarRange('day', new Date('2026-12-22T00:00:00Z'), 'Asia/Singapore')
+    const overnight = { id: 'overnight-local', title: 'Night maintenance', status: 'BLOCKED', startAt: '2026-12-21T15:30:00Z', endAt: '2026-12-21T17:00:00Z' }
+    expect(intervalSegmentsForRange([overnight], range, 'Asia/Singapore')).toMatchObject([{ day: '2026-12-22', startAt: '2026-12-21T16:00:00.000Z', endAt: '2026-12-21T17:00:00.000Z' }])
+    const week = calendarRange('week', new Date('2026-12-21T00:00:00Z'), 'Asia/Singapore')
+    expect(intervalSegmentsForRange([overnight], week, 'Asia/Singapore').map(s => s.day)).toEqual(['2026-12-21', '2026-12-22'])
+    expect(intervalSegmentsForRange([{ ...overnight, endAt: '2026-12-21T16:00:00Z' }], week, 'Asia/Singapore').map(s => s.day)).toEqual(['2026-12-21'])
+  })
+  it('TC-CS34-09 respects 23-hour and 25-hour days in a western venue zone', () => {
+    for (const [day, start, end] of [
+      ['2027-03-14', '2027-03-14T05:00:00.000Z', '2027-03-15T04:00:00.000Z'],
+      ['2027-11-07', '2027-11-07T04:00:00.000Z', '2027-11-08T05:00:00.000Z'],
+    ]) {
+      const range = calendarRange('day', new Date(`${day}T00:00:00Z`), 'America/New_York')
+      expect(range).toEqual({ startAt: start, endAt: end })
+      expect(intervalSegmentsForRange([{ id: day!, title: 'Full day', status: 'BLOCKED', startAt: start!, endAt: end! }], range, 'America/New_York')).toMatchObject([{ day, startAt: start, endAt: end }])
+    }
+  })
   it('TC-CS34-01 renders an ordinary booking and BLOCKED interval separately', () => {
     const segments = intervalSegmentsForRange([{ id: 'booking', title: 'Launch', status: 'CONFIRMED', startAt: '2026-12-22T09:00:00Z', endAt: '2026-12-22T10:00:00Z' }, { id: 'block', title: 'Maintenance', status: 'BLOCKED', startAt: '2026-12-22T09:30:00Z', endAt: '2026-12-22T11:00:00Z' }], week)
     expect(segments.map(segment => `${segment.booking.id}:${segment.kind}`)).toEqual(['booking:booking', 'block:block'])
