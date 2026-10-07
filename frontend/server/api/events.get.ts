@@ -1,6 +1,8 @@
+// Explicit import (Nuxt also auto-imports it) so the CS-10/CS-30 tests, which
+// run this handler outside Nuxt, can call it.
 import { getQuery } from 'h3'
-import { kongBffFetch } from '../utils/kongBff'
-import { toOrganiserEvent } from '../utils/eventAdapter'
+import { createEventsResponse } from '../utils/eventMocks'
+import { listRequestRecords } from '../utils/eventRequestStore'
 
 export type EventStatus
   = | 'DRAFT'
@@ -34,9 +36,14 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   if (query.scope === 'booking') {
-    const response = await kongBffFetch<{ items?: unknown[], events?: unknown[] }>(event, '/events', { query: { page: 1, pageSize: 100 } })
-    const items = Array.isArray(response.items) ? response.items : (Array.isArray(response.events) ? response.events : [])
-    return { events: items.map(item => toOrganiserEvent(item as Record<string, unknown>)) }
+    // Event options for the booking form. Only Event Coordinators create
+    // venue bookings (2026-10-07), so only they get any; Venue Staff change
+    // booking status and do not need the event list.
+    if (user.role !== 'EVENT_COORDINATOR')
+      return { events: [] }
+
+    // Coordinator booking options remain assignment-scoped.
+    return createEventsResponse(listRequestRecords().filter(record => record.coordinatorId === user.id))
   }
 
   if (user.role !== 'EVENT_ORGANISER')

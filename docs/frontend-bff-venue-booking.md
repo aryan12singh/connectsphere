@@ -38,6 +38,21 @@ first; it does not write either history store.
 The frontend contract is intentionally named `/api/bookings/*`; only the Kong
 and booking-service contract retains the `/venue-bookings/*` path.
 
+## Business rules (2026-10-07)
+
+- Only Event Coordinators (`venue_bookings.create`) create bookings. A new
+  booking is always `TENTATIVELY_HELD`; the form sends no status.
+- Only Venue Staff (`venue_bookings.decide`) change a booking's status. The
+  form sends `{ status, reason }` only. Staff cannot set `BLOCKED` or
+  `AVAILABLE`; they do not block out calendar time.
+- A coordinator may edit the details of their own booking while it is
+  `TENTATIVELY_HELD`, never its status.
+- `GET /api/bookings/availability` returns other people's bookings as
+  `{ id, venueId, startAt, endAt, status: 'NOT_AVAILABLE', title: 'Not available' }`
+  for coordinators. The calendar shows them as unavailable and they do not open.
+- booking-service refuses overlapping bookings (409 `BOOKING_CONFLICT`) and
+  bookings for unknown or inactive venues (422).
+
 ## Authentication and errors
 
 Every route requires a Nuxt session with a server-side token. Kong and the

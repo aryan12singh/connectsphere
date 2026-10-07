@@ -18,6 +18,7 @@ LIST=(
   "venue_db|venue_operating_hours|$SEEDS/venue-service/prisma/seed/03_venue_db.sql"
   "booking_db|venue_booking_requests|$SEEDS/booking-service/prisma/seed/04_booking_db.sql"
   "event_db|activity_log|$SEEDS/event-service/prisma/seed/04_event_db.sql"
+  "booking_db|venue_booking_requests|/seed/backend/05_booking_db.sql"
 )
 
 for entry in "${LIST[@]}"; do

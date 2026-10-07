@@ -12,8 +12,15 @@ export interface BookingDraft {
   eventId?: string | null
 }
 
-const BLOCKING_STATUSES = new Set(['BLOCKED', 'TENTATIVELY_HELD', 'CONFIRMED', 'UNAVAILABLE'])
-const ALL_BOOKING_STATUSES = ['AVAILABLE', 'TENTATIVELY_HELD', 'CONFIRMED', 'BLOCKED', 'UNAVAILABLE', 'REJECTED', 'CANCELLED'] as const
+// Business rules (2026-10-07): only Event Coordinators create bookings; only
+// Venue Staff change a booking's status; other people's bookings arrive from
+// the server as NOT_AVAILABLE slots with times only. The server enforces all
+// of this again; these helpers only shape the screen.
+
+// NOT_AVAILABLE is how the server shows someone else's booking to a coordinator.
+const BLOCKING_STATUSES = new Set(['BLOCKED', 'TENTATIVELY_HELD', 'CONFIRMED', 'UNAVAILABLE', 'NOT_AVAILABLE'])
+// Statuses Venue Staff may set (no BLOCKED: staff do not block out time).
+const VENUE_STAFF_STATUSES = ['TENTATIVELY_HELD', 'CONFIRMED', 'REJECTED', 'UNAVAILABLE', 'CANCELLED'] as const
 
 function overlaps(left: BookingDraft, right: CalendarBooking) {
   return new Date(left.startAt) < new Date(right.endAt) && new Date(right.startAt) < new Date(left.endAt)
@@ -32,7 +39,7 @@ export function bookingDraftState(draft: BookingDraft, existing: CalendarBooking
     .filter(interval => interval.id !== excludeBookingId)
     .filter(interval => interval.venueId === undefined || interval.venueId === draft.venueId)
     .filter(interval => overlaps(draft, interval))
-  if (draft.status !== 'BLOCKED' && affected.some(interval => BLOCKING_STATUSES.has(interval.status))) {
+  if (affected.some(interval => BLOCKING_STATUSES.has(interval.status))) {
     errors.interval = 'This booking overlaps an unavailable interval.'
   }
   return {
@@ -47,32 +54,37 @@ export function isBlockingStatus(status: string) {
   return BLOCKING_STATUSES.has(status)
 }
 
-export function canCreateBlock(canDecide: boolean) {
-  return canDecide
+/** Only users with `venue_bookings.create` (Event Coordinators) create bookings. */
+export function canCreateBooking(hasCreatePermission: boolean) {
+  return hasCreatePermission
 }
 
-export function bookingSelectionStatuses(canDecide: boolean, canSetAllStatuses = false) {
-  if (canSetAllStatuses) return [...ALL_BOOKING_STATUSES]
-  return canDecide ? ['CONFIRMED', 'BLOCKED', 'TENTATIVELY_HELD', 'UNAVAILABLE'] : ['TENTATIVELY_HELD']
+/** Statuses the user may pick: Venue Staff get the decision list; nobody else changes status. */
+export function bookingSelectionStatuses(canDecide: boolean) {
+  return canDecide ? [...VENUE_STAFF_STATUSES] : ['TENTATIVELY_HELD']
 }
 
-/** Staff decision permission creates operational windows, not ordinary bookings. */
-export function venueStaffCreationState(editing: boolean) {
-  return {
-    initialStatus: 'BLOCKED',
-    statuses: editing
-      ? bookingSelectionStatuses(false, true).filter(status => status !== 'AVAILABLE')
-      : ['BLOCKED', 'UNAVAILABLE'],
-  }
+/** A slot the server sent without details (someone else's booking). */
+export function isHiddenBooking(booking: Pick<CalendarBooking, 'status'>) {
+  return booking.status === 'NOT_AVAILABLE'
 }
 
+/**
+ * A coordinator may edit the details of their own booking while it is
+ * TENTATIVELY_HELD. The status never changes here: Venue Staff decide it.
+ */
 export function coordinatorBookingEditState(booking: Pick<CalendarBooking, 'requestedById' | 'status'> | null | undefined, actorId: string | null | undefined) {
-  const canEdit = Boolean(booking && actorId && booking.requestedById === actorId && ['TENTATIVELY_HELD', 'CANCELLED'].includes(booking.status))
+  const canEdit = Boolean(booking && actorId && booking.requestedById === actorId && booking.status === 'TENTATIVELY_HELD')
   return {
     canEdit,
     readOnly: Boolean(booking) && !canEdit,
-    statuses: canEdit ? ['TENTATIVELY_HELD', 'CANCELLED'] : booking ? [booking.status] : ['TENTATIVELY_HELD'],
+    statuses: booking ? [booking.status] : ['TENTATIVELY_HELD'],
   }
+}
+
+/** The request body for Venue Staff: status and their reason only. */
+export function statusChangeBody(status: string, reason: string) {
+  return { status, reason: reason.trim() }
 }
 
 export function bookingDraftForSlot(venueId: string, timeZone: string, startAt: string, endAt: string): BookingDraft {

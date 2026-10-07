@@ -95,6 +95,30 @@ to them) · **No** · **n/a** (feature not built)
 interface yet.** Their rows fill in as venue, equipment and registration features
 are built.
 
+### Venues and venue bookings (Sprint 2, rules decided 2026-10-07)
+
+Venue Staff now have an interface (`/venue`). Every row is enforced by
+venue-service / booking-service through permissions (`venues.view`,
+`venues.manage`, `venue_bookings.create`, `venue_bookings.decide`), not
+only by hiding buttons.
+
+| Action | Organiser | Coordinator | Venue Staff | Tech Support | Attendee |
+| --- | --- | --- | --- | --- | --- |
+| View venues | No | Yes | Yes | No | No |
+| Create / edit / delete a venue, set Active/Inactive | No | No | Yes | No | No |
+| Create a venue booking (always starts Tentatively held) | No | Yes | **No** | No | No |
+| Edit details of a booking | No | Own, while Tentatively held | No | No | No |
+| Change a booking's status (confirm, reject, unavailable, cancel) | No | **No** | Yes | No | No |
+| Block out time on the venue calendar | No | No | **No** | No | No |
+| See a booking in full (title, reason, event, requester) | No | Own only | All | No | No |
+| See other people's bookings | No | As "Not available" (times only) | In full | No | No |
+| Booking history of a venue | No | Own bookings only | All | No | No |
+
+Overlapping bookings are refused by booking-service (409 `BOOKING_CONFLICT`),
+not only by the calendar. A venue marked Inactive cannot be booked.
+Event bookings (event-service, not built yet) will be decided by the Event
+Coordinator.
+
 ---
 
 ## Enforcement rules

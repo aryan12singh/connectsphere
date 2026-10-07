@@ -32,10 +32,13 @@ plugins:
   # Today each service derives the identity itself from the session token
   # (auth-service /internal/sessions/validate) and ignores these headers; when
   # the gateway starts adding them, the services can trust them.
+  # x-test-user-id / x-test-role are test-only identity headers that venue-
+  # and booking-service accept when NODE_ENV=test or AUTH_MODE=mock. Strip
+  # them too, so a misconfigured service can never be fooled from outside.
   - name: request-transformer
     config:
       remove:
-        headers: ["x-user-id", "x-user-roles", "x-organisation-id"]
+        headers: ["x-user-id", "x-user-roles", "x-organisation-id", "x-test-user-id", "x-test-role"]
 
 services:
   # ── auth-service: login, sessions, tech support admin API ─────────────
@@ -126,7 +129,8 @@ services:
         strip_path: false
 
   # Venue contract: services/venue-service/swagger.html (venue epic)
-  #   /venues, /venues/{id}, /venues/{id}/blocks, /venues/{id}/availability.
+  #   /venues, /venues/options, /venues/{id}, /venues/{id}/operating-hours,
+  #   /venues/{id}/history. (Availability lives in booking-service.)
   - name: venue-service
     url: http://venue-service:3000
     routes:

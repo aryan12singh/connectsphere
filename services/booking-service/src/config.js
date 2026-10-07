@@ -13,7 +13,8 @@ module.exports = {
   dataMode,
   databaseUrl,
   eventServiceUrl: process.env.EVENT_SERVICE_URL || 'http://localhost:3003',
-  venueServiceUrl: process.env.VENUE_SERVICE_URL || 'http://localhost:3003',
+  // venue-service, to check a venue exists and is active before booking it.
+  venueServiceUrl: process.env.VENUE_SERVICE_URL || 'http://localhost:3004',
   authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3002',
   internalApiKey: process.env.INTERNAL_API_KEY || 'change-me-dev-internal-key',
   isTest: process.env.NODE_ENV === 'test',

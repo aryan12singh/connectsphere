@@ -17,7 +17,7 @@ module.exports = {
   dataMode,
   databaseUrl,
   maxVenueCapacity,
-  bookingServiceUrl: process.env.BOOKING_SERVICE_URL || 'http://localhost:3001',
+  bookingServiceUrl: process.env.BOOKING_SERVICE_URL || 'http://localhost:3005',
   authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3002',
   internalApiKey: process.env.INTERNAL_API_KEY || 'change-me-dev-internal-key',
   isTest: process.env.NODE_ENV === 'test',

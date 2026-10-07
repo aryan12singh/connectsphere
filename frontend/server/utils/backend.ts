@@ -43,16 +43,26 @@ export async function backendFetch<T>(
     if (error instanceof FetchError && error.statusCode) {
       if (error.statusCode === 401 && options.token)
         await clearUserSession(event)
+      // Our services answer { error: '...' } or { error: { code, message } };
+      // Kong answers { message: '...' }.
       const data = error.data as {
         error?: string | { message?: string }
+        message?: string
         details?: string[]
       } | undefined
       const serviceMessage = typeof data?.error === 'string'
         ? data.error
         : data?.error?.message
+      // 502/503/504 straight from Kong (no service message) mean the service
+      // behind it is down, restarting, or was rebuilt (restart Kong). Say so
+      // plainly. A service's own 503 message (e.g. "Unable to verify linked
+      // bookings") is kept.
+      if (!serviceMessage && [502, 503, 504].includes(error.statusCode)) {
+        throw createError({ statusCode: 503, statusMessage: 'The ConnectSphere service is unavailable. Please try again shortly.', data })
+      }
       throw createError({
         statusCode: error.statusCode,
-        statusMessage: serviceMessage ?? 'Request failed',
+        statusMessage: serviceMessage ?? data?.message ?? 'Request failed',
         data,
       })
     }

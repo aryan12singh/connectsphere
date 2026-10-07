@@ -5,16 +5,50 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "gatewayUrl", "value": "http://localhost:8000" },
-    { "key": "coordinatorEmail", "value": "aisha.rahman@connectsphere.sg" },
-    { "key": "venueStaffEmail", "value": "ravi.kumar@marinaconvention.sg" },
-    { "key": "password", "value": "Password123!" },
-    { "key": "coordinatorToken", "value": "" },
-    { "key": "venueStaffToken", "value": "" },
-    { "key": "venueId", "value": "b3000000-0000-4000-8000-000000000001" },
-    { "key": "eventId", "value": "postman-event-001" },
-    { "key": "bookingId", "value": "" },
-    { "key": "idempotencyKey", "value": "postman-booking-001" }
+    {
+      "key": "gatewayUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "coordinatorEmail",
+      "value": "aisha.rahman@connectsphere.sg"
+    },
+    {
+      "key": "venueStaffEmail",
+      "value": "ravi.kumar@marinaconvention.sg"
+    },
+    {
+      "key": "coordinatorToken",
+      "value": ""
+    },
+    {
+      "key": "venueStaffToken",
+      "value": ""
+    },
+    {
+      "key": "venueId",
+      "value": "b3000000-0000-4000-8000-000000000001"
+    },
+    {
+      "key": "eventId",
+      "value": "postman-event-001"
+    },
+    {
+      "key": "bookingId",
+      "value": ""
+    },
+    {
+      "key": "idempotencyKey",
+      "value": "postman-booking-001"
+    },
+    {
+      "key": "coordinatorPassword",
+      "value": "Aisha@CS05!"
+    },
+    {
+      "key": "venueStaffPassword",
+      "value": "Ravi@CS08!"
+    }
   ],
   "item": [
     {
@@ -40,13 +74,31 @@
           ],
           "request": {
             "method": "POST",
-            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{coordinatorEmail}}\",\n  \"password\": \"{{password}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "raw": "{\n  \"email\": \"{{coordinatorEmail}}\",\n  \"password\": \"{{coordinatorPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{gatewayUrl}}/auth/login", "host": [ "{{gatewayUrl}}" ], "path": [ "auth", "login" ] }
+            "url": {
+              "raw": "{{gatewayUrl}}/auth/login",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
           }
         },
         {
@@ -69,13 +121,31 @@
           ],
           "request": {
             "method": "POST",
-            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{venueStaffEmail}}\",\n  \"password\": \"{{password}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "raw": "{\n  \"email\": \"{{venueStaffEmail}}\",\n  \"password\": \"{{venueStaffPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{gatewayUrl}}/auth/login", "host": [ "{{gatewayUrl}}" ], "path": [ "auth", "login" ] }
+            "url": {
+              "raw": "{{gatewayUrl}}/auth/login",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
           }
         }
       ]
@@ -87,12 +157,31 @@
           "name": "List bookings for a venue",
           "request": {
             "method": "GET",
-            "header": [ { "key": "Authorization", "value": "Bearer {{venueStaffToken}}" } ],
-            "url": { "raw": "{{gatewayUrl}}/venue-bookings?venueId={{venueId}}", "host": [ "{{gatewayUrl}}" ], "path": [ "venue-bookings" ], "query": [ { "key": "venueId", "value": "{{venueId}}" } ] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueStaffToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/venue-bookings?venueId={{venueId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "venue-bookings"
+              ],
+              "query": [
+                {
+                  "key": "venueId",
+                  "value": "{{venueId}}"
+                }
+              ]
+            }
           }
         },
         {
-          "name": "Create tentative booking (explicit status)",
+          "name": "Coordinator creates a booking (starts TENTATIVELY_HELD)",
           "event": [
             {
               "listen": "test",
@@ -110,16 +199,37 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{coordinatorToken}}" },
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{coordinatorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"eventId\": \"{{eventId}}\",\n  \"venueId\": \"{{venueId}}\",\n  \"title\": \"Postman booking smoke test\",\n  \"reason\": \"Verify booking submission\",\n  \"startAt\": \"2026-12-20T01:00:00.000Z\",\n  \"endAt\": \"2026-12-20T02:00:00.000Z\",\n  \"timeZone\": \"Asia/Singapore\",\n  \"status\": \"TENTATIVELY_HELD\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "raw": "{\n  \"eventId\": \"{{eventId}}\",\n  \"venueId\": \"{{venueId}}\",\n  \"title\": \"Postman booking smoke test\",\n  \"reason\": \"Verify booking submission\",\n  \"startAt\": \"2026-12-20T01:00:00.000Z\",\n  \"endAt\": \"2026-12-20T02:00:00.000Z\",\n  \"timeZone\": \"Asia/Singapore\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{gatewayUrl}}/venue-bookings", "host": [ "{{gatewayUrl}}" ], "path": [ "venue-bookings" ] }
+            "url": {
+              "raw": "{{gatewayUrl}}/venue-bookings",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "venue-bookings"
+              ]
+            }
           }
         },
         {
@@ -127,56 +237,162 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{coordinatorToken}}" },
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{coordinatorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"eventId\": \"{{eventId}}\",\n  \"venueId\": \"{{venueId}}\",\n  \"title\": \"Postman booking smoke test\",\n  \"reason\": \"Verify booking submission\",\n  \"startAt\": \"2026-12-20T01:00:00.000Z\",\n  \"endAt\": \"2026-12-20T02:00:00.000Z\",\n  \"timeZone\": \"Asia/Singapore\",\n  \"status\": \"TENTATIVELY_HELD\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{gatewayUrl}}/venue-bookings", "host": [ "{{gatewayUrl}}" ], "path": [ "venue-bookings" ] }
+            "url": {
+              "raw": "{{gatewayUrl}}/venue-bookings",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "venue-bookings"
+              ]
+            }
           }
         },
         {
           "name": "Get booking",
           "request": {
             "method": "GET",
-            "header": [ { "key": "Authorization", "value": "Bearer {{coordinatorToken}}" } ],
-            "url": { "raw": "{{gatewayUrl}}/venue-bookings/{{bookingId}}", "host": [ "{{gatewayUrl}}" ], "path": [ "venue-bookings", "{{bookingId}}" ] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{coordinatorToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/venue-bookings/{{bookingId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "venue-bookings",
+                "{{bookingId}}"
+              ]
+            }
           }
         },
         {
-          "name": "Coordinator cancels tentative booking",
+          "name": "Venue staff confirms the booking (status change)",
           "request": {
             "method": "PUT",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{coordinatorToken}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueStaffToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"eventId\": \"{{eventId}}\",\n  \"venueId\": \"{{venueId}}\",\n  \"title\": \"Postman booking smoke test\",\n  \"reason\": \"Coordinator cancelled the tentative hold\",\n  \"startAt\": \"2026-12-20T01:00:00.000Z\",\n  \"endAt\": \"2026-12-20T02:00:00.000Z\",\n  \"timeZone\": \"Asia/Singapore\",\n  \"status\": \"CANCELLED\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "raw": "{\n  \"status\": \"CONFIRMED\",\n  \"reason\": \"Venue staff approved the request\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "url": { "raw": "{{gatewayUrl}}/venue-bookings/{{bookingId}}", "host": [ "{{gatewayUrl}}" ], "path": [ "venue-bookings", "{{bookingId}}" ] }
-          }
+            "url": {
+              "raw": "{{gatewayUrl}}/venue-bookings/{{bookingId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "venue-bookings",
+                "{{bookingId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('venue staff can change status', function () { pm.expect(pm.response.code).to.eql(200); });",
+                  "pm.expect(pm.response.json().status).to.eql('CONFIRMED');"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "List booking history for venue",
           "request": {
             "method": "GET",
-            "header": [ { "key": "Authorization", "value": "Bearer {{venueStaffToken}}" } ],
-            "url": { "raw": "{{gatewayUrl}}/venue-bookings/history?venueId={{venueId}}", "host": [ "{{gatewayUrl}}" ], "path": [ "venue-bookings", "history" ], "query": [ { "key": "venueId", "value": "{{venueId}}" } ] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueStaffToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/venue-bookings/history?venueId={{venueId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "venue-bookings",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "venueId",
+                  "value": "{{venueId}}"
+                }
+              ]
+            }
           }
         },
         {
           "name": "Availability intervals",
           "request": {
             "method": "GET",
-            "header": [ { "key": "Authorization", "value": "Bearer {{venueStaffToken}}" } ],
-            "url": { "raw": "{{gatewayUrl}}/venue-bookings/availability?venueId={{venueId}}", "host": [ "{{gatewayUrl}}" ], "path": [ "venue-bookings", "availability" ], "query": [ { "key": "venueId", "value": "{{venueId}}" } ] }
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{venueStaffToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/venue-bookings/availability?venueId={{venueId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "venue-bookings",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "venueId",
+                  "value": "{{venueId}}"
+                }
+              ]
+            }
           }
         }
       ]

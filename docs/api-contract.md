@@ -187,6 +187,4 @@ The existing auth routes keep their paths. What changes in the **session / role 
 | `GET /users/*` | user-service | read-only; `/internal/*` never routed |
 | `/event-requests/*`, `/events/*` | event-service | `POST /events/{id}/confirm` → orchestrator (CS-31) |
 | `/venues/*` | venue-service | |
-| `/venue-bookings/*` | booking-service | Coordinator owner + current Event assignment; Venue Staff decisions; internal read-only availability |
-
-Booking-service forwards the verified caller token to `GET /events/{id}/booking-access` before Coordinator creation/detail/edit/list/history. Event-service returns only the actual Event ID for its current Coordinator. Wrong/removed assignment denies 403; unavailable assignment validation returns 503 without writes. Venue Staff operational windows retain decision-only handling. CS-30 reassignment and confirmation remain separate workflows.
+| `/venue-bookings/*` | booking-service | Built. Coordinators create, Venue Staff decide status; `POST /venue-bookings/{id}/decision` → orchestrator (not built) |
