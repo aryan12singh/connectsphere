@@ -74,3 +74,9 @@ TC-CS11-21: With the same authenticated Organiser session and role, remove `even
 ## HTTP transport boundary amendment — 2026-10-07
 
 Backend supplemental HTTP-01 follows the standing10KB security rule: an unauthenticated10240-byte JSON object reaches the401 authentication check, while10241 bytes return413/PAYLOAD_TOO_LARGE without a database call. HTTP-02 submits malformed JSON with private content and requires400/BAD_REQUEST plus a stable generic message. Two meaningful Node22 RED failures precede two GREEN passes; dated HTTP records supplement the main BFF/component specs. The whole request limit is independent of individual field limits.
+
+## Form hydration regression — 7 October 2026
+
+| Test Case ID | AC | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Automation layer | Date of Creation |
+|---|---|---|---|---|---|---|---|---|
+| TC-CS11-25 | 1,2,5; reliable form interaction | No native form submission before handlers attach | Production SSR or real Vue server renderer | Render all form modes before mount; use hydrated form afterward | Meaningful synthetic draft; browser session with JavaScript disabled | Inputs/actions disabled before mount; no native GET or lost early input; normal actions work after mount | SSR component + production desktop/mobile | 2026-10-07T02:43:05+00:00 |

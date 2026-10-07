@@ -202,3 +202,23 @@ describe('CS-11 — TC-CS11-21 current trusted permissions', () => {
     } finally { api.permissionOverrides.delete('owner') }
   })
 })
+
+describe('CS-11 — TC-CS11-25 form hydration safety', () => {
+  it('SSR disables editing and actions until Vue attaches handlers, for every form mode', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const { default: FormPage } = await import('../../frontend/app/components/RequestFormPage.vue')
+    const { emptyRequestForm } = await import('../../frontend/app/components/request-form-state')
+    for (const mode of ['create', 'draft', 'edit', 'readonly'] as const) {
+      const modelValue = { ...emptyRequestForm(), purpose: 'Meaningful preloaded draft' }
+      const html = await renderToString(createSSRApp(FormPage, { modelValue, mode, title: 'Request', statusLabel: 'Draft', canEdit: true }))
+      const container = document.createElement('div'); container.innerHTML = html
+      expect((container.querySelector('fieldset') as HTMLFieldSetElement).disabled, mode).toBe(true)
+      // The native fieldset disables its checkbox buttons by inheritance.
+      // Submission/edit actions sit outside it and need their own disabled state.
+      const buttons = [...container.querySelectorAll('form button')].filter(button => !button.closest('fieldset')) as HTMLButtonElement[]
+      expect(buttons.length).toBeGreaterThan(0)
+      expect(buttons.every(button => button.disabled), mode).toBe(true)
+    }
+  })
+})

@@ -47,3 +47,17 @@ test('CS-11 accessibility: mandatory name and purpose are announced to assistive
   await expect(field(page, 'Event name')).toHaveAttribute('aria-required', 'true')
   await expect(field(page, 'Purpose')).toHaveAttribute('aria-required', 'true')
 })
+
+test('TC-CS11-25 LIVE server-rendered request form cannot submit before client handlers attach', async ({ page, browser }) => {
+  await signIn(page)
+  // Reuse the real sealed session, disabling JavaScript only in this context.
+  const beforeHydration = await browser.newContext({ baseURL: new URL(page.url()).origin, storageState: await page.context().storageState(), viewport: page.viewportSize() ?? undefined, javaScriptEnabled: false })
+  try {
+    const ssr = await beforeHydration.newPage()
+    await ssr.goto('/requests/new')
+    await expect(ssr.getByRole('heading', { name: 'New event request' })).toBeVisible()
+    await expect(field(ssr, 'Event name')).toBeDisabled()
+    await expect(ssr.getByRole('button', { name: 'Submit request', exact: true })).toBeDisabled()
+    await expect(ssr.getByRole('button', { name: 'Save draft', exact: true })).toBeDisabled()
+  } finally { await beforeHydration.close() }
+})

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import EventRequestForm from './EventRequestForm.vue'
@@ -35,6 +36,9 @@ defineEmits<{
 }>()
 
 const form = defineModel<RequestFormState>({ required: true })
+// SSR controls remain inert until input and submit handlers are attached.
+const ready = ref(false)
+onMounted(() => { ready.value = true })
 </script>
 
 <template>
@@ -68,30 +72,30 @@ const form = defineModel<RequestFormState>({ required: true })
     <p v-if="submitError" role="alert" class="mb-4 text-sm text-destructive">
       {{ submitError }}
     </p>
-    <EventRequestForm v-model="form" :disabled="disabled || isSubmitting" :field-errors="fieldErrors" />
+    <EventRequestForm v-model="form" :disabled="!ready || disabled || isSubmitting" :field-errors="fieldErrors" />
     <div class="mt-6 grid gap-3" :class="mode === 'edit' || mode === 'readonly' ? 'grid-cols-1' : 'grid-cols-2'">
       <template v-if="mode === 'create'">
-        <Button type="button" variant="outline" class="w-full" :disabled="isSubmitting || !hasMeaningfulInput(form)" @click="$emit('save-draft')">
+        <Button type="button" variant="outline" class="w-full" :disabled="!ready || isSubmitting || !hasMeaningfulInput(form)" @click="$emit('save-draft')">
           Save draft
         </Button>
-        <Button type="submit" class="w-full" :disabled="isSubmitting">
+        <Button type="submit" class="w-full" :disabled="!ready || isSubmitting">
           Submit request
         </Button>
       </template>
       <template v-else-if="mode === 'draft'">
-        <Button type="button" variant="outline" class="w-full" :disabled="isSubmitting" @click="$emit('save')">
+        <Button type="button" variant="outline" class="w-full" :disabled="!ready || isSubmitting" @click="$emit('save')">
           Save changes
         </Button>
-        <Button type="submit" class="w-full" :disabled="isSubmitting">
+        <Button type="submit" class="w-full" :disabled="!ready || isSubmitting">
           Submit request
         </Button>
       </template>
       <template v-else-if="mode === 'edit'">
-        <Button type="button" variant="outline" :disabled="isSubmitting || !hasMeaningfulInput(form)" @click="$emit('save')">Save changes</Button>
-        <Button type="submit" class="w-full" :disabled="isSubmitting">Resubmit request</Button>
+        <Button type="button" variant="outline" :disabled="!ready || isSubmitting || !hasMeaningfulInput(form)" @click="$emit('save')">Save changes</Button>
+        <Button type="submit" class="w-full" :disabled="!ready || isSubmitting">Resubmit request</Button>
       </template>
       <template v-else>
-        <Button v-if="canEdit" type="button" class="w-full" @click="$emit('edit')">
+        <Button v-if="canEdit" type="button" class="w-full" :disabled="!ready || isSubmitting" @click="$emit('edit')">
           Edit request
         </Button>
       </template>
