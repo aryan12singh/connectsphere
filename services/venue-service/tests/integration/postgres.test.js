@@ -26,7 +26,7 @@ test('TC-CS33-09 invalid create and both edit routes preserve PostgreSQL data an
   assert.equal(await prisma.venue.count(), 1);
   assert.deepEqual(await prisma.venue.findUnique({ where: { id: venue.id }, include: { operatingHours: true, history: true } }), before);
 });
-test('TC-CS33-08 internal roles can view; only Venue Staff can mutate', async () => {
+test('TC-CS33-10 internal roles can view; only Venue Staff can mutate', async () => {
   for (const role of ['EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF', 'EVENT_ORGANISER', 'ATTENDEE']) {
     const headers = { 'x-test-user-id': role, 'x-test-role': role };
     assert.equal((await api.http(`/venues/${venue.id}`, { headers })).status, ['EVENT_ORGANISER', 'ATTENDEE'].includes(role) ? 403 : 200);

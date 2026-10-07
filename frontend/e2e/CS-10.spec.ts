@@ -28,3 +28,13 @@ test('TC-CS10-12 LIVE multi-role switch survives reload; unassigned roles cannot
   await page.getByRole('combobox', { name: 'Active role' }).selectOption('EVENT_ORGANISER')
   await expect(page).toHaveURL(new URL('/', page.url()).href)
 })
+
+test.describe('CS-10 credential form before hydration', () => {
+  test.use({ javaScriptEnabled: false })
+  test('TC-CS10-17 LIVE SSR credential inputs and submit stay disabled before handlers attach', async ({ page }) => {
+    await page.goto('/login')
+    await expect(field(page, 'Email')).toBeDisabled()
+    await expect(field(page, 'Password')).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeDisabled()
+  })
+})

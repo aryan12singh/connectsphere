@@ -21,6 +21,7 @@ const isDark = ref(false)
 const email = ref('')
 const password = ref('')
 const isSubmitting = ref(false)
+const ready = ref(false)
 const successMessage = ref('')
 const errorMessage = ref('')
 
@@ -46,6 +47,7 @@ function applyTheme(dark: boolean) {
 }
 
 onMounted(() => {
+  ready.value = true
   const savedTheme = localStorage.getItem(THEME_STORAGE_KEY)
   isDark.value = savedTheme
     ? savedTheme === 'dark'
@@ -85,8 +87,8 @@ async function handleSubmit() {
     }
     successMessage.value = `Signed in as ${signedInEmail}`
     // Sealed session lives server-side: refresh the client session state,
-    // then land on the single homepage — BFF filters data server-side.
-    // No per-role redirect path; role is never trusted client-side for authorization.
+    // then navigate through the role-home guard. Backend identity and record
+    // permissions remain the authorization boundary.
     await refreshSession()
     await navigateTo('/')
   }
@@ -142,7 +144,7 @@ async function handleSubmit() {
                 type="email"
                 autocomplete="email"
                 placeholder="m@example.com"
-                :disabled="isSubmitting"
+                :disabled="!ready || isSubmitting"
                 required
               />
             </Field>
@@ -160,7 +162,7 @@ async function handleSubmit() {
                 name="password"
                 type="password"
                 autocomplete="current-password"
-                :disabled="isSubmitting"
+                :disabled="!ready || isSubmitting"
                 required
               />
             </Field>
@@ -179,7 +181,7 @@ async function handleSubmit() {
         <p v-if="errorMessage" role="alert" class="text-center text-sm text-destructive">
           {{ errorMessage }}
         </p>
-        <Button type="submit" form="login-form" class="w-full" :disabled="isSubmitting">
+        <Button type="submit" form="login-form" class="w-full" :disabled="!ready || isSubmitting">
           {{ isSubmitting ? 'Signing in…' : 'Sign in' }}
         </Button>
         <p class="text-center text-sm text-muted-foreground">

@@ -25,7 +25,7 @@ test('TC-CS26-10 permission revocation in PostgreSQL takes effect on the next re
   assert.equal(me.status, 200); assert.ok(!me.body.permissions.includes('event_requests.create'));
   await prisma.rolePermission.create({ data: { role: 'EVENT_ORGANISER', permission: 'event_requests.create' } });
 });
-test('TC-CS34-06 seeded Technical Support can read venue data without booking decision rights', async () => {
+test('TC-CS34-12 seeded Technical Support can read venue data without booking decision rights', async () => {
   const rows = await prisma.rolePermission.findMany({ where: { role: 'TECHNICAL_SUPPORT_STAFF' } });
   assert.ok(rows.some(r => r.permission === 'venues.view'));
   assert.ok(!rows.some(r => r.permission === 'venue_bookings.decide' || r.permission === 'venues.manage'));

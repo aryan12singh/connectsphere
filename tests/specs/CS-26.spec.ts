@@ -74,3 +74,17 @@ describe('CS-26 — role and effective capability intersection', () => {
     for (const roles of [[], ['UNKNOWN'], ['EVENT_ORGANISER', 'UNKNOWN']]) expect(hasPermission({ roles, permissions: actions }, 'event_requests.create')).toBe(false)
   })
 })
+
+describe('CS-26 — TC-CS26-15 credential form hydration safety', () => {
+  it('SSR disables credential inputs and submission until handlers attach', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const { default: Page } = await import('../../frontend/app/pages/signup.vue')
+    const html = await renderToString(createSSRApp(Page))
+    const container = document.createElement('div'); container.innerHTML = html
+    const fields = [...container.querySelectorAll('form input')] as HTMLInputElement[]
+    expect(fields.length).toBeGreaterThan(0)
+    expect(fields.every(field => field.disabled)).toBe(true)
+    expect((container.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(true)
+  })
+})

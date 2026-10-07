@@ -590,3 +590,17 @@ describe('CS-10 — TC-CS10-09 configuration fails closed',()=>{
   }
  })
 })
+
+describe('CS-10 — TC-CS10-17 credential form hydration safety', () => {
+  it('SSR disables credential inputs and submission until handlers attach', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const { default: Page } = await import('../../frontend/app/pages/login.vue')
+    const html = await renderToString(createSSRApp(Page))
+    const container = document.createElement('div'); container.innerHTML = html
+    const fields = [...container.querySelectorAll('form input')] as HTMLInputElement[]
+    expect(fields.length).toBeGreaterThan(0)
+    expect(fields.every(field => field.disabled)).toBe(true)
+    expect((container.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(true)
+  })
+})

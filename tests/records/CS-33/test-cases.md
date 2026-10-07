@@ -25,3 +25,4 @@ operation is part of CS-33.
 | Test Case ID | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Date of Creation |
 |---|---|---|---|---|---|---|
 | TC-CS33-09 | Reject reversed/equal operating hours atomically | Existing venue; Venue Staff; real PostgreSQL | Invalid POST, full PUT and hours PUT; reread data/history | opens09:00, closes08:00 or09:00 |422 field guidance; no venue, hours or history mutation | 2026-10-07 00:46:00 |
+| TC-CS33-10 | Internal venue read and specific write roles | Disposable venue database and five authenticated role fixtures | Read venue as each role; attempt replacement as each | Same venue, full valid update body | Coordinator/Venue/Support read200, public roles403; only Venue Staff writes200 | PostgreSQL API + action guard unit | 2026-10-07T02:48:16+00:00 |

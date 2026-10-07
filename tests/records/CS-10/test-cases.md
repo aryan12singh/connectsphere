@@ -41,3 +41,9 @@ The five role homes are `/` (Organiser/Coordinator), `/venue`, `/support` and `/
 | TC-CS10-16 | Forbidden typed route | Authenticated Venue Staff/Attendee | Open request review URL directly | Unrelated role | Access-denied home; API role/relationship checks remain authoritative | 2026-10-07 01:06:00 |
 
 TC05 additionally validates loss of all recognised roles on the internal session endpoint. Dedicated Node Auth tests exercise real handlers with external identity/database fixtures; PostgreSQL integration uses actual sessions/grants; browser cases use real Keycloak, BFF and cookies. Human independent verification is still required.
+
+## Credential form hydration regression
+
+| Test Case ID | Scenario | Steps | Expected result | Layer | Date of Creation |
+|---|---|---|---|---|---|
+| TC-CS10-17 | Login cannot natively submit before handlers attach | Render SSR/login with JavaScript disabled, inspect email/password/submit; exercise normal login after hydration | Credentials and submit disabled before mount, normal login works afterward; no native GET of credentials | SSR component + production desktop/mobile | 2026-10-07T02:50:32+00:00 |

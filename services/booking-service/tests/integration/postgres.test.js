@@ -25,7 +25,7 @@ test('TC-CS34-07 UTC query for the complete local day returns its early Monday b
   assert.equal(result.status, 200); assert.equal(result.body.items[0].id, booking.id);
   assert.equal(await prisma.venueBookingActivity.count({ where: { bookingId: booking.id } }), 1);
 });
-test('TC-CS34-06 Technical Support reads availability but cannot decide or create', async () => {
+test('TC-CS34-12 Technical Support reads availability but cannot decide or create', async () => {
   actor = { id: 'support', role: 'TECHNICAL_SUPPORT_STAFF', roles: ['TECHNICAL_SUPPORT_STAFF'], permissions: ['venues.view', 'venue_bookings.decide', 'venue_bookings.create'] };
   const result = await api.http('/venue-bookings/availability?venueId=pg-venue&startAt=2026-12-20T16:00:00Z&endAt=2026-12-21T16:00:00Z', { headers });
   assert.equal(result.status, 200);

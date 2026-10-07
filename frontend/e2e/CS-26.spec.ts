@@ -64,3 +64,13 @@ test('TC-CS26-14 LIVE only the assigned Coordinator can create an event booking;
     expect((await (await assigned.get(`/api/bookings/history?venueId=${booking.venueId}`)).json()).items).toEqual(before.items)
   } finally { await assigned.dispose(); await other.dispose() }
 })
+
+test.describe('CS-26 credential form before hydration', () => {
+  test.use({ javaScriptEnabled: false })
+  test('TC-CS26-15 LIVE SSR credential inputs and submit stay disabled before handlers attach', async ({ page }) => {
+    await page.goto('/signup')
+    await expect(field(page, 'Email')).toBeDisabled()
+    await expect(field(page, 'Password')).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Create account', exact: true })).toBeDisabled()
+  })
+})

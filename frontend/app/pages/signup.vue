@@ -29,6 +29,7 @@ const serverFields = ref<Record<string, string[]>>({})
 const password = ref('')
 const confirmPassword = ref('')
 const isSubmitting = ref(false)
+const ready = ref(false)
 const errorMessage = ref('')
 const triedSubmit = ref(false) // only show field errors after the first attempt
 
@@ -129,6 +130,7 @@ function applyTheme(dark: boolean) {
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
 }
 onMounted(() => {
+  ready.value = true
   const savedTheme = localStorage.getItem(THEME_STORAGE_KEY)
   isDark.value = savedTheme ? savedTheme === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
   applyTheme(isDark.value)
@@ -171,7 +173,7 @@ watch(isDark, (dark) => {
           <FieldGroup class="gap-5">
             <Field class="gap-2">
               <FieldLabel for="signup-role">Account type</FieldLabel>
-              <select id="signup-role" v-model="role" aria-label="Account type" :disabled="isSubmitting" class="h-9 rounded-3xl border border-border bg-background px-3 text-sm">
+              <select id="signup-role" v-model="role" aria-label="Account type" :disabled="!ready || isSubmitting" class="h-9 rounded-3xl border border-border bg-background px-3 text-sm">
                 <option value="ATTENDEE">Attendee</option><option value="EVENT_ORGANISER">Organiser</option>
               </select>
             </Field>
@@ -180,7 +182,7 @@ watch(isDark, (dark) => {
                 <FieldLabel for="firstName">First name</FieldLabel>
                 <Input
                   id="firstName" v-model="firstName" name="firstName" autocomplete="given-name" maxlength="100"
-                  :disabled="isSubmitting" required :aria-invalid="!!fieldErrors.firstName"
+                  :disabled="!ready || isSubmitting" required :aria-invalid="!!fieldErrors.firstName"
                   :aria-describedby="fieldErrors.firstName ? 'firstName-error' : undefined"
                 />
                 <FieldError v-if="fieldErrors.firstName" id="firstName-error">{{ fieldErrors.firstName }}</FieldError>
@@ -189,7 +191,7 @@ watch(isDark, (dark) => {
                 <FieldLabel for="lastName">Last name</FieldLabel>
                 <Input
                   id="lastName" v-model="lastName" name="lastName" autocomplete="family-name" maxlength="100"
-                  :disabled="isSubmitting" required :aria-invalid="!!fieldErrors.lastName"
+                  :disabled="!ready || isSubmitting" required :aria-invalid="!!fieldErrors.lastName"
                   :aria-describedby="fieldErrors.lastName ? 'lastName-error' : undefined"
                 />
                 <FieldError v-if="fieldErrors.lastName" id="lastName-error">{{ fieldErrors.lastName }}</FieldError>
@@ -200,7 +202,7 @@ watch(isDark, (dark) => {
               <FieldLabel for="email">Email</FieldLabel>
               <Input
                 id="email" v-model="email" name="email" type="email" autocomplete="email" maxlength="254"
-                placeholder="m@example.com" :disabled="isSubmitting" required :aria-invalid="!!fieldErrors.email"
+                placeholder="m@example.com" :disabled="!ready || isSubmitting" required :aria-invalid="!!fieldErrors.email"
                 :aria-describedby="fieldErrors.email ? 'email-error' : undefined"
               />
               <FieldError v-if="fieldErrors.email" id="email-error">{{ fieldErrors.email }}</FieldError>
@@ -208,7 +210,7 @@ watch(isDark, (dark) => {
 
             <Field class="gap-2">
               <FieldLabel for="company">Organisation <span v-if="role === 'ATTENDEE'" class="font-normal text-muted-foreground">(optional)</span></FieldLabel>
-              <Input id="company" v-model="company" name="company" autocomplete="organization" maxlength="200" :disabled="isSubmitting" :required="role === 'EVENT_ORGANISER'" :aria-invalid="!!fieldErrors.company" :aria-describedby="fieldErrors.company ? 'company-error' : undefined" />
+              <Input id="company" v-model="company" name="company" autocomplete="organization" maxlength="200" :disabled="!ready || isSubmitting" :required="role === 'EVENT_ORGANISER'" :aria-invalid="!!fieldErrors.company" :aria-describedby="fieldErrors.company ? 'company-error' : undefined" />
               <FieldError v-if="fieldErrors.company" id="company-error">{{ fieldErrors.company }}</FieldError>
             </Field>
 
@@ -216,7 +218,7 @@ watch(isDark, (dark) => {
               <FieldLabel for="password">Password</FieldLabel>
               <Input
                 id="password" v-model="password" name="password" type="password" autocomplete="new-password" maxlength="128"
-                :disabled="isSubmitting" required :aria-invalid="!!fieldErrors.password"
+                :disabled="!ready || isSubmitting" required :aria-invalid="!!fieldErrors.password"
                 aria-describedby="password-rules"
               />
               <FieldError v-if="fieldErrors.password">{{ fieldErrors.password }}</FieldError>
@@ -239,7 +241,7 @@ watch(isDark, (dark) => {
               <FieldLabel for="confirmPassword">Confirm password</FieldLabel>
               <Input
                 id="confirmPassword" v-model="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password"
-                maxlength="128" :disabled="isSubmitting" required :aria-invalid="!!fieldErrors.confirmPassword"
+                maxlength="128" :disabled="!ready || isSubmitting" required :aria-invalid="!!fieldErrors.confirmPassword"
                 :aria-describedby="fieldErrors.confirmPassword ? 'confirmPassword-error' : undefined"
               />
               <FieldError v-if="fieldErrors.confirmPassword" id="confirmPassword-error">{{ fieldErrors.confirmPassword }}</FieldError>
@@ -252,7 +254,7 @@ watch(isDark, (dark) => {
         <p v-if="errorMessage" role="alert" class="text-center text-sm text-destructive">
           {{ errorMessage }}
         </p>
-        <Button type="submit" form="signup-form" class="w-full" :disabled="isSubmitting">
+        <Button type="submit" form="signup-form" class="w-full" :disabled="!ready || isSubmitting">
           {{ isSubmitting ? 'Creating account…' : 'Create account' }}
         </Button>
         <p class="text-center text-sm text-muted-foreground">
