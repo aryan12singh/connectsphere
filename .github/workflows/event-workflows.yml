@@ -1,4 +1,4 @@
-name: Event request workflows
+name: Sprint 2 checks
 on:
   pull_request:
   push:
@@ -7,13 +7,16 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: event-workflows-${{ github.ref }}
+  group: sprint2-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
 jobs:
-  requests:
-    name: Request, venue and booking regression tests
+  frontend:
+    name: Frontend checks
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -30,6 +33,7 @@ jobs:
       NUXT_AUTH_MODE: mock
       NUXT_SESSION_PASSWORD: isolated-ci-cookie-password-at-least-32-characters
       TEST_RUN_PHASE: GREEN
+      CS_VERIFY_REVISION: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,29 +41,139 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: |
+            frontend/package-lock.json
             services/event-service/package-lock.json
             services/venue-service/package-lock.json
-            services/booking-service/package-lock.json
-            frontend/package-lock.json
-      - run: npm ci && npm run build && npx prisma migrate deploy && npm run test:coverage
-        working-directory: services/event-service
-      - run: npm ci && npm run test:coverage && npm run test:contract
-        working-directory: services/venue-service
-      - run: npm ci && npm run test:coverage && npm run test:contract
-        working-directory: services/booking-service
-      - run: npm ci && npm run typecheck && npm run test:report && npm run build
+      - name: Install frontend and real boundary fixtures
+        run: |
+          npm ci --prefix services/event-service
+          npm ci --prefix services/venue-service
+          npm ci --prefix frontend
+          cd services/event-service
+          npx prisma generate
+          npx prisma migrate deploy
+      - name: Typecheck, story regression tests and production build
         working-directory: frontend
         env:
           TEST_RESULTS_JSON: ${{ runner.temp }}/frontend-results.json
+        run: |
+          export CS_VERIFY_FINGERPRINT="$(git rev-parse 'HEAD^{tree}')"
+          npm run typecheck
+          npm run test:report
+          npm run build
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: request-regression-evidence
+          name: frontend-evidence
+          retention-days: 30
           path: |
             ${{ runner.temp }}/frontend-results.json
             tests/records/*/test-runs/*.md
+
+  event:
+    name: Event service checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: connectsphere
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: event_db
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U connectsphere -d event_db"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/event_db
+    defaults:
+      run:
+        working-directory: services/event-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/event-service/package-lock.json
+      - run: npm ci && npm run build && npx prisma migrate deploy
+      - run: npm run test:coverage | tee "$RUNNER_TEMP/event-coverage.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: event-evidence
+          retention-days: 30
+          path: ${{ runner.temp }}/event-coverage.txt
+
+  venue_booking:
+    name: ${{ matrix.service }} checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [venue-service, booking-service]
+    env:
+      DATABASE_URL: postgresql://fixture:fixture@127.0.0.1:9/ci_schema_validation
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/${{ matrix.service }}/package-lock.json
+      - run: npm ci && npx prisma validate && npx prisma generate
+      - run: npm run test:coverage | tee "$RUNNER_TEMP/coverage.txt"
+      - run: npm run test:contract 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.service }}-evidence
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/coverage.txt
+            ${{ runner.temp }}/http-contracts.txt
+
+  identity:
+    name: ${{ matrix.service }} checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [auth-service, user-service]
+    env:
+      DATABASE_URL: postgresql://fixture:fixture@127.0.0.1:9/ci_schema_validation
+      INTERNAL_API_KEY: isolated-ci-only
+      KEYCLOAK_URL: http://127.0.0.1:9
+      KEYCLOAK_REALM: connectsphere
+      KEYCLOAK_CLIENT_ID: auth-service
+      KEYCLOAK_CLIENT_SECRET: isolated-ci-only
+      USER_SERVICE_URL: http://127.0.0.1:9
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/${{ matrix.service }}/package-lock.json
+      - run: npm ci && npx prisma validate && npx prisma generate
+      - name: Validate source and application imports
+        run: |
+          find src -name '*.js' -type f -print0 | xargs -0 -n 1 node --check
+          node -e 'require("./src/app")'
+      # Live authentication/profile behaviour is also required by the live job.
+      # Dedicated Auth/User unit suites remain work for their owners.
+
   live:
-    name: Live auth, browser workflows and restart persistence
+    name: Live E2E and restart checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -86,4 +200,26 @@ jobs:
         if: always()
         with:
           name: live-browser-evidence
+          retention-days: 30
           path: ${{ runner.temp }}/event-review/evidence/
+
+  gate:
+    name: Sprint 2 checks
+    if: always()
+    needs: [frontend, event, venue_booking, identity, live]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      RESULTS: ${{ toJSON(needs) }}
+    steps:
+      - name: Require every application and live check to succeed
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          results = json.loads(os.environ['RESULTS'])
+          failed = {name: job['result'] for name, job in results.items() if job['result'] != 'success'}
+          if failed:
+              print('Required checks did not succeed:', failed)
+              sys.exit(1)
+          print('All application and live checks succeeded.')
+          PY

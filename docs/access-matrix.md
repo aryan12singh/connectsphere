@@ -1,4 +1,6 @@
-# Current event-workflow access — 2026-10-06
+# Role and Event Access Matrix
+
+## Current event-workflow access — 2026-10-06
 
 This implemented amendment supersedes conflicting Sprint1 event/request rows below. Identity is verified at auth-service on every event call; roles array is authoritative with legacy single-role fallback. Caller role/owner/organisation headers or body fields grant nothing.
 
@@ -24,8 +26,6 @@ These rules are exercised by real PostgreSQL API tests, BFF fixtures and separat
 ---
 
 Historical Sprint1 matrix and findings (retained for traceability; resolved by the amendment where event routes were touched):
-
-# Role and Event Access Matrix
 
 Specifies which users may view or change each protected resource, based on their
 role *and* their relationship to the event. Derived from the implemented Sprint 1

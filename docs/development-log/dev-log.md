@@ -1,35 +1,3 @@
-# 2026-10-07 — Complete application source verified in CI
-
-Application revision `d70b1cefc9418e4a44e1588481fa28ab76ba95a4` passes [both CI jobs](https://github.com/aryan12singh/connectsphere/actions/runs/37522678737): frontend 111/111 with typecheck/build, Event 131/131 (112 unit/domain/harness + 19 real PG), Venue 52/52, Booking 48/48, real desktop/mobile browser 22/22 with no skips/reruns, live 11/11 including permission removal/restoration and no-reseed restart 1/1. Canonical create/view/review guards and the standing 10 KB JSON limit/safe parser errors follow meaningful RED tests. [The delivery dossier](../sprint2/aryan-delivery/README.md) keeps source identities, historical failures and dated execution records. Final publication changes reports/records only and obtains its own branch checks.
-
-The six Aryan issues stay In Progress pending their actual acceptance/evidence gates; no unassigned Sprint 2 issue was found by complete queries. Main/original checkout remain preserved. Independent review/manual cases, Aryan's understanding, PR/main CI/PO and confirmed instructor access still require evidence; Week 7 stays future scope.
-
-# 2026-10-07 — Trusted permissions and CI setup repairs
-
-Review caught event-service ignoring the trusted auth-service capabilities. New real-PG/BFF RED cases demonstrate permission removal and denied durable replay. The fix consumes the existing create/view/review catalog before record/business guards, with missing/malformed data failing closed. It leaves authentication defaults and broader CS-26 administration/secondary-role union with its owner. Local frontend111, Event129 and live11 pass; the live proof temporarily removes/restores three synthetic grants under validated isolated project/port guards and confirms unchanged workflow counts. See the [permission evidence](../sprint2/aryan-delivery/permission-hardening.md).
-
-Earlier publication runs also exposed masked Express5 bind errors, fixed-port HTTP setup and post-browser429. Startup/error handling, OS-assigned ports and bounded authentication-only backoff repair those cases, without workflow/CI reruns or removed assertions. [Run37515969069](https://github.com/aryan12singh/connectsphere/actions/runs/37515969069) is the successful pre-permission source result; the later complete source is verified by run 37522678737 above. Previous dated records and failures are retained.
-
-# 2026-10-07 — Green remote CI and complete branch evidence
-
-CS-11/27/29/44 now have green feature CI at application revision `b9e17606ac0ae1b8fd60ab8b0489ae6ce85eb4e7`: frontend 109/109 plus typecheck/build, Event 117/117, Venue 50/50, Booking 46/46, production desktop/mobile Chromium 22/22, real auth/API smoke 10/10 and same-ID/history restart 1/1 without reseeding. [Run 37510266839](https://github.com/aryan12singh/connectsphere/actions/runs/37510266839) and the [delivery dossier](../sprint2/aryan-delivery/README.md) preserve exact source, dated records, acceptance mapping and the finish plan.
-
-Observed regressions drove required ARIA cues/unique field targets, keyboard focus and hydration guards, ordinary-booking creation permission while preserving staff operational windows, and bounded Docker gateway DNS after stale-address routing. Failed/RED attempts remain retained. Playwright reruns are disabled; authentication setup honours the existing gateway limit. Targeted compatible dependency patches reduce the source audit from 29 to 23 findings; inherited advisories remain a release review item.
-
-All six assigned Jira issues are In Progress; a complete Sprint 2 query found zero unassigned issues. Independent human review/manual acceptance, Aryan's code understanding, the PR/merge and main CI/PO gates remain. Sprint 1 PRs 2/3 and remote branch removal are verified for CS-67; CS-70 lacks confirmed instructor accounts/access proof. No PR or main merge was created. Week 7's six changes are mapped for future planning, including the proposed-document/live-Jira CS-50 key collision.
-
-# 2026-10-07 — Final local review and date regressions
-
-The frontend suite passes 105/105 without skipped tests after correcting the strict refresh-key assertion for the immediate Coordinator panel. Actual browser checks pass 16/16 for partial Draft save, invalid-input retention, same-ID submit/return/save/resubmit, Coordinator visibility, expandable captured history, unsaved Stay/Leave and explicit submission receipts. These are agent-run checks; independent teammate and PO acceptance remain required.
-
-Review exposed two date representation defects. PostgreSQL JSON baselines now compare timestamps as canonical instants, so unchanged upgraded Returned requests remain rejected without activity/outbox/version effects. Adding a time zone to a partial ISO Draft now derives its local interval; legacy DTO fallbacks preserve overnight end dates and leave missing end times empty. Four new unit/real PostgreSQL route regressions fail against backend checkpoint 53c99b1 and pass after the fixes. The final event build/coverage run passes 117/117 (102 unit/domain plus 15 real PostgreSQL integration tests), zero skipped.
-
-Both service outage checks return 503, preserve database counts and recover. A separate clean-checkout recipe uses Node 22, locked installs, fresh isolated PostgreSQL 16, actual Keycloak/Kong/BFF smoke and same-ID restart checks; see [the independent recipe](../event-review-run.md). Week 7 changes remain future scope. Remote CI, human PR approval/merge, PO decisions and instructor access are still team gates.
-
-# 2026-10-06 — Persistent event workflows (local review branch)
-
-CS-11/29/27/44 reuse the merged PR6 schema/domain guard and existing Alan forms. [Decisions](../event-workflow-decisions.md), [changed contract](../event-workflows.md), and [reproduction](../event-review-run.md) record implementation scope and pending acceptance. Aryan selected least-recently-assigned ties within the existing selector. AI-assisted implementation requires Aryan understanding and independent Alan/Javier/Marcus review; no Done/remote CI/main merge is claimed.
-
 # ConnectSphere — development log
 
 A running record of what has been built, the decisions behind it, and what
@@ -82,11 +50,23 @@ consistent. Add a new dated entry at the top of "Entries" each time.
 | auth-service | auth_db | Built (attendee sign-up, login, logout, me, password policy, internal validate, admin API) |
 | frontend (Nuxt BFF) | — | Team's app. Auth wired in: live/mock login, /signup page, usePermissions, useAdminApi, admin proxy |
 | Keycloak | keycloak_db | Stores its accounts in Postgres (since 2026-10-01) |
-| event / venue / booking / attendance / messaging / notification / orchestrator | own db each | Not started |
+| event-service | event_db | Persistent request, draft, decision and activity workflows; acceptance pending |
+| venue-service / booking-service | venue_db / booking_db | Existing venue/calendar/booking implementation; see their story verification |
+| attendance / messaging / notification / orchestrator | own db each | Not started |
 
 ---
 
 ## Entries
+
+### 2026-10-07 — Persistent Sprint 2 event workflows and CI
+
+CS-11/27/29/44 now use the existing forms, shared event schema/guard and persistent PostgreSQL workflows. Drafts remain private; return/amend/resubmit retains the request ID and Coordinator; actual Event history has a distinct ID. Trusted effective permissions, version locks and durable replay protect transactional assignment, activity and notification outbox writes. Delivery/relay and later transitions remain separate work.
+
+Application source passed frontend 111, Event 131, Venue 52, Booking 48, production desktop/mobile browser 22, live API 11 and no-reseed restart 1 in [run 37524638714](https://github.com/aryan12singh/connectsphere/actions/runs/37524638714). Earlier meaningful RED cases drove parser limits/privacy, permission revocation, date round trips, staff booking permissions, hydration and startup/rate-limit repairs. Selected dated story records and CI artifacts preserve execution evidence.
+
+[Delivery and review gates](../sprint2/event-request-delivery.md), [workflow/ERD](../event-workflows.md), [decisions](../event-workflow-decisions.md) and [clean-stack commands](../event-review-run.md) consolidate the branch documentation. Raw audit JSON and repeated diagnostic reports are archived outside the source tree and recoverable from Git history. The development log retains the team's dated-entry convention.
+
+CI now separates the frontend and five implemented services, with a real authentication/browser/restart job and an aggregate failure-aware gate. Auth/User still need dedicated unit suites. The current CI revision must obtain its own green PR checks; another developer's review/manual verification, Aryan's code understanding, green main CI and PO acceptance remain required before Done. Week 7 changes stay future planning scope; instructor access is deferred to the final stage. Compatible dependency patches reduced the previous source audit from 29 to 23 inherited findings, which still need release review.
 
 ### 2026-10-01 — Attendee self sign-up + Keycloak data kept in Postgres
 

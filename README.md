@@ -6,9 +6,11 @@ Event Planning and Venue Booking System for ConnectSphere Event Services. IS212 
 - [Role and Event Access Matrix](docs/access-matrix.md) — which roles may view or change each protected resource, and known authorisation findings.
 - [Definition of Done](docs/DEFINITION_OF_DONE.md) — criteria every user story must satisfy before it is accepted.
 - [How to run and test](docs/how-to-run-and-test.md) — start the system from a clean clone and the manual test cases.
-- [Aryan Sprint 2 delivery and finish plan](docs/sprint2/aryan-delivery/README.md) — story progress, evidence, review gates and prepared PR description.
+- [Sprint 2 event workflow delivery](docs/sprint2/event-request-delivery.md) — implemented stories, verification, CI and remaining review gates.
 - [Isolated Sprint 2 review](docs/event-review-run.md) — Node 22, a fresh PostgreSQL 16 project, configurable ports and real live-auth/restart checks.
 - [Auth setup](docs/auth-setup.md) — how login, roles/permissions and the tech support admin API work.
+- [Event workflows and API mapping](docs/event-workflows.md) — persistence, transactions and request/Event history.
+- [Event workflow decisions](docs/event-workflow-decisions.md) — contract choices requiring team/customer review.
 - [Development log](docs/development-log/dev-log.md) — decisions and progress, newest first.
 
 ## Run it locally
@@ -28,7 +30,4 @@ cp .env.example .env        # Windows: copy .env.example .env
 npm run dev                 # http://localhost:3000
 ```
 
-Full steps, seed users and test cases: [docs/how-to-run-and-test.md](docs/how-to-run-and-test.md).
-
-
-Sprint 2 persistent request implementation: [workflow and BFF mapping](docs/event-workflows.md), [isolated clean-checkout review recipe](docs/event-review-run.md), and [decisions requiring acceptance](docs/event-workflow-decisions.md). Use the isolated recipe when testing migrations, synthetic fixtures or failure triggers.
+Full steps, seed users and test cases: [docs/how-to-run-and-test.md](docs/how-to-run-and-test.md). Use the [isolated review recipe](docs/event-review-run.md) when testing migrations, synthetic fixtures or failure triggers.

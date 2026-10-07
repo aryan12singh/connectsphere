@@ -1,12 +1,12 @@
-# Event workflow implementation amendment — 2026-10-06
+# Sprint 2 API contract — shared conventions
+
+## Event workflow implementation amendment — 2026-10-06
 
 The event-service and event BFF **implemented contract** is [event-workflows.md](event-workflows.md) and [its OpenAPI](../services/event-service/docs/openapi.yaml). This amendment supersedes conflicting event-request draft rules below: owner-private Requests/Drafts; assigned-only Coordinator reads; same-organisation visibility only for actual Event history; required scoped idempotency keys on all request writes, changed payload409 with retained replay rows; error.fields mapping; cursor history pages20; supported local date/clock+zone adapter alongside offset instants. Broader services retain their own contracts. These deliberate deviations do not silently redefine other teams' endpoints or notification delivery.
 
 The following historical shared draft is retained for team traceability; planned event/reassignment/confirmation endpoints within it are not evidence they exist.
 
 ---
-
-# Sprint 2 API contract — shared conventions
 
 Status: **agreed draft for review** (Sprint 2 story "Agree the interfaces"). Frontend and
 backend build against this in parallel. Per-service detail is in each service's OpenAPI file:
