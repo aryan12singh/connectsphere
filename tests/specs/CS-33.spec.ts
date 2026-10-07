@@ -85,3 +85,17 @@ describe('CS-33 — venue records', () => {
     expect(toastError).toHaveBeenCalledWith('You do not have permission to do this', { description: 'Unable to save booking' })
   })
 })
+
+
+describe('CS-33 — TC-CS33-11 venue form hydration safety', () => {
+  it('SSR disables the native form and submit until handlers attach', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const html = await renderToString(createSSRApp(VenueForm, { venue: physicalVenue() }))
+    const container = document.createElement('div'); container.innerHTML = html
+    const fields = [...container.querySelectorAll('form input, form select, form button')] as (HTMLInputElement | HTMLSelectElement | HTMLButtonElement)[]
+    expect(fields.length).toBeGreaterThan(0)
+    expect(fields.every(field => field.disabled || field.closest('fieldset[disabled]') !== null)).toBe(true)
+    expect((container.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(true)
+  })
+})

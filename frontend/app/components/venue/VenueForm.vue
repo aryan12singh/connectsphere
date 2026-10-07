@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field'
@@ -27,15 +27,18 @@ const emit = defineEmits<{ submit: [form: VenueFormState] }>()
 const form = reactive(createVenueForm(props.venue ?? {}))
 const schedule = computed(() => operatingSchedule(form.operatingHours))
 const reasonPopoverOpen = ref(false)
+const ready = ref(false)
+onMounted(() => { ready.value = true })
 
 watch(() => props.venue, (venue) => Object.assign(form, createVenueForm(venue ?? {})), { deep: true })
 
 function requestSubmit() {
+  if (!ready.value || props.saving) return
   reasonPopoverOpen.value = true
 }
 
 function submit() {
-  if (!form.reason.trim()) return
+  if (!ready.value || props.saving || !form.reason.trim()) return
   reasonPopoverOpen.value = false
   emit('submit', createVenueForm(form))
 }
@@ -69,6 +72,7 @@ function updateOperatingTime(type: 'opensAt' | 'closesAt', value: string | numbe
       <slot name="title" />
     </div>
 
+    <fieldset :disabled="!ready || saving" class="grid min-w-0 gap-6 border-0 p-0" aria-label="Venue details form">
     <section aria-labelledby="venue-details" class="grid gap-5">
       <h2 id="venue-details" class="text-xl font-semibold">Venue details</h2>
       <FieldGroup class="gap-5">
@@ -101,13 +105,14 @@ function updateOperatingTime(type: 'opensAt' | 'closesAt', value: string | numbe
     <p v-if="errorFor('operatingHours')" role="alert" class="text-sm text-destructive">{{ errorFor('operatingHours') }}</p>
     <Popover v-model:open="reasonPopoverOpen">
       <PopoverAnchor as-child>
-        <Button type="submit" :disabled="saving" class="w-full">{{ saving ? 'Saving…' : submitLabel }}</Button>
+        <Button type="submit" :disabled="!ready || saving" class="w-full">{{ saving ? 'Saving…' : submitLabel }}</Button>
       </PopoverAnchor>
       <PopoverContent side="top" align="end" class="w-80">
         <div class="grid gap-1"><h2 class="text-sm font-semibold">Reason or note</h2><p class="text-xs text-muted-foreground">Add the reason for this venue change before saving.</p></div>
-        <Field class="gap-2"><FieldLabel for="venue-reason">Reason or note <span aria-hidden="true">*</span></FieldLabel><Input id="venue-reason" v-model="form.reason" required placeholder="Describe this venue change…" @keydown.enter.prevent="submit" /><p v-if="errorFor('reason')" class="text-sm text-destructive">{{ errorFor('reason') }}</p></Field>
-        <div class="flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" @click="reasonPopoverOpen = false">Cancel</Button><Button type="button" size="sm" :disabled="!form.reason.trim()" @click="submit">Continue</Button></div>
+        <Field class="gap-2"><FieldLabel for="venue-reason">Reason or note <span aria-hidden="true">*</span></FieldLabel><Input :disabled="saving" id="venue-reason" v-model="form.reason" required placeholder="Describe this venue change…" @keydown.enter.prevent="submit" /><p v-if="errorFor('reason')" class="text-sm text-destructive">{{ errorFor('reason') }}</p></Field>
+        <div class="flex justify-end gap-2"><Button type="button" size="sm" variant="ghost" @click="reasonPopoverOpen = false">Cancel</Button><Button type="button" size="sm" :disabled="saving || !form.reason.trim()" @click="submit">Continue</Button></div>
       </PopoverContent>
     </Popover>
+    </fieldset>
   </form>
 </template>

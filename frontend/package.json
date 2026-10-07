@@ -13,7 +13,8 @@
     "test:e2e": "playwright test",
     "typecheck": "nuxt typecheck",
     "postinstall": "nuxt prepare",
-    "test:e2e:report": "node ../tests/scripts/run-browser-report.mjs"
+    "test:e2e:report": "node ../tests/scripts/run-browser-report.mjs",
+    "typecheck:e2e": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --esModuleInterop --skipLibCheck e2e/*.ts playwright.config.ts"
   },
   "dependencies": {
     "@lucide/vue": "^1.52.0",

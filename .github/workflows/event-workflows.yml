@@ -60,6 +60,7 @@ jobs:
         run: |
           export CS_VERIFY_FINGERPRINT="$(git rev-parse 'HEAD^{tree}')"
           npm run typecheck
+          npm run typecheck:e2e
           npm run test:coverage
           npm run build
       - uses: actions/upload-artifact@v7.0.1

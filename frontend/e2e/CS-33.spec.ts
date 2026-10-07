@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
-import { test, session, mutation, emails } from './helpers'
+import { test, field, signIn, session, mutation, emails } from './helpers'
 
 test('TC-CS33-09 LIVE reversed/equal hours cannot create or edit a venue or its history', async ({ playwright }) => {
   const staff = await session(playwright.request, emails.staff)
@@ -16,4 +16,18 @@ test('TC-CS33-09 LIVE reversed/equal hours cannot create or edit a venue or its 
     expect(await (await staff.get(`/api/venues/${venue.id}`)).json()).toEqual(venue)
     expect(await (await staff.get(`/api/venues/${venue.id}/history`)).json()).toEqual(history)
   } finally { await staff.dispose() }
+})
+
+
+test('TC-CS33-11 LIVE SSR venue form stays inert until handlers attach', async ({ page, browser }) => {
+  await signIn(page, emails.staff)
+  const beforeHydration = await browser.newContext({ baseURL: new URL(page.url()).origin, storageState: await page.context().storageState(), viewport: page.viewportSize() ?? undefined, javaScriptEnabled: false })
+  try {
+    const ssr = await beforeHydration.newPage()
+    await ssr.goto('/venue/new')
+    await expect(ssr.getByRole('heading', { name: 'New venue', exact: true })).toBeVisible()
+    await expect(field(ssr, 'Venue name')).toBeDisabled()
+    await expect(field(ssr, 'Opening time')).toBeDisabled()
+    await expect(ssr.getByRole('button', { name: 'Create venue', exact: true })).toBeDisabled()
+  } finally { await beforeHydration.close() }
 })

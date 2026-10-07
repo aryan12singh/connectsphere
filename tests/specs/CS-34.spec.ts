@@ -100,3 +100,34 @@ describe('CS-34 — venue availability calendar', () => {
     expect(coordinatorBookingEditState(null, 'coordinator-1')).toMatchObject({ canEdit: false, readOnly: false, statuses: ['TENTATIVELY_HELD'] })
   })
 })
+
+
+describe('CS-34 — TC-CS34-13 calendar hydration safety', () => {
+  it('SSR disables calendar navigation and booking controls until handlers attach', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const { default: VenueCalendar } = await import('../../frontend/app/components/venue/VenueCalendar.vue')
+    const html = await renderToString(createSSRApp(VenueCalendar, { venueId: 'venue', venueName: 'Venue', timeZone: 'Asia/Singapore', canCreate: true, canDecide: true, actorRole: 'VENUE_STAFF' }))
+    const container = document.createElement('div'); container.innerHTML = html
+    expect((container.querySelector('select[aria-label="Calendar view"]') as HTMLSelectElement).disabled).toBe(true)
+    const buttons = [...container.querySelectorAll('button')] as HTMLButtonElement[]
+    expect(buttons.length).toBeGreaterThan(2)
+    expect(buttons.every(button => button.disabled)).toBe(true)
+  })
+})
+
+
+mockNuxtImport('useUserSession', () => () => ({ user: { value: { id: 'staff', role: 'VENUE_STAFF', permissions: ['venues.view', 'venues.manage', 'venue_bookings.decide'] } } }))
+describe('CS-34 — TC-CS34-13 venue workspace hydration safety', () => {
+  it('SSR disables venue search, tabs and delete until handlers attach', async () => {
+    const { createSSRApp } = await import('vue')
+    const { renderToString } = await import('@vue/server-renderer')
+    const { default: VenueWorkspace } = await import('../../frontend/app/components/venue/VenueWorkspace.vue')
+    const html = await renderToString(createSSRApp(VenueWorkspace, { venues: [{ id: 'venue', name: 'Venue', timeZone: 'Asia/Singapore' }] }))
+    const container = document.createElement('div'); container.innerHTML = html
+    expect((container.querySelector('input[type="search"]') as HTMLInputElement).disabled).toBe(true)
+    const tabs = [...container.querySelectorAll('button')].filter(button => ['Calendar', 'Booking requests', 'Delete venue'].includes(button.textContent?.trim() ?? '')) as HTMLButtonElement[]
+    expect(tabs).toHaveLength(3)
+    expect(tabs.every(button => button.disabled)).toBe(true)
+  })
+})

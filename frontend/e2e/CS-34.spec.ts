@@ -23,3 +23,18 @@ test('TC-CS34-10 LIVE early Monday block renders in week/day; Technical Support 
   await expect(page.getByRole('button', { name: 'New booking', exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Edit venue' })).toHaveCount(0)
 })
+
+
+test('TC-CS34-13 LIVE SSR calendar and workspace controls stay inert until handlers attach', async ({ page, browser }) => {
+  await signIn(page, emails.staff)
+  const beforeHydration = await browser.newContext({ baseURL: new URL(page.url()).origin, storageState: await page.context().storageState(), viewport: page.viewportSize() ?? undefined, javaScriptEnabled: false })
+  try {
+    const ssr = await beforeHydration.newPage()
+    await ssr.goto('/venue')
+    await expect(ssr.getByPlaceholder('Search venues...')).toBeDisabled()
+    await expect(ssr.getByRole('button', { name: 'Booking requests', exact: true })).toBeDisabled()
+    await expect(ssr.getByRole('combobox', { name: 'Calendar view' })).toBeDisabled()
+    await expect(ssr.getByRole('button', { name: 'New unavailable window', exact: true })).toBeDisabled()
+    await expect(ssr.getByRole('button', { name: 'Next range', exact: true })).toBeDisabled()
+  } finally { await beforeHydration.close() }
+})
