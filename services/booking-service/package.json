@@ -12,7 +12,8 @@
     "test:contract": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "test:integration": "node --experimental-test-coverage --test --test-coverage-include='src/**/*.js' tests/integration/*.test.js"
+    "test:integration": "node --experimental-test-coverage --test --test-coverage-include='src/**/*.js' tests/integration/*.test.js",
+    "test:hold-spike": "node tests/spikes/hold-expiry-proof.cjs"
   },
   "engines": {
     "node": ">=20"

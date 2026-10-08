@@ -66,3 +66,21 @@ test('TC-CS26-14 Event assignment outage returns 503 without booking or history 
   } finally { assignmentUnavailable = false; }
   assert.deepEqual(await Promise.all([prisma.venueBookingRequest.count(), prisma.venueBookingActivity.count()]), counts);
 });
+
+test('TC-CS35-01 operational block persists audit data and appears for even a one-second range overlap', async () => {
+  actor = { id: 'venue-staff', role: 'VENUE_STAFF', roles: ['VENUE_STAFF'], permissions: [...defaults.VENUE_STAFF] };
+  const values = { venueId: 'pg-venue', title: 'Maintenance', reason: 'Isolated baseline model check',
+    startAt: '2026-12-22T12:00:00Z', endAt: '2026-12-22T13:00:00Z', timeZone: 'Asia/Singapore', status: 'BLOCKED' };
+  const created = await api.http('/venue-bookings', { method: 'POST', headers: { ...headers, 'idempotency-key': randomUUID() }, body: values });
+  assert.equal(created.status, 201);
+  const saved = await prisma.venueBookingRequest.findUnique({ where: { id: created.body.id }, include: { activity: true } });
+  assert.equal(saved.status, 'BLOCKED'); assert.equal(saved.eventId, null);
+  assert.equal(saved.activity.length, 1); assert.equal(saved.activity[0].actorId, actor.id);
+  assert.equal(saved.activity[0].reason, values.reason);
+  const range = (start, end) => `/venue-bookings/availability?venueId=pg-venue&startAt=${start}&endAt=${end}`;
+  const overlapping = await api.http(range('2026-12-22T12:59:59Z', '2026-12-22T13:00:01Z'), { headers });
+  assert.equal(overlapping.status, 200); assert.ok(overlapping.body.items.some(item => item.id === created.body.id));
+  const touching = await api.http(range('2026-12-22T13:00:00Z', '2026-12-22T13:00:01Z'), { headers });
+  assert.equal(touching.status, 200); assert.ok(!touching.body.items.some(item => item.id === created.body.id));
+  // This proves calendar retrieval, not the CS-39 prevention of competing writes.
+});

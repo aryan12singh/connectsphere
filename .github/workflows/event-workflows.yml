@@ -2,7 +2,7 @@ name: Sprint 2 checks
 on:
   pull_request:
   push:
-    branches: [main, feat/aryan-sprint2-event-workflows]
+    branches: [main, feat/aryan-sprint2-event-workflows, feat/aryan-sprint3-venue-safety]
   workflow_dispatch:
 permissions:
   contents: read
@@ -151,6 +151,12 @@ jobs:
       - run: npm run test:contract 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
       - name: PostgreSQL HTTP integration and source coverage
         run: npm run test:integration | tee "$RUNNER_TEMP/postgres-coverage.txt"
+      - name: Hold expiry PostgreSQL spike
+        if: matrix.service == 'booking-service'
+        env:
+          CS_HOLD_SPIKE_RESULTS: ${{ runner.temp }}/hold-expiry-results.json
+          CS_VERIFY_REVISION: ${{ github.sha }}
+        run: npm run test:hold-spike | tee "$RUNNER_TEMP/hold-expiry.txt"
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
@@ -160,6 +166,8 @@ jobs:
             ${{ runner.temp }}/coverage.txt
             ${{ runner.temp }}/http-contracts.txt
             ${{ runner.temp }}/postgres-coverage.txt
+            ${{ runner.temp }}/hold-expiry.txt
+            ${{ runner.temp }}/hold-expiry-results.json
 
   identity:
     name: ${{ matrix.service }} checks

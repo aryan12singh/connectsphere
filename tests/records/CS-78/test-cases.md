@@ -1,0 +1,25 @@
+# CS-78 — Spike Test Specification (IS212 / IEEE 829)
+
+Blue section. Date of Creation: 2026-10-09T00:24:00+08:00.
+
+Source: [CS-78](https://spmg8.atlassian.net/browse/CS-78) scheduled-job/clock spike. This is a technical proof, not the CS-37 or CS-90 production feature. All fixture durations, warning leads and leases are explicit engineering test data; customer policy remains pending in CS-76/77.
+
+| Test Case ID | Scenario | Pre-conditions | Test Steps / Test Data | Expected Result | Automation layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS78-01 | Exact expiry deadline | Persisted deadline represented as an explicit ISO instant | Compare one millisecond before, at and after deadline | Active before; expired at and after deadline independently of worker processing | Domain unit | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-02 | Explicit UTC clock and equivalent offsets | Caller supplies the check instant | Check equal +08:00/Z instants and an earlier clock | Equivalent instants agree; no dependency on host timezone or wall clock | Domain unit | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-03 | Invalid deadline/clock data | Invalid, missing, offsetless, impossible date or sub-millisecond input | Evaluate each field separately | Reject the named field rather than returning false availability or truncating precision | Domain unit | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-04 | Explicit warning lead and catch-up semantics | Persisted deadline and explicit lead | Check warning start, just before, expiry, late restart and zero/invalid leads | Warn only in the active window; expired work has priority; invalid policy rejected | Domain unit | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-05 | Inclusive versus strict setup boundary | Explicit created/expiry/occupied-start instants and boundary choice | Try equal, before creation, beyond setup and missing policy | Creation must precede expiry; equal setup accepted only under the selected policy | Domain unit; not customer policy acceptance | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-06 | Late worker / immediate effective availability | Persisted active hold at deadline | Read effective occupancy before worker runs | Expired hold omitted; read leaves ledger/history unchanged | Real PostgreSQL spike | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-07 | Approval versus expiry race | Active hold and competing transactions | Try approval before/at deadline and simultaneous expiry | At most one terminal outcome; approval at deadline denied; one release action if expiry wins | Real PostgreSQL spike | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-08 | Warning/expiry retries and catch-up | Explicit warning lead; multiple due rows | Repeat warning processing; retry expiry after a late restart | One warning per version; one expiry/release action; no warning after expiry | Real PostgreSQL spike; outbox intent only | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-09 | Multiple worker claiming | Two workers, two due holds, batch size one | Concurrently claim with SKIP LOCKED | Distinct persisted claims, bounded batch, no duplicate ownership | Real PostgreSQL spike | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-10 | Lease expiry and stale attempt fencing | Old and new lease attempts from the same worker identity | Reclaim exactly at lease deadline; run old then new claim | Old token rejected; current token succeeds once | Real PostgreSQL spike | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-11 | Revised-deadline version fencing | Claimed hold metadata revised by a controlled fixture | Process the old claim after version changes | Stale worker cannot expire or warn the revised hold | Real PostgreSQL spike; not an extension workflow | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-12 | Outbox failure rolls back transition | Due hold with SQL constraint rejecting the action insert | Process expiry, inspect state, remove failure and retry | No partial release/state change; successful retry produces one action | Real PostgreSQL spike | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-13 | Process restart / catch-up | Persisted deadline and claimed lease; disconnected client | Reconnect after lease/deadline and process due work | Deadline survives; slot already effectively free; one expiry action | Real PostgreSQL spike | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-14 | Clock evaluated after row-lock wait | Approval blocked by a row lock while the clock advances | Release lock exactly at deadline | Approval rechecks current time and denies; no stale approval | Real PostgreSQL spike | 2026-10-09T00:24:00+08:00 |
+| TC-CS78-15 | Isolated database/schema guard | Invalid host/database/schema inputs | Construct the prototype with each invalid target | Reject before writing; real application tables never touched | Technical safety check | 2026-10-09T00:24:00+08:00 |
+
+The task remains separate from automated Event completion and waiting-list offers. Approval, availability and worker implementations must use the same deadline rule, preserve parent Event/equipment state and reject stale versions under a transaction. Prototype evidence cannot establish production notification delivery or story acceptance.
