@@ -1,0 +1,25 @@
+# CS-78 Test Execution — 2026-10-08T16:49:22.959Z
+
+Yellow section (IS212 / IEEE 829). Phase: GREEN-POSTGRES. Generated from actual PostgreSQL prototype assertions; missing cases remain Not Executed.
+
+Source: /tmp/connectsphere-s3-final-postgres.json. Code revision/fingerprint: c73a4aaf49810721dc35ba83ea048413658f9f3a / 9f825861fdaabae24dc64d44b1fecdbabcaf65c3.
+
+CS-78 isolated PostgreSQL technical spike with actual row locks, transactions and persisted synthetic data. No business HTTP/UI integration, scheduler deployment or notification delivery is claimed.
+
+| Test Case ID | Actual Result | Pass/Fail/Not Executed/Blocked | Remarks | Date of Execution |
+|---|---|---|---|---|
+| TC-CS78-01 | No assertion executed | Not Executed |  | 2026-10-08T16:49:22.959Z |
+| TC-CS78-02 | No assertion executed | Not Executed |  | 2026-10-08T16:49:22.959Z |
+| TC-CS78-03 | No assertion executed | Not Executed |  | 2026-10-08T16:49:22.959Z |
+| TC-CS78-04 | No assertion executed | Not Executed |  | 2026-10-08T16:49:22.959Z |
+| TC-CS78-05 | No assertion executed | Not Executed |  | 2026-10-08T16:49:22.959Z |
+| TC-CS78-06 | Assertions passed; see scenario and layer limitations | Pass | TC-CS78-06 availability excludes an expired active row before worker processing | 2026-10-08T16:49:22.959Z |
+| TC-CS78-07 | Assertions passed; see scenario and layer limitations | Pass | TC-CS78-07 approval and expiry serialize to one terminal outcome | 2026-10-08T16:49:22.959Z |
+| TC-CS78-08 | Assertions passed; see scenario and layer limitations | Pass | TC-CS78-08 retries deduplicate warnings and expiry with expiry taking priority | 2026-10-08T16:49:22.959Z |
+| TC-CS78-09 | Assertions passed; see scenario and layer limitations | Pass | TC-CS78-09 concurrent workers claim disjoint bounded batches and skip locked rows | 2026-10-08T16:49:22.959Z |
+| TC-CS78-10 | Assertions passed; see scenario and layer limitations | Pass | TC-CS78-10 lease reclamation rejects stale tokens from the same worker identity | 2026-10-08T16:49:22.959Z |
+| TC-CS78-11 | Assertions passed; see scenario and layer limitations | Pass | TC-CS78-11 version change fences a stale deadline claim | 2026-10-08T16:49:22.959Z |
+| TC-CS78-12 | Assertions passed; see scenario and layer limitations | Pass | TC-CS78-12 rejected outbox insert rolls back state and permits one successful retry | 2026-10-08T16:49:22.959Z |
+| TC-CS78-13 | Assertions passed; see scenario and layer limitations | Pass | TC-CS78-13 restart retains deadline and catches up after the persisted lease expires | 2026-10-08T16:49:22.959Z |
+| TC-CS78-14 | Assertions passed; see scenario and layer limitations | Pass | TC-CS78-14 approval reads the clock after waiting for the row lock | 2026-10-08T16:49:22.959Z |
+| TC-CS78-15 | Assertions passed; see scenario and layer limitations | Pass | TC-CS78-15 prototype rejects production database and unsafe schema targets | 2026-10-08T16:49:22.959Z |

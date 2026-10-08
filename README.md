@@ -11,7 +11,10 @@ Event Planning and Venue Booking System for ConnectSphere Event Services. IS212 
 - [Auth setup](docs/auth-setup.md) — how login, roles/permissions and the tech support admin API work.
 - [Event workflows and API mapping](docs/event-workflows.md) — persistence, transactions and request/Event history.
 - [Event workflow decisions](docs/event-workflow-decisions.md) — contract choices requiring team/customer review.
-- [Development log](docs/development-log/dev-log.md) — decisions and progress, newest first.
+- [Venue data model](docs/venue-data-model.md) — authoritative running tables, consultation review and remaining schema gaps.
+- [Venue policy decisions](docs/venue-policy-decisions.md) — pending Week 7 choices and affected stories.
+- [Hold expiry and occupied windows](docs/hold-expiry.md) — reusable timing code, isolated PostgreSQL spike and its integration limits.
+- [Development log](docs/devlogs/DEVLOG.md) — decisions, verified progress and next dependencies, newest first.
 
 ## Run it locally
 
@@ -64,4 +67,4 @@ NUXT_AUTH_MODE=live npm run build
 
 The [full browser runner](docs/event-review-run.md) builds a fresh Keycloak/User/Auth/Kong/PostgreSQL stack, exercises desktop/mobile and restarts without reseeding. JSON/HTML/coverage output belongs in CI artifacts or outside the checkout; selected dated Markdown records remain in `tests/records`. No numerical coverage gate is invented before the planned Sprint 3 threshold.
 
-[The workflow](.github/workflows/event-workflows.yml) has separate frontend and five service checks, real PostgreSQL migrations/API tests, per-app source coverage artifacts and a live E2E job. Its required aggregate `Sprint 2 checks` rejects failed or skipped prerequisites. Explicit Bash/pipefail preserves test exit statuses through `tee`. It runs for PRs and pushes to this branch and `main`; a main run requires the reviewed PR to be merged. Independent approval, squash merge and green CI on that merge remain delivery gates.
+[The workflow](.github/workflows/event-workflows.yml) has separate frontend and five service checks, real PostgreSQL migrations/API tests, per-app source coverage artifacts and a live E2E job. Booking also runs the isolated CS-78 expiry/concurrency spike. Its required aggregate `Sprint 2 checks` rejects failed or skipped prerequisites. Explicit Bash/pipefail preserves test exit statuses through `tee`. It runs for PRs and pushes to `feat/aryan-sprint2-event-workflows`, `feat/aryan-sprint3-venue-safety` and `main`; a main run requires the reviewed PR to be merged. Independent approval, squash merge and green CI on that merge remain delivery gates.
