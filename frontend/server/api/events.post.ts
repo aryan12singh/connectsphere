@@ -1,5 +1,6 @@
-import { setResponseStatus } from 'h3'
-import { requestCall, writeOptions, browserRecord } from '../utils/eventBff'
+import { idempotencyHeaders, kongBffFetch, segmentPath } from '../utils/kongBff'
+import { fromEventServiceRequest, toEventServiceInput } from '../utils/eventAdapter'
+import { randomUUID } from 'node:crypto'
 
 export type RequestStatus = 'DRAFT' | 'SUBMITTED' | 'RETURNED_FOR_AMENDMENT' | 'APPROVED' | 'REJECTED'
 
@@ -51,10 +52,21 @@ export interface EventRequestRecord {
   technicalDetails: string
 }
 
-
+/**
+ * BFF for POST /api/events. The UI keeps its existing save/submit contract;
+ * this route translates it to event-service's create + submit endpoints.
+ */
 export default defineEventHandler(async (event) => {
-  const { body, headers } = await writeOptions(event)
-  const record = await requestCall(event, '/event-requests', {method:'POST', body:{...body,saveAs:body.saveAs ?? 'submit'},headers})
-  setResponseStatus(event, 201)
-  return browserRecord(record)
+  const body = await readBody<EventRequestForm & { saveAs?: unknown }>(event)
+  const headers = idempotencyHeaders(event) ?? { 'Idempotency-Key': randomUUID() }
+  const created = await kongBffFetch<Record<string, unknown>>(event, '/event-requests', { method: 'POST', body: toEventServiceInput(body), headers })
+  if (body.saveAs === 'submit') {
+    const submitted = await kongBffFetch<Record<string, unknown>>(event, `/event-requests/${segmentPath([String(created.id)])}/submit`, {
+      method: 'POST',
+      body: { version: created.version },
+      headers,
+    })
+    return fromEventServiceRequest(submitted)
+  }
+  return fromEventServiceRequest(created)
 })

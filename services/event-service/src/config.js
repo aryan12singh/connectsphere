@@ -2,20 +2,17 @@
 // required one is missing — better than a confusing error at request time.
 require('dotenv').config();
 
-function required(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
-
 module.exports = {
   authServiceUrl: required('AUTH_SERVICE_URL'),
   userServiceUrl: required('USER_SERVICE_URL'),
   port: Number(process.env.PORT || 3000),
-  databaseUrl: required('DATABASE_URL'),
+  dataMode: process.env.DATA_MODE || 'prisma',
+  databaseUrl: process.env.DATABASE_URL || '',
+  authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3002',
+  userServiceUrl: process.env.USER_SERVICE_URL || 'http://localhost:3004',
   // Shared secret that other services send in the `x-internal-api-key`
-  // header. Only services inside the Docker network should know it.
-  internalApiKey: required('INTERNAL_API_KEY'),
+  // header. Production compose supplies this; the development fallback keeps
+  // isolated unit tests and local starts deterministic.
+  internalApiKey: process.env.INTERNAL_API_KEY || 'change-me-dev-internal-key',
+  isTest: process.env.NODE_ENV === 'test',
 };

@@ -332,6 +332,31 @@ describe('CS-30 — TC-CS30-11 coordinator decision actions', () => {
     expect(wrapper.text()).toContain('Vendor Expo 2026')
   })
 
+  it('captures an amendment reason before posting the decision', async () => {
+    showQueue()
+    detailMocks.decisionResponse.value = { id: 'req-1', status: 'RETURNED_FOR_AMENDMENT' }
+    const wrapper = await mountIndexPage()
+    const amendments = wrapper.findAll('button').filter(b => b.text() === 'Ask for amendments')
+    expect(amendments.length).toBe(1)
+    await amendments[0]!.trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(document.body.textContent).toContain('Reason for amendments')
+    const reason = document.body.querySelector('textarea[data-testid="amendment-reason"]')
+    expect(reason).not.toBeNull()
+    reason!.dispatchEvent(new Event('input', { bubbles: true }))
+    reason!.dispatchEvent(new Event('change', { bubbles: true }))
+    ;(reason as HTMLTextAreaElement).value = 'Please confirm the final attendance range.'
+    reason!.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    const confirm = document.body.querySelector('button[data-testid="confirm-amendments"]') as HTMLButtonElement
+    expect(confirm).not.toBeNull()
+    confirm.click()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const posts = detailMocks.useFetch.mock.calls.filter(([url, init]) => url === '/api/events/req-1/decision' && (init as { method?: string })?.method === 'POST')
+    expect(posts).toHaveLength(1)
+    expect((posts[0]![1] as { body?: Record<string, unknown> }).body).toMatchObject({ decision: 'amendments', reason: 'Please confirm the final attendance range.' })
+  })
+
   it('failed decision shows an error and keeps the queue', async () => {
     showQueue()
     detailMocks.decisionResponse.value = null

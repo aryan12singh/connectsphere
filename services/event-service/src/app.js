@@ -1,17 +1,23 @@
-const express=require('express');
-const helmet=require('helmet');
-const prisma=require('./db');
-const {authenticate,requirePermission,contact}=require('./identity');
-const {mutation,read,load,dto,history,has}=require('./workflows');
-const {fail}=require('./domain/validation');
-const app=express();app.use(helmet());app.use(express.json({limit:'10kb'}));
-app.use('/docs',express.static(require('node:path').resolve(__dirname,'../docs')));
-app.get('/health',(req,res)=>res.json({status:'ok'}));
-app.use(['/event-requests','/events'],authenticate);
-app.get('/event-requests/review-queue',requirePermission('events.view','event_requests.review'),async(req,res)=>{
- if(!has(req.actor,'EVENT_COORDINATOR'))throw fail(403,'FORBIDDEN','Only Coordinators may view the queue');
- const rows=await prisma.eventRequest.findMany({where:{status:'SUBMITTED',currentCoordinatorId:req.actor.id,organiserId:{not:req.actor.id}},include:{event:true},orderBy:[{submittedAt:'desc'},{id:'desc'}]});
- res.json({items:await Promise.all(rows.map(async r=>({...dto(r),organiser:await contact(r.organiserId)})))});
+// Event request and event routes implement docs/openapi.yaml. The BFF reaches
+// these endpoints through Kong; this service never handles browser cookies.
+const express = require('express');
+const helmet = require('helmet');
+
+const app = express();
+
+app.use(helmet());
+app.use(express.json({ limit: '10kb' }));
+
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+app.use('/event-requests', require('./routes/event-requests.routes'));
+app.use('/events', require('./routes/events.routes'));
+app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } }));
+
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: { code: 'INTERNAL', message: 'Internal server error' } });
 });
 app.get(['/event-requests','/event-requests/drafts'],requirePermission('events.view'),async(req,res)=>{
  if(!has(req.actor,'EVENT_ORGANISER'))throw fail(403,'FORBIDDEN','Only Organisers may list their requests');
