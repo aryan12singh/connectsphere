@@ -2,6 +2,8 @@ import { expect } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { test, field, signIn, completeForm, mutation, session, emails, validRequest } from './helpers'
 
+test.use({ timezoneId: 'UTC' })
+
 test('CS-11 AC01-05: validated form, registration, receipt, assignment and submitted read-only', async ({ page, owner }) => {
   await signIn(page)
   await page.goto('/requests/new')

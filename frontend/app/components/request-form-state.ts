@@ -104,7 +104,8 @@ export function recordToForm(source: Record<string, unknown>): RequestFormState 
   else if(key==='registrationEnabled')f[key]=value===true
   else if(key==='expectedAttendance'||key==='minimumCapacity')f[key]=typeof value==='number'&&value>0?String(value):''
   else if(key==='registrationOpensAt'||key==='registrationClosesAt'){
-   if(typeof value==='string'&&value&&source.timeZone&&!Number.isNaN(new Date(value).getTime())){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:String(source.timeZone),year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(value)).map(p=>[p.type,p.value]));f[key]=`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`}
+   if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value))f[key]=value
+   else if(typeof value==='string'&&value&&source.timeZone&&!Number.isNaN(new Date(value).getTime())){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:String(source.timeZone),year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(value)).map(p=>[p.type,p.value]));f[key]=`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`}
   }
   else f[key]=typeof value==='string'?value:''
  }
