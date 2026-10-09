@@ -232,8 +232,6 @@ services:
         condition: service_started
       venue-service:
         condition: service_started
-      booking-service:
-        condition: service_started
 
   attendance-service:
     profiles: ["not-built-yet"]

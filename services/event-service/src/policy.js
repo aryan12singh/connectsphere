@@ -4,7 +4,10 @@ function isOrganiser(actor) { return actor?.role === 'EVENT_ORGANISER' || actor?
 function isCoordinator(actor) { return actor?.role === 'EVENT_COORDINATOR' || actor?.permissions?.includes('event_requests.review'); }
 
 function canRead(actor, record) {
-  if (isOrganiser(actor)) return actor.id === record.organiserId || Boolean(actor.organisationId && actor.organisationId === record.organisationId);
+  // Event-request records, including drafts and review history, stay private
+  // to the owner and assigned Coordinator. Organisation visibility applies to
+  // the published Event projection, not the underlying request.
+  if (isOrganiser(actor)) return actor.id === record.organiserId;
   if (isCoordinator(actor)) return record.currentCoordinatorId ? actor.id === record.currentCoordinatorId : record.status === 'SUBMITTED';
   return false;
 }

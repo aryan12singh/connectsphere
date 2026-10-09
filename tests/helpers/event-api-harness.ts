@@ -31,7 +31,10 @@ export async function eventHarness(){
  vi.stubGlobal('clearUserSession',async(event:any)=>(await useSession(event,{password,name:'nuxt-session'})).clear())
  // Contract fixture for the Kong forwarding boundary. Domain data/auth checks
  // are real HTTP/Prisma; full backendFetch/session wiring is verified live.
- vi.doMock('../../frontend/server/utils/kongBff',()=>({kongBffFetch:async(event:any,path:string,options:any={})=>{
+ vi.doMock('../../frontend/server/utils/kongBff',()=>({
+  idempotencyHeaders:(event:any)=>{const key=getHeader(event,'idempotency-key');return key?{'Idempotency-Key':key}:undefined},
+  segmentPath:(segments:string[])=>segments.map(segment=>encodeURIComponent(segment)).join('/'),
+  kongBffFetch:async(event:any,path:string,options:any={})=>{
   const s=await useSession(event,{password,name:'nuxt-session'});const token=(s.data as any).secure?.token
   if(!token)throw createError({statusCode:401,statusMessage:'Unauthorized'})
   const target=new URL(path,gatewayAddress);for(const [key,value] of Object.entries(options.query??{}))target.searchParams.set(key,String(value))

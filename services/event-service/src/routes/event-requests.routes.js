@@ -7,6 +7,9 @@ const { toRequest } = require('../serializers');
 const config = require('../config');
 const { normaliseInput, validate } = require('../validation');
 const { isOrganiser, isCoordinator, canRead } = require('../policy');
+const { mutation: transactionalMutation } = require('../workflows');
+const { history: workflowHistory, load: loadWorkflowRequest } = require('../workflows');
+const prisma = require('../db');
 
 const router = express.Router();
 const REVIEW_QUEUE_STATUSES = ['SUBMITTED', 'RETURNED_FOR_AMENDMENT', 'APPROVED', 'REJECTED'];
@@ -23,6 +26,38 @@ function page(items, req) {
   const current = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20));
   return { items: items.slice((current - 1) * pageSize, current * pageSize), page: current, pageSize, total: items.length };
+}
+
+function workflowActor(actor) {
+  return {
+    ...actor,
+    roles: Array.isArray(actor.roles) ? actor.roles : (actor.role ? [actor.role] : []),
+    organisationId: actor.organisationId || null,
+  };
+}
+
+async function runTransactionalMutation(req, res, next, mode, id, body = req.body) {
+  if (config.dataMode !== 'prisma') return false;
+  try {
+    const workflowRequest = {
+      actor: workflowActor(req.actor),
+      body,
+      method: req.method,
+      path: req.path,
+      get: req.get.bind(req),
+    };
+    const result = await transactionalMutation(workflowRequest, mode, id);
+    if (result.replayed) res.set('Idempotency-Replayed', 'true');
+    res.status(result.status).json(result.body);
+  } catch (error) {
+    if (error?.status) {
+      const fields = error.fields || error.details?.fields;
+      return res.status(error.status).json({ error: { code: error.code || 'REQUEST_FAILED', message: error.message, ...(fields ? { fields } : {}) } });
+    }
+    else next(error);
+    return true;
+  }
+  return true;
 }
 
 async function coordinatorCandidates() {
@@ -89,8 +124,9 @@ router.get('/review-queue', requireAnyPermission('event_requests.review'), async
 
 router.post('/', requireAnyPermission('event_requests.create'), async (req, res, next) => {
   try {
+    if (await runTransactionalMutation(req, res, next, 'create')) return;
     const idempotencyKey = req.get('Idempotency-Key');
-    const prior = await repository.findIdempotency(req.actor.id, idempotencyKey);
+    const prior = await repository.findIdempotency(req.actor.id, idempotencyKey, req.method, req.originalUrl);
     if (prior) {
       if (prior.requestHash !== repository.requestHash(req.body || {})) return sendError(res, 422, 'IDEMPOTENCY_KEY_REUSED', 'The Idempotency-Key was already used with a different request.');
       return res.status(prior.responseStatus || 201).json(prior.responseBody);
@@ -108,7 +144,7 @@ router.post('/', requireAnyPermission('event_requests.create'), async (req, res,
   } catch (error) { return next(error); }
 });
 
-router.get('/', async (req, res, next) => {
+router.get('/', requireAnyPermission('events.view'), async (req, res, next) => {
   try {
     if (!req.actor.permissions?.includes('event_requests.create')) return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to do this');
     const where = req.query.scope === 'organisation' && req.actor.organisationId
@@ -122,18 +158,35 @@ router.get('/', async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-router.get('/:id/activity', async (req, res, next) => {
+router.get('/:id/activity', requireAnyPermission('events.view'), async (req, res, next) => {
   try {
     const record = await repository.findRequest(req.params.id);
     if (!record) return sendError(res, 404, 'NOT_FOUND', 'Event request not found');
     if (!(await readable(req.actor, record))) return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to do this');
+    if (config.dataMode === 'prisma') {
+      const actor = workflowActor(req.actor);
+      return res.json(await workflowHistory(actor, await loadWorkflowRequest(prisma, record.id), req.query));
+    }
     const items = await repository.listActivity(record.id);
     return res.json(page(items, req));
   } catch (error) { return next(error); }
 });
 
+router.get('/:id/coordinator', requireAnyPermission('events.view'), async (req, res, next) => {
+  try {
+    const record = await repository.findRequest(req.params.id);
+    if (!record) return sendError(res, 404, 'NOT_FOUND', 'Event request not found');
+    if (!(await readable(req.actor, record))) return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to do this');
+    if (!record.currentCoordinatorId) return res.json(null);
+    const coordinator = await coordinatorById(record.currentCoordinatorId);
+    if (!coordinator) return sendError(res, 503, 'DEPENDENCY_UNAVAILABLE', 'Coordinator details are unavailable');
+    return res.json(coordinator);
+  } catch (error) { return next(error); }
+});
+
 router.post('/:id/submit', requireAnyPermission('event_requests.create'), async (req, res, next) => {
   try {
+    if (await runTransactionalMutation(req, res, next, 'submit', req.params.id)) return;
     const record = await repository.findRequest(req.params.id);
     if (!record) return sendError(res, 404, 'NOT_FOUND', 'Event request not found');
     if (record.organiserId !== req.actor.id) return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to do this');
@@ -153,6 +206,7 @@ router.post('/:id/submit', requireAnyPermission('event_requests.create'), async 
 
 router.post('/:id/resubmit', requireAnyPermission('event_requests.create'), async (req, res, next) => {
   try {
+    if (await runTransactionalMutation(req, res, next, 'resubmit', req.params.id)) return;
     const record = await repository.findRequest(req.params.id);
     if (!record) return sendError(res, 404, 'NOT_FOUND', 'Event request not found');
     if (record.organiserId !== req.actor.id) return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to do this');
@@ -165,7 +219,7 @@ router.post('/:id/resubmit', requireAnyPermission('event_requests.create'), asyn
   } catch (error) { return next(error); }
 });
 
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', requireAnyPermission('events.view'), async (req, res, next) => {
   try {
     const record = await repository.findRequest(req.params.id);
     if (!record) return sendError(res, 404, 'NOT_FOUND', 'Event request not found');
@@ -176,6 +230,7 @@ router.get('/:id', async (req, res, next) => {
 
 router.put('/:id', requireAnyPermission('event_requests.create'), async (req, res, next) => {
   try {
+    if (await runTransactionalMutation(req, res, next, 'save', req.params.id)) return;
     const record = await repository.findRequest(req.params.id);
     if (!record) return sendError(res, 404, 'NOT_FOUND', 'Event request not found');
     if (record.organiserId !== req.actor.id) return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to do this');
@@ -193,6 +248,13 @@ router.put('/:id', requireAnyPermission('event_requests.create'), async (req, re
 
 router.post('/:id/decision', requireAnyPermission('event_requests.review'), async (req, res, next) => {
   try {
+    const decisionActions = { approve: 'APPROVE', reject: 'REJECT', amendments: 'RETURN' };
+    const workflowBody = {
+      ...req.body,
+      action: req.body?.action || decisionActions[req.body?.decision],
+      text: req.body?.text || req.body?.notes || req.body?.comments || req.body?.reason,
+    };
+    if (await runTransactionalMutation(req, res, next, 'decision', req.params.id, workflowBody)) return;
     let record = await repository.findRequest(req.params.id);
     if (!record) return sendError(res, 404, 'NOT_FOUND', 'Event request not found');
     if (record.currentCoordinatorId && record.currentCoordinatorId !== req.actor.id) return sendError(res, 403, 'FORBIDDEN', 'Only the current Coordinator can do this.');

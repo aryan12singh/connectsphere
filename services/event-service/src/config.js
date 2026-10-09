@@ -1,10 +1,8 @@
-// Reads environment variables once, in one place, and fails fast if a
-// required one is missing — better than a confusing error at request time.
+// Read environment variables once, in one place, with deterministic defaults
+// for local development and isolated tests.
 require('dotenv').config();
 
 module.exports = {
-  authServiceUrl: required('AUTH_SERVICE_URL'),
-  userServiceUrl: required('USER_SERVICE_URL'),
   port: Number(process.env.PORT || 3000),
   dataMode: process.env.DATA_MODE || 'prisma',
   databaseUrl: process.env.DATABASE_URL || '',

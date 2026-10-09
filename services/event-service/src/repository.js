@@ -17,10 +17,10 @@ function reset() {
 }
 
 function requestHash(value) { return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
-async function findIdempotency(userId, key) {
+async function findIdempotency(userId, key, method = 'POST', path = '/event-requests') {
   if (!key) return null;
   if (config.dataMode === 'memory') return memory.idempotency.get(`${userId}:${key}`) || null;
-  return prisma.idempotencyRecord.findUnique({ where: { userId_key: { userId, key } } });
+  return prisma.idempotencyRecord.findUnique({ where: { userId_key_method_path: { userId, key, method, path } } });
 }
 async function saveIdempotency(data) {
   if (config.dataMode === 'memory') { memory.idempotency.set(`${data.userId}:${data.key}`, data); return data; }

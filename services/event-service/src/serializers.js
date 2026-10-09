@@ -1,3 +1,5 @@
+const { displayStatus } = require('./domain/statusLabels');
+
 function iso(value) { return value instanceof Date ? value.toISOString() : value || null; }
 
 function localParts(value, timeZone) {
@@ -35,7 +37,9 @@ function toRequest(record, actor, assignment = null) {
     organiserId: record.organiserId,
     organisationId: record.organisationId || null,
     status: record.status,
+    statusLabel: displayStatus({ requestStatus: record.status, eventStatus: record.event?.status }),
     version: record.version,
+    revisedAt: iso(record.revisedAt),
     currentCoordinatorId: record.currentCoordinatorId || null,
     eventName: record.eventName || '',
     purpose: record.purpose || '',
@@ -55,6 +59,9 @@ function toRequest(record, actor, assignment = null) {
     accessibilityDetails: record.accessibilityDetails,
     equipmentNeeds: record.equipmentNeeds || [],
     technicalDetails: record.technicalDetails,
+    registrationEnabled: record.registrationEnabled === true,
+    registrationOpensAt: iso(record.registrationOpensAt),
+    registrationClosesAt: iso(record.registrationClosesAt),
     coordinator: assignment ? { coordinator: userSummary(assignment.coordinatorId), assignedAt: iso(assignment.assignedAt), assignedBy: userSummary(assignment.assignedById), reason: assignment.reason } : null,
     awaitingAssignment: record.status === 'SUBMITTED' && !record.currentCoordinatorId,
     submittedAt: iso(record.submittedAt),
@@ -62,6 +69,8 @@ function toRequest(record, actor, assignment = null) {
     decidedBy: userSummary(record.decidedById),
     decisionReason: record.decisionReason || null,
     event: record.event ? { id: record.event.id, status: record.event.status } : null,
+    eventId: record.event?.id ?? null,
+    eventStatus: record.event?.status ?? null,
     allowedActions: localAllowedActions(record, actor),
     createdAt: iso(record.createdAt),
     updatedAt: iso(record.updatedAt),

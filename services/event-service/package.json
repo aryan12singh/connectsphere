@@ -9,9 +9,12 @@
     "start": "node src/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "check": "find src -name '*.js' -type f -print0 | xargs -0 -n 1 node --check && DATA_MODE=memory NODE_ENV=test node -e 'require(\"./src/app\")'",
+    "build": "npx prisma generate && npm run check",
     "test": "DATA_MODE=memory NODE_ENV=test node --test --test-concurrency=1 tests/unit/routes.test.js",
     "test:unit": "DATA_MODE=memory NODE_ENV=test node --test --test-concurrency=1 tests/unit/routes.test.js",
     "test:routes": "DATA_MODE=memory NODE_ENV=test node --test --test-concurrency=1 tests/unit/routes.test.js",
+    "test:coverage": "DATA_MODE=memory NODE_ENV=test node --test --test-concurrency=1 --experimental-test-coverage tests/unit/routes.test.js",
     "test:contract": "python3 -m unittest discover -s tests -p 'test_*.py' -v"
   },
   "engines": {

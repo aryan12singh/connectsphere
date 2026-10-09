@@ -196,7 +196,7 @@ test('policy helpers cover owner, organisation, coordinator and disabled action 
   assert.equal(isOrganiser(organiser), true);
   assert.equal(isCoordinator(coordinator), true);
   assert.equal(canRead(organiser, draft), true);
-  assert.equal(canRead(sameCompany, draft), true);
+  assert.equal(canRead(sameCompany, draft), false);
   assert.equal(canRead(coordinator, submitted), true);
   assert.equal(canRead(otherCoordinator, unassigned), true);
   assert.equal(canRead(attendee, draft), false);
@@ -392,6 +392,11 @@ test('route cases cover capability checks, assignment, pagination, decisions and
       assert.ok(events.items.some((item) => item.id === approvedRecord.event.id));
       const event = await request('GET', `/events/${approvedRecord.event.id}`, organiser);
       assert.equal(event.status, 200);
+      const bookingAccess = await request('GET', `/events/${approvedRecord.event.id}/booking-access`, otherCoordinator);
+      assert.equal(bookingAccess.status, 200);
+      assert.deepEqual(await bookingAccess.json(), { id: approvedRecord.event.id });
+      const unassignedAccess = await request('GET', `/events/${approvedRecord.event.id}/booking-access`, coordinator);
+      assert.equal(unassignedAccess.status, 403);
       const hidden = await request('GET', `/events/${approvedRecord.event.id}`, attendee);
       assert.equal(hidden.status, 403);
     });

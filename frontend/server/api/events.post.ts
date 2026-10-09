@@ -1,4 +1,5 @@
-import { idempotencyHeaders, kongBffFetch, segmentPath } from '../utils/kongBff'
+import { getHeader, getRequestURL, setResponseStatus } from 'h3'
+import { idempotencyHeaders, kongBffFetch } from '../utils/kongBff'
 import { fromEventServiceRequest, toEventServiceInput } from '../utils/eventAdapter'
 import { randomUUID } from 'node:crypto'
 
@@ -21,16 +22,28 @@ export interface EventRequestForm {
   accessibilityDetails: unknown
   equipmentNeeds: unknown
   technicalDetails: unknown
+  registrationEnabled?: unknown
+  registrationOpensAt?: unknown
+  registrationClosesAt?: unknown
 }
 
 export interface EventRequestRecord {
   id: string
+  version: number
   organiserId: string
   status: RequestStatus
   submittedAt: string | null
   createdAt: string
   updatedAt: string
   coordinatorId: string | null
+  currentCoordinatorId: string | null
+  eventId: string | null
+  eventStatus: string | null
+  statusLabel: string
+  startAt: string | null
+  endAt: string | null
+  revisedAt?: string | null
+  decisionReason?: string | null
   reviewedById?: string | null
   reviewedAt?: string | null
   decisionNotes?: string
@@ -50,23 +63,35 @@ export interface EventRequestRecord {
   accessibilityDetails: string
   equipmentNeeds: string[]
   technicalDetails: string
+  registrationEnabled: boolean
+  registrationOpensAt: string
+  registrationClosesAt: string
 }
 
 /**
  * BFF for POST /api/events. The UI keeps its existing save/submit contract;
- * this route translates it to event-service's create + submit endpoints.
+ * this route translates the UI's save intent to event-service's atomic create.
  */
 export default defineEventHandler(async (event) => {
+  const origin = getHeader(event, 'origin')
+  if (origin) {
+    try {
+      if (new URL(origin).origin !== getRequestURL(event).origin)
+        throw createError({ statusCode: 403, statusMessage: 'Cross-origin request denied' })
+    }
+    catch (error) {
+      if ((error as { statusCode?: number }).statusCode === 403) throw error
+      throw createError({ statusCode: 403, statusMessage: 'Cross-origin request denied' })
+    }
+  }
   const body = await readBody<EventRequestForm & { saveAs?: unknown }>(event)
   const headers = idempotencyHeaders(event) ?? { 'Idempotency-Key': randomUUID() }
-  const created = await kongBffFetch<Record<string, unknown>>(event, '/event-requests', { method: 'POST', body: toEventServiceInput(body), headers })
-  if (body.saveAs === 'submit') {
-    const submitted = await kongBffFetch<Record<string, unknown>>(event, `/event-requests/${segmentPath([String(created.id)])}/submit`, {
-      method: 'POST',
-      body: { version: created.version },
-      headers,
-    })
-    return fromEventServiceRequest(submitted)
-  }
+  const input = toEventServiceInput(body)
+  // Existing clients treat POST as submission unless they explicitly choose
+  // the Draft action. This preserves sparse private drafts while ensuring an
+  // ordinary/incomplete POST is validated as a submission.
+  if (body.saveAs !== 'draft') input.saveAs = 'submit'
+  const created = await kongBffFetch<Record<string, unknown>>(event, '/event-requests', { method: 'POST', body: input, headers })
+  setResponseStatus(event, 201)
   return fromEventServiceRequest(created)
 })

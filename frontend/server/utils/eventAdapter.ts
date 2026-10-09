@@ -26,6 +26,9 @@ function asStringArray(value: unknown): string[] {
 function zoneParts(instant: unknown, timeZone: string): { date: string, time: string } {
   if (typeof instant !== 'string' || !instant)
     return { date: '', time: '' }
+  const parsed = new Date(instant)
+  if (Number.isNaN(parsed.getTime()))
+    return { date: '', time: '' }
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timeZone || 'UTC',
     year: 'numeric',
@@ -34,7 +37,7 @@ function zoneParts(instant: unknown, timeZone: string): { date: string, time: st
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
-  }).formatToParts(new Date(instant))
+  }).formatToParts(parsed)
   const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
   return {
     date: `${values.year}-${values.month}-${values.day}`,
@@ -64,24 +67,34 @@ function combineDateTime(date: unknown, time: unknown, timeZone: string): string
 /** Convert the UI's date/time fields to the event-service ISO contract. */
 export function toEventServiceInput(body: EventRequestForm & { version?: unknown }): Record<string, unknown> {
   const timeZone = asString(body.timeZone)
-  return {
-    eventName: asString(body.eventName),
-    purpose: asString(body.purpose) || null,
-    description: asString(body.description) || null,
-    startAt: combineDateTime(body.proposedDate, body.startTime, timeZone) ?? null,
-    endAt: combineDateTime(body.proposedDate, body.endTime, timeZone) ?? null,
-    timeZone: timeZone || null,
-    expectedAttendance: asNumberOrNull(body.expectedAttendance),
-    minimumCapacity: asNumberOrNull(body.minimumCapacity),
-    preferredLayout: asString(body.preferredLayout) || null,
-    venueType: asString(body.venueType) || null,
-    venueRequirements: asString(body.venueRequirements) || null,
-    accessibilityNeeds: asStringArray(body.accessibilityNeeds),
-    accessibilityDetails: asString(body.accessibilityDetails) || null,
-    equipmentNeeds: asStringArray(body.equipmentNeeds),
-    technicalDetails: asString(body.technicalDetails) || null,
-    ...(typeof body.version === 'number' ? { version: body.version } : {}),
-  }
+  const input: Record<string, unknown> = {}
+  const has = (key: keyof EventRequestForm) => Object.prototype.hasOwnProperty.call(body, key)
+  if (has('eventName')) input.eventName = asString(body.eventName)
+  if (has('purpose')) input.purpose = asString(body.purpose) || null
+  if (has('description')) input.description = asString(body.description) || null
+  // Keep local date/clock fields local: event-service merges sparse edits with
+  // the stored values, then resolves the complete wall time in its IANA zone.
+  // Turning a date-only edit into startAt=null would erase a valid draft.
+  if (has('proposedDate')) input.proposedDate = body.proposedDate
+  if (has('startTime')) input.startTime = body.startTime
+  if (has('endTime')) input.endTime = body.endTime
+  if (has('timeZone')) input.timeZone = timeZone || null
+  // Preserve malformed values for the service validator instead of silently
+  // converting them to null; otherwise invalid edits can be persisted as saves.
+  if (has('expectedAttendance')) input.expectedAttendance = body.expectedAttendance === '' ? null : body.expectedAttendance
+  if (has('minimumCapacity')) input.minimumCapacity = body.minimumCapacity === '' ? null : body.minimumCapacity
+  if (has('preferredLayout')) input.preferredLayout = asString(body.preferredLayout) || null
+  if (has('venueType')) input.venueType = asString(body.venueType) || null
+  if (has('venueRequirements')) input.venueRequirements = asString(body.venueRequirements) || null
+  if (has('accessibilityNeeds')) input.accessibilityNeeds = asStringArray(body.accessibilityNeeds)
+  if (has('accessibilityDetails')) input.accessibilityDetails = asString(body.accessibilityDetails) || null
+  if (has('equipmentNeeds')) input.equipmentNeeds = asStringArray(body.equipmentNeeds)
+  if (has('technicalDetails')) input.technicalDetails = asString(body.technicalDetails) || null
+  if (has('registrationEnabled')) input.registrationEnabled = body.registrationEnabled === true
+  if (has('registrationOpensAt')) input.registrationOpensAt = combineDateTime(asString(body.registrationOpensAt).slice(0, 10), asString(body.registrationOpensAt).slice(11), timeZone) ?? null
+  if (has('registrationClosesAt')) input.registrationClosesAt = combineDateTime(asString(body.registrationClosesAt).slice(0, 10), asString(body.registrationClosesAt).slice(11), timeZone) ?? null
+  if (typeof body.version === 'number') input.version = body.version
+  return input
 }
 
 export function fromEventServiceRequest(source: BackendEventRequest): EventRequestRecord {
@@ -90,15 +103,27 @@ export function fromEventServiceRequest(source: BackendEventRequest): EventReque
   const end = zoneParts(source.endAt, timeZone)
   return {
     id: asString(source.id),
+    version: typeof source.version === 'number' ? source.version : 1,
     organiserId: asString(source.organiserId),
     status: (asString(source.status) || 'DRAFT') as EventRequestRecord['status'],
     submittedAt: typeof source.submittedAt === 'string' ? source.submittedAt : null,
     createdAt: asString(source.createdAt),
     updatedAt: asString(source.updatedAt),
     coordinatorId: typeof source.currentCoordinatorId === 'string' ? source.currentCoordinatorId : null,
+    currentCoordinatorId: typeof source.currentCoordinatorId === 'string' ? source.currentCoordinatorId : null,
+    eventId: typeof source.eventId === 'string' ? source.eventId : null,
+    eventStatus: typeof source.eventStatus === 'string' ? source.eventStatus : null,
+    statusLabel: asString(source.statusLabel),
+    startAt: typeof source.startAt === 'string' ? source.startAt : null,
+    endAt: typeof source.endAt === 'string' ? source.endAt : null,
+    revisedAt: typeof source.revisedAt === 'string' ? source.revisedAt : null,
+    decisionReason: typeof source.decisionReason === 'string' ? source.decisionReason : null,
     reviewedById: typeof source.decidedById === 'string' ? source.decidedById : null,
     reviewedAt: typeof source.decidedAt === 'string' ? source.decidedAt : null,
     decisionNotes: asString(source.decisionReason),
+    registrationEnabled: source.registrationEnabled === true,
+    registrationOpensAt: typeof source.registrationOpensAt === 'string' ? zoneParts(source.registrationOpensAt, timeZone).date + 'T' + zoneParts(source.registrationOpensAt, timeZone).time : '',
+    registrationClosesAt: typeof source.registrationClosesAt === 'string' ? zoneParts(source.registrationClosesAt, timeZone).date + 'T' + zoneParts(source.registrationClosesAt, timeZone).time : '',
     eventName: asString(source.eventName),
     purpose: asString(source.purpose),
     description: asString(source.description),
