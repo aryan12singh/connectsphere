@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { bookingDraftForCalendarSlot, bookingDraftForSlot, bookingDraftState, bookingPopoverOffset, bookingSelectionStatuses, venueStaffCreationState, calendarSelectionFromDrag, calendarWallTimeToIso, canCreateBlock } from '../../frontend/app/components/venue/booking-state'
 
@@ -5,6 +7,11 @@ const existing = [{ id: 'block-1', venueId: 'venue-1', title: 'Maintenance', sta
 const block = (overrides = {}) => ({ venueId: 'venue-1', title: 'Maintenance', reason: 'Electrical work', timeZone: 'Asia/Singapore', status: 'BLOCKED', startAt: '2026-12-22T09:00:00Z', endAt: '2026-12-22T10:00:00Z', ...overrides })
 
 describe('CS-35 — client-side booking and block behaviour', () => {
+  it('does not import the event-service CommonJS validator into the frontend', () => {
+    const source = readFileSync(resolve('app/components/venue/booking-state.ts'), 'utf8')
+    expect(source).not.toContain('services/event-service/src/domain/validation.js')
+  })
+
   it('TC-CS35-01 preserves a valid BLOCKED status and required reason', () => {
     expect(bookingDraftState(block(), [])).toMatchObject({ canSubmit: true, status: 'BLOCKED' })
     expect(bookingSelectionStatuses(false, true)).toEqual(['AVAILABLE', 'TENTATIVELY_HELD', 'CONFIRMED', 'BLOCKED', 'UNAVAILABLE', 'REJECTED', 'CANCELLED'])

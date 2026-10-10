@@ -149,7 +149,9 @@ services:
   # check callers via auth-service's /internal/sessions/validate (RBAC).
 
   event-service:
-    build: ../services/event-service
+    build:
+      context: ../services
+      dockerfile: event-service/Dockerfile
     restart: unless-stopped
     environment:
       PORT: 3000
@@ -158,6 +160,8 @@ services:
       BOOKING_SERVICE_URL: http://booking-service:3000
       USER_SERVICE_URL: http://user-service:3000 # Coordinator list (CS-30)
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
+      DATA_MODE: prisma
+      ROLE_PERMISSIONS_PATH: /app/utils/role-permissions.js
     ports:
       - "3003:3000" # local debugging only
     depends_on:
@@ -215,7 +219,6 @@ services:
     volumes:
       - ./seed/run-seeds.sh:/run-seeds.sh:ro
       - ../services:/seed/services:ro
-      - ../backend/seed_data:/seed/backend:ro # venue seed lives here (03_venue_db.sql)
     depends_on:
       postgres:
         condition: service_healthy
@@ -225,9 +228,9 @@ services:
         condition: service_started
       event-service:
         condition: service_started
-      venue-service:
-        condition: service_started
       booking-service:
+        condition: service_started
+      venue-service:
         condition: service_started
 
   attendance-service:

@@ -72,7 +72,10 @@ export default defineEventHandler(async (event) => {
   if (!email || !password)
     throw createError({ statusCode: 400, statusMessage: 'Email and password are required' })
 
-  const authMode = resolveAuthMode(useRuntimeConfig(event).authMode)
+  // Runtime config is the normal source; keep the documented Nuxt override
+  // available to isolated H3 callers too (they do not have Nitro request
+  // context to apply NUXT_* env overrides).
+  const authMode = resolveAuthMode(process.env.NUXT_AUTH_MODE ?? useRuntimeConfig(event).authMode)
 
   const { token, user } = authMode === 'live'
     ? await loginWithAuthService(event, email, password)

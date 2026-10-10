@@ -1,4 +1,6 @@
-import { requestCall, browserRecord, card } from '../utils/eventBff'
+import { getQuery } from 'h3'
+import { kongBffFetch } from '../utils/kongBff'
+import { toOrganiserEvent } from '../utils/eventAdapter'
 
 export type EventStatus
   = | 'DRAFT'
@@ -19,17 +21,26 @@ export interface EventsResponse {
   events: OrganiserEvent[]
 }
 
-
+/**
+ * BFF for GET /api/events. Organiser requests are read from event-service's
+ * request endpoint; booking selectors use the event endpoint exposed through
+ * Kong so the browser never talks to a service directly.
+ */
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
-  if(query.scope === 'booking') {
-    const result = await requestCall<{items:{id:string,title:string,status:string}[]}>(event,'/events')
-    return {events:result.items.map(item=>({...item,category:'EVENT',meta:'',status:'APPROVED' as const}))}
+  const session = await requireUserSession(event)
+  const user = session.user as { id?: unknown, role?: unknown } | undefined
+  if (!user || typeof user.id !== 'string')
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+
+  if (query.scope === 'booking') {
+    const response = await kongBffFetch<{ items?: unknown[], events?: unknown[] }>(event, '/events', { query: { page: 1, pageSize: 100 } })
+    const items = Array.isArray(response.items) ? response.items : (Array.isArray(response.events) ? response.events : [])
+    return { events: items.map(item => toOrganiserEvent(item as Record<string, unknown>)) }
   }
-  // Verify live identity for the dashboard even when it is the Coordinator home.
-  const me = await requestCall<{user:{role:string,roles?:string[]}}>(event,'/auth/me')
-  const roles = me.user.roles ?? [me.user.role]
-  if(!roles.includes('EVENT_ORGANISER') && roles.includes('EVENT_COORDINATOR')) return {events:[]}
-  const result = await requestCall<{items:Record<string,unknown>[]}>(event,'/event-requests',{query})
-  return {events:result.items.map(item=>card(browserRecord(item)))}
+
+  if (user.role !== 'EVENT_ORGANISER')
+    return { events: [] }
+  const response = await kongBffFetch<{ items?: unknown[] }>(event, '/event-requests', { query: { scope: 'own', page: 1, pageSize: 100 } })
+  return { events: (response.items ?? []).map(item => toOrganiserEvent(item as Record<string, unknown>)) }
 })
