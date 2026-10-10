@@ -42,6 +42,7 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             services/event-service/package-lock.json
+            services/equipment-service/package-lock.json
             services/venue-service/package-lock.json
             services/booking-service/package-lock.json
             services/notification-service/package-lock.json
@@ -179,6 +180,46 @@ jobs:
             ${{ runner.temp }}/hold-expiry.txt
             ${{ runner.temp }}/hold-expiry-results.json
 
+  equipment:
+    name: Equipment and technical requirements checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: connectsphere
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: equipment_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U connectsphere -d equipment_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/equipment_test
+    defaults:
+      run:
+        shell: bash
+        working-directory: services/equipment-service
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/equipment-service/package-lock.json
+      - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy && npm run check
+      - run: npm run test:unit | tee "$RUNNER_TEMP/equipment-unit.log"
+      - run: npm run test:integration | tee "$RUNNER_TEMP/equipment-integration.log"
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: equipment-evidence
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/equipment-unit.log
+            ${{ runner.temp }}/equipment-integration.log
+
   identity:
     name: ${{ matrix.service }} checks
     runs-on: ubuntu-24.04
@@ -251,6 +292,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             services/event-service/package-lock.json
+            services/equipment-service/package-lock.json
             frontend/package-lock.json
       - name: Install locked browser and smoke dependencies
         run: |
@@ -277,7 +319,7 @@ jobs:
   gate:
     name: Sprint 2 checks
     if: always()
-    needs: [frontend, event, venue_booking, identity, live]
+    needs: [frontend, event, venue_booking, identity, equipment, live]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     env:

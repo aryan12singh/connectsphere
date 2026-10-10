@@ -10,6 +10,7 @@ const { data, error, refresh } = await useFetch<{ users: AdminUser[] }>('/api/ad
 <template>
   <main class="mx-auto w-full max-w-5xl px-5 py-8 md:px-8">
     <h1 class="text-3xl font-semibold">Technical Support</h1>
+    <NuxtLink to="/technical-requests" class="mt-3 inline-block underline">Review technical requirements</NuxtLink>
     <Card class="mt-6">
       <CardHeader><CardTitle>User directory</CardTitle></CardHeader>
       <CardContent>

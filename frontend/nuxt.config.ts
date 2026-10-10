@@ -1,6 +1,11 @@
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineNuxtConfig({
+  app: {
+    head: {
+      meta: [{ name: 'viewport', content: 'width=device-width, initial-scale=1' }],
+    },
+  },
   css: ['~/assets/css/tailwind.css'],
   compatibilityDate: '2025-01-01',
   vite: {

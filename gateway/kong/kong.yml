@@ -138,6 +138,14 @@ services:
         paths: ["/venue-bookings"]
         strip_path: false
 
+  - name: equipment-service
+    url: http://equipment-service:3000
+    routes:
+      - name: equipment-routes
+        paths: ["~/event-requests/[^/]+/technical-request(/decision)?$", "/equipment-types", "/technical-requests"]
+        regex_priority: 100
+        strip_path: false
+
   - name: attendance-service
     url: http://attendance-service:3000
     routes:

@@ -239,10 +239,14 @@ services:
       AUTH_SERVICE_URL: http://auth-service:3000
       EVENT_SERVICE_URL: http://event-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
+    ports:
+      - "3005:3000"
     depends_on:
       postgres:
         condition: service_healthy
       auth-service:
+        condition: service_started
+      event-service:
         condition: service_started
 
   # One-shot demo-data loader. Waits for each service to create its tables
