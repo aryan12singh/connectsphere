@@ -8,7 +8,7 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 
 // CS-30 — single file per story (IS212/IEEE 829). Organiser-visible slice
 // (Phase A): current coordinator banner, secure owner view, reusable edit
-// form. Execution log via tests/scripts/compile-test-run.ts → test-runs/.
+// form.
 
 const detailMocks = vi.hoisted(() => ({
   useFetch: vi.fn(),
@@ -315,21 +315,28 @@ describe('CS-30 — TC-CS30-10 queue selection and detail', () => {
 })
 
 describe('CS-30 — TC-CS30-11 coordinator decision actions', () => {
-  it('approve posts the decision, drops the row at once and refreshes', async () => {
+  it('approve posts the decision and reloads the page without removing the row locally', async () => {
     showQueue()
     detailMocks.decisionResponse.value = { id: 'req-1', status: 'APPROVED' }
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
     const wrapper = await mountIndexPage()
-    const approves = wrapper.findAll('button').filter(b => b.text() === 'Approve')
-    expect(approves.length).toBe(1)
-    await approves[0]!.trigger('click')
-    await wrapper.vm.$nextTick()
-    await new Promise(resolve => setTimeout(resolve, 0))
-    const posts = detailMocks.useFetch.mock.calls.filter(([url, init]) => url === '/api/events/req-1/decision' && (init as { method?: string })?.method === 'POST')
-    expect(posts.length).toBe(1)
-    expect((posts[0]![1] as { body?: Record<string, unknown> }).body).toMatchObject({ decision: 'approve' })
-    expect(detailMocks.refreshNuxtData).toHaveBeenCalledWith('coordinator-queue')
-    expect(wrapper.text()).not.toContain('Autumn Product Summit')
-    expect(wrapper.text()).toContain('Vendor Expo 2026')
+    try {
+      const approves = wrapper.findAll('button').filter(b => b.text() === 'Approve')
+      expect(approves.length).toBe(1)
+      await approves[0]!.trigger('click')
+      await wrapper.vm.$nextTick()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      const posts = detailMocks.useFetch.mock.calls.filter(([url, init]) => url === '/api/events/req-1/decision' && (init as { method?: string })?.method === 'POST')
+      expect(posts.length).toBe(1)
+      expect((posts[0]![1] as { body?: Record<string, unknown> }).body).toMatchObject({ decision: 'approve' })
+      expect(reload).toHaveBeenCalledOnce()
+      expect(detailMocks.refreshNuxtData).not.toHaveBeenCalled()
+      expect(wrapper.text()).toContain('Autumn Product Summit')
+      expect(wrapper.text()).toContain('Vendor Expo 2026')
+    }
+    finally {
+      reload.mockRestore()
+    }
   })
 
   it('captures an amendment reason before posting the decision', async () => {

@@ -35,7 +35,6 @@ mockNuxtImport('useUserSession', () => () => ({
 vi.mock('../../frontend/server/utils/kongBff',()=>({kongBffFetch:async(event:any,path:string)=>{const session=await (globalThis as any).requireUserSession(event);return path==='/auth/me'?{user:session.user}:{items:[]}}}))
 
 // CS-10 — single file per story (IS212/IEEE 829). One describe per AC, all TCs together.
-// Execution log is generated deterministically via tests/scripts/compile-test-run.ts → test-runs/<date-time>.md
 
 // Test-only sealed-session password (mirrors NUXT_SESSION_PASSWORD in dev;
 // never a production secret). Used to drive the real h3 session primitive.

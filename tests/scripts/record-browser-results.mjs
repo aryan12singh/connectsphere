@@ -1,8 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { resolve, dirname, basename } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const resultFile = resolve(process.argv[2] || 'frontend/test-results/e2e/results.json')
 const report = JSON.parse(readFileSync(resultFile, 'utf8'))
 const stamp = new Date(report.stats.startTime).toISOString().replace(/\.\d{3}Z$/, 'Z').replaceAll(':', '-')
@@ -31,7 +29,7 @@ const source = existsSync(sourceFile) ? JSON.parse(readFileSync(sourceFile, 'utf
 function cell(value) { return String(value).replaceAll('|', '\\|').replaceAll('\n', ' ') }
 for (const [story, rows] of cases) {
   const text = `# ${story} — ${phase} browser execution\n\nStarted UTC: ${report.stats.startTime}\n\nRunner: Codex automated Playwright, real production Nuxt/BFF/Kong/Keycloak/auth/PostgreSQL; synthetic checked-in accounts only. This is not independent human review or PO acceptance. Authentication setup honours gateway429 backoff; Playwright reruns are disabled.\n\nSource: ${source.revision || source.note}\n\nFull run: ${report.stats.expected} passed, ${report.stats.unexpected} unexpected, ${report.stats.flaky} flaky, ${report.stats.skipped} skipped.\n\n| Browser case | Project | Result | Duration ms | Reruns |\n|---|---|---|---|---|\n${rows.map(row => `| ${cell(row.name)} | ${cell(row.project)} | ${row.status} | ${row.duration} | ${row.reruns} |`).join('\n')}\n\nMachine-readable results and HTML/failure screenshots are retained with the run's evidence. The normal, failure and boundary expectations in the named browser cases remain explicit. Earlier failed attempts are retained. Main story specifications remain in tests/specs and tests/records/${story}/test-cases.md.\n`
-  const targets = [resolve(root, 'tests/records', story, 'test-runs'), resolve(dirname(resultFile), 'story-records', story)]
+  const targets = [resolve(dirname(resultFile), 'story-records', story)]
   for (const folder of targets) {
     mkdirSync(folder, { recursive: true })
     const path = resolve(folder, `${stamp}-${phase}-BROWSER.md`)

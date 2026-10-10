@@ -51,14 +51,10 @@ const { data: queue, error: queueError } = await useFetch('/api/review-queue', {
   query: computed(() => ({ page: page.value, pageSize: pageSize.value })),
 })
 
-// Keep a completed decision out of the visible queue immediately, even while
-// the refreshed server response is in flight or cached.
-const decidedIds = ref(new Set<string>())
-
 const items = computed(() => {
   const value = queue.value as { requests?: unknown } | null | undefined
   const requests = value?.requests
-  return Array.isArray(requests) ? (requests as QueueItem[]).filter(item => !decidedIds.value.has(item.id)) : []
+  return Array.isArray(requests) ? (requests as QueueItem[]) : []
 })
 
 const total = computed(() => Number((queue.value as { total?: unknown } | null | undefined)?.total) || 0)
@@ -136,11 +132,7 @@ async function decide(decision: 'approve' | 'reject' | 'amendments', reason?: st
       decisionError.value = 'Could not record your decision. Please try again.'
       return
     }
-    decidedIds.value = new Set([...decidedIds.value, item.id])
-    selectedId.value = null
-    amendmentsPopoverOpen.value = false
-    amendmentReason.value = ''
-    await refreshNuxtData('coordinator-queue')
+    window.location.reload()
   }
   catch (e) {
     decisionError.value = apiErrorMessage(e,'Could not record your decision. Please retry.')
