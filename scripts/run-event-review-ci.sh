@@ -23,7 +23,7 @@ compose() { docker compose -f "$COMPOSE" "$@"; }
 cleanup() {
   result=$?
   trap - EXIT
-  compose logs --no-color kong user-service auth-service event-service venue-service booking-service frontend > "$EVIDENCE/services.log" 2>&1 || true
+  compose logs --no-color kong user-service auth-service event-service venue-service booking-service equipment-service frontend > "$EVIDENCE/services.log" 2>&1 || true
   compose down > "$EVIDENCE/stop.log" 2>&1 || true
   # The project-scoped volume is intentionally retained, including on failure.
   exit "$result"
@@ -31,7 +31,7 @@ cleanup() {
 trap cleanup EXIT
 export NUXT_AUTH_MODE=live
 npm run build --prefix frontend > "$EVIDENCE/frontend-build.log" 2>&1
-compose up -d --build postgres keycloak user-service auth-service event-service venue-service booking-service kong > "$EVIDENCE/stack-start.log" 2>&1
+compose up -d --build postgres keycloak user-service auth-service event-service venue-service booking-service equipment-service kong > "$EVIDENCE/stack-start.log" 2>&1
 wait_http() {
   for attempt in $(seq 1 120); do
     if curl --silent --fail "$1" > /dev/null; then return 0; fi
@@ -52,7 +52,7 @@ export CSE2E_EVIDENCE_DIR="$EVIDENCE/browser"
 wait_http "$FRONTEND_BASE/login"
 node services/event-service/tests/smoke/live.cjs | tee "$EVIDENCE/live-smoke.log"
 (cd frontend && npm run test:e2e:report) | tee "$EVIDENCE/browser.log"
-compose restart event-service user-service auth-service venue-service booking-service frontend > "$EVIDENCE/restart.log" 2>&1
+compose restart event-service user-service auth-service venue-service booking-service equipment-service frontend > "$EVIDENCE/restart.log" 2>&1
 node services/event-service/tests/smoke/live.cjs --verify-restart | tee "$EVIDENCE/restart-smoke.log"
 python3 - "$EVIDENCE/browser/results.json" <<'PYRESULT'
 import json, sys

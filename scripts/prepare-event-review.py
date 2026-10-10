@@ -7,7 +7,7 @@ if not re.fullmatch(r'csreview-[a-z0-9-]+',a.project):p.error('Use a unique csre
 if out.is_relative_to(root):p.error('Output must be outside the checkout')
 if out.exists():p.error('Refusing to overwrite an existing stack file')
 if not 1024<=a.port_base<=50000:p.error('Choose port-base between 1024 and 50000')
-ports={'frontend':a.port_base,'user-service':a.port_base+1,'auth-service':a.port_base+2,'event-service':a.port_base+3,'venue-service':a.port_base+5,'booking-service':a.port_base+6,'postgres':a.port_base+2432,'kong':a.port_base+5000,'keycloak':a.port_base+5080}
+ports={'frontend':a.port_base,'user-service':a.port_base+1,'auth-service':a.port_base+2,'event-service':a.port_base+3,'venue-service':a.port_base+5,'booking-service':a.port_base+6,'equipment-service':a.port_base+7,'postgres':a.port_base+2432,'kong':a.port_base+5000,'keycloak':a.port_base+5080}
 for port in [*ports.values(),a.port_base+5001]:
  with socket.socket() as s:
   try:s.bind(('127.0.0.1',port))
@@ -17,7 +17,7 @@ if existing.strip():p.error('Project already exists; use its recorded compose fi
 # Force checked-in development settings; never inherit a hosted DB or supplied secrets.
 env=dict(os.environ,INTERNAL_API_KEY='change-me-dev-internal-key',KEYCLOAK_CLIENT_SECRET='dev-auth-service-secret')
 c=json.loads(subprocess.check_output(['docker','compose','-f',str(root/'infra/docker-compose.yml'),'config','--format','json'],env=env,text=True))
-keep=['postgres','keycloak','kong','user-service','auth-service','event-service','venue-service','booking-service','seed']
+keep=['postgres','keycloak','kong','user-service','auth-service','event-service','venue-service','booking-service','equipment-service','seed']
 c['services']={name:c['services'][name] for name in keep};c['name']=a.project;c['networks']={'default':{}};c['volumes']={'pgdata':{}}
 for name,service in c['services'].items():
  for key in ['container_name','profiles']:service.pop(key,None)

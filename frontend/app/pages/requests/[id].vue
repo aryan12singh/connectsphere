@@ -11,6 +11,7 @@ const loaded=computed(()=>record.value as Record<string,any>|null)
 const {data:coordinator}=await useFetch(`/api/events/${id}/coordinator`,{key:`event-coordinator-${id}`})
 const {user}=useUserSession(),editMode=ref(false),isSubmitting=ref(false),submitError=ref(''),savedMessage=ref(''),fieldErrors=ref<Record<string,string[]>>({})
 const canEdit=computed(()=>loaded.value?.organiserId===user.value?.id && ['DRAFT','RETURNED_FOR_AMENDMENT'].includes(loaded.value?.status))
+const canManageTechnicalRequirements=computed(()=>user.value?.role==='EVENT_COORDINATOR'&&loaded.value?.currentCoordinatorId===user.value?.id)
 const mode=computed(()=>canEdit.value&&loaded.value?.status==='DRAFT'?'draft':canEdit.value&&editMode.value?'edit':'readonly')
 const form=ref(loaded.value?recordToForm(loaded.value):emptyRequestForm()),clean=ref(JSON.stringify(form.value))
 const dirty=computed(()=>JSON.stringify(form.value)!==clean.value);useUnsavedRequest(dirty)
@@ -47,6 +48,7 @@ useHead({title:'Event request | ConnectSphere'})
   <template v-else-if="loaded">
    <p class="mt-3 break-all text-sm text-muted-foreground">Request ID: {{ loaded.id }} · Version {{ loaded.version }}</p>
    <p v-if="loaded.eventId" class="mt-2 text-sm">Event ID: <NuxtLink :to="`/events/${loaded.eventId}`" class="underline">{{ loaded.eventId }} · Event history</NuxtLink></p>
+   <NuxtLink v-if="canManageTechnicalRequirements" :to="`/technical-requirements/${id}`" class="mt-3 inline-block underline">Manage technical requirements</NuxtLink>
    <p v-if="loaded.awaitingAssignment" role="status" class="mt-2">Awaiting assignment</p>
    <p v-if="savedMessage" role="status" class="mt-3">{{ savedMessage }}</p>
    <div role="tablist" aria-label="Request details and history" class="mt-4 flex gap-5" @keydown="navigateTabs">
