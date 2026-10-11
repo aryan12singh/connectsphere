@@ -215,7 +215,7 @@ describe('CS-10 — TC-CS10-07 unauthenticated interface directs to login', () =
     authMiddlewareMocks.sessionUser.value = { id: 'tech', email: 'tech@example.test', name: 'Tech', role: 'TECHNICAL_SUPPORT_STAFF' }
     authMiddlewareMocks.navigateToLogin.mockClear()
     await middleware({ path: '/' } as never)
-    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/support')
+    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/technical-support')
     authMiddlewareMocks.sessionUser.value = { ...authMiddlewareMocks.sessionUser.value, role: 'UNKNOWN', roles: [] }
     authMiddlewareMocks.navigateToLogin.mockClear()
     await middleware({ path: '/' } as never)
@@ -231,7 +231,7 @@ describe('CS-10 — TC-CS10-07 unauthenticated interface directs to login', () =
   })
   it('TC-CS10-12 presents an accessible switch for every server-issued role', async () => {
     authMiddlewareMocks.sessionUser.value = { id: 'multi', email: 'multi@example.test', name: 'Multiple Roles', role: 'EVENT_ORGANISER', roles: ['EVENT_ORGANISER', 'ATTENDEE'] }
-    const { default: UserMenu } = await import('../../frontend/app/components/UserMenu.vue')
+    const { default: UserMenu } = await import('../../frontend/app/components/navbar/UserMenu.vue')
     const wrapper = await mountSuspended(UserMenu)
     await wrapper.get('[aria-label="Your account"]').trigger('click')
     await wrapper.vm.$nextTick()
@@ -470,7 +470,7 @@ describe('CS-10 — TC-CS10-08 avatar popup shows profile and signs out', () => 
   }
 
   async function mountUserMenu() {
-    const { default: UserMenu } = await import('../../frontend/app/components/UserMenu.vue')
+    const { default: UserMenu } = await import('../../frontend/app/components/navbar/UserMenu.vue')
     return await mountSuspended(UserMenu)
   }
 

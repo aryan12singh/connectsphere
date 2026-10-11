@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RequestActivityHistory from '@/components/events/RequestActivityHistory.vue'
 const route=useRoute(),id=String(route.params.id ?? '')
 useHead({title:'Event activity | ConnectSphere'})
 </script>

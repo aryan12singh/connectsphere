@@ -24,6 +24,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (to.path === '/venue' || to.path.startsWith('/venue/')) {
     if (!roles.some(role => ['EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF'].includes(role))) return navigateTo('/access-denied')
   }
-  if (to.path === '/support' && !roles.includes('TECHNICAL_SUPPORT_STAFF')) return navigateTo('/access-denied')
+  if (to.path === '/technical-support' && !roles.includes('TECHNICAL_SUPPORT_STAFF')) return navigateTo('/access-denied')
   if (to.path === '/attendee' && !roles.includes('ATTENDEE')) return navigateTo('/access-denied')
 })

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import RequestFormPage from '../../frontend/app/components/RequestFormPage.vue'
-import { emptyRequestForm } from '../../frontend/app/components/request-form-state'
+import RequestFormPage from '../../frontend/app/components/events/RequestFormPage.vue'
+import { emptyRequestForm } from '../../frontend/app/components/events/request-form-state'
 describe('CS-29 — TC-CS29-01 incomplete private draft form',()=>{
  it('disables empty Save, enables a single purpose without requiring a title',async()=>{
   const f=emptyRequestForm();const w=await mountSuspended(RequestFormPage,{props:{title:'Draft',statusLabel:'Draft',mode:'create',modelValue:f}})

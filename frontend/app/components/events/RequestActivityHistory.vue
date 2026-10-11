@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const requestFetch=useRequestFetch()
 import { ref } from 'vue'
-import { apiErrorMessage } from './shared/api-error'
+import { apiErrorMessage } from '../shared/api-error'
 const props=defineProps<{requestId:string,eventId?:string}>()
 interface Entry {id:string,action:string,actorType:string,actorId:string|null,createdAt:string,fromStatus:string|null,toStatus:string|null,details?:{actorName?:string,note?:string,changes?:Record<string,{old:unknown,new:unknown}>,previousValues?:Record<string,unknown>}}
 const items=ref<Entry[]>([]),cursor=ref<string|null>(null),loading=ref(false),error=ref(''),loaded=ref(false)
