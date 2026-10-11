@@ -1,6 +1,6 @@
 import { describe,it,expect,vi } from 'vitest'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import History from '../../frontend/app/components/RequestActivityHistory.vue'
+import History from '../../frontend/app/components/events/RequestActivityHistory.vue'
 import { flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
 import Detail from '../../frontend/app/pages/requests/[id].vue'

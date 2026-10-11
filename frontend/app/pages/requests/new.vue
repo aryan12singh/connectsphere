@@ -1,8 +1,9 @@
 <script setup lang="ts">
 const requestFetch=useRequestFetch()
 import { ref,computed } from 'vue'
-import { emptyRequestForm, formToPayload } from '@/components/request-form-state'
-import { fieldErrors as extractFields,operationIntent } from '@/components/request-errors'
+import RequestFormPage from '@/components/events/RequestFormPage.vue'
+import { emptyRequestForm, formToPayload } from '@/components/events/request-form-state'
+import { fieldErrors as extractFields,operationIntent } from '@/components/events/request-errors'
 import { apiErrorMessage } from '@/components/shared/api-error'
 const requestForm=ref(emptyRequestForm()),isSubmitting=ref(false),submitError=ref(''),fieldErrors=ref<Record<string,string[]>>({})
 const intent=operationIntent(),clean=ref(JSON.stringify(requestForm.value))

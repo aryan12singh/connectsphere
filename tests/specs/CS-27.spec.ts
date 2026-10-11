@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
-import RequestFormPage from '../../frontend/app/components/RequestFormPage.vue'
-import { emptyRequestForm } from '../../frontend/app/components/request-form-state'
+import RequestFormPage from '../../frontend/app/components/events/RequestFormPage.vue'
+import { emptyRequestForm } from '../../frontend/app/components/events/request-form-state'
 describe('CS-27 — TC-CS27-01 returned amendment interface',()=>{
  it('shows escaped return comments beside the form and separate Save/Resubmit controls',async()=>{
   const w=await mountSuspended(RequestFormPage,{props:{title:'Returned request',statusLabel:'Returned for Amendment',mode:'edit',modelValue:{...emptyRequestForm(),eventName:'Draft'},returnComments:'<script>secret</script>'} as any})

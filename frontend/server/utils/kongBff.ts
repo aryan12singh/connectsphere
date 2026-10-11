@@ -1,3 +1,4 @@
+import { getHeader, getRouterParam } from 'h3'
 import type { H3Event } from 'h3'
 import { backendFetch, getSessionToken } from './backend'
 

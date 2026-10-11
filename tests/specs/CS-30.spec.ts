@@ -8,7 +8,7 @@ import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 
 // CS-30 — single file per story (IS212/IEEE 829). Organiser-visible slice
 // (Phase A): current coordinator banner, secure owner view, reusable edit
-// form. Execution log via tests/scripts/compile-test-run.ts → test-runs/.
+// form.
 
 const detailMocks = vi.hoisted(() => ({
   useFetch: vi.fn(),
@@ -315,21 +315,53 @@ describe('CS-30 — TC-CS30-10 queue selection and detail', () => {
 })
 
 describe('CS-30 — TC-CS30-11 coordinator decision actions', () => {
-  it('approve posts the decision, drops the row at once and refreshes', async () => {
+  it('approve posts the decision and reloads the page without removing the row locally', async () => {
     showQueue()
     detailMocks.decisionResponse.value = { id: 'req-1', status: 'APPROVED' }
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
     const wrapper = await mountIndexPage()
-    const approves = wrapper.findAll('button').filter(b => b.text() === 'Approve')
-    expect(approves.length).toBe(1)
-    await approves[0]!.trigger('click')
+    try {
+      const approves = wrapper.findAll('button').filter(b => b.text() === 'Approve')
+      expect(approves.length).toBe(1)
+      await approves[0]!.trigger('click')
+      await wrapper.vm.$nextTick()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      const posts = detailMocks.useFetch.mock.calls.filter(([url, init]) => url === '/api/events/req-1/decision' && (init as { method?: string })?.method === 'POST')
+      expect(posts.length).toBe(1)
+      expect((posts[0]![1] as { body?: Record<string, unknown> }).body).toMatchObject({ decision: 'approve' })
+      expect(reload).toHaveBeenCalledOnce()
+      expect(detailMocks.refreshNuxtData).not.toHaveBeenCalled()
+      expect(wrapper.text()).toContain('Autumn Product Summit')
+      expect(wrapper.text()).toContain('Vendor Expo 2026')
+    }
+    finally {
+      reload.mockRestore()
+    }
+  })
+
+  it('captures an amendment reason before posting the decision', async () => {
+    showQueue()
+    detailMocks.decisionResponse.value = { id: 'req-1', status: 'RETURNED_FOR_AMENDMENT' }
+    const wrapper = await mountIndexPage()
+    const amendments = wrapper.findAll('button').filter(b => b.text() === 'Ask for amendments')
+    expect(amendments.length).toBe(1)
+    await amendments[0]!.trigger('click')
     await wrapper.vm.$nextTick()
+    expect(document.body.textContent).toContain('Reason for amendments')
+    const reason = document.body.querySelector('textarea[data-testid="amendment-reason"]')
+    expect(reason).not.toBeNull()
+    reason!.dispatchEvent(new Event('input', { bubbles: true }))
+    reason!.dispatchEvent(new Event('change', { bubbles: true }))
+    ;(reason as HTMLTextAreaElement).value = 'Please confirm the final attendance range.'
+    reason!.dispatchEvent(new Event('input', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+    const confirm = document.body.querySelector('button[data-testid="confirm-amendments"]') as HTMLButtonElement
+    expect(confirm).not.toBeNull()
+    confirm.click()
     await new Promise(resolve => setTimeout(resolve, 0))
-    const posts = detailMocks.actionFetch.mock.calls.filter(([url, init]) => url === '/api/events/req-1/decision' && (init as { method?: string })?.method === 'POST')
-    expect(posts.length).toBe(1)
-    expect((posts[0]![1] as { body?: Record<string, unknown> }).body).toMatchObject({ decision: 'approve' })
-    expect(detailMocks.refreshNuxtData).toHaveBeenCalledWith('coordinator-queue')
-    expect(wrapper.text()).not.toContain('Autumn Product Summit')
-    expect(wrapper.text()).toContain('Vendor Expo 2026')
+    const posts = detailMocks.useFetch.mock.calls.filter(([url, init]) => url === '/api/events/req-1/decision' && (init as { method?: string })?.method === 'POST')
+    expect(posts).toHaveLength(1)
+    expect((posts[0]![1] as { body?: Record<string, unknown> }).body).toMatchObject({ decision: 'amendments', reason: 'Please confirm the final attendance range.' })
   })
 
   it('failed decision shows an error and keeps the queue', async () => {
@@ -362,7 +394,7 @@ describe('CS-30 — TC-CS30-11 coordinator decision actions', () => {
 describe('CS-30 — TC-CS30-01 persistent coordinator and dashboard integration',()=>{
  it('owner and assigned Coordinator see one saved record, unrelated users are denied',async()=>{const r=await api.call('POST','/api/events',valid);expect(r.status).toBe(201);expect(r.body.coordinatorId).toBe(api.users.coord.id);expect((await api.call('GET','/api/events/'+r.body.id,undefined,'coord')).status).toBe(200);expect((await api.call('GET','/api/events/'+r.body.id,undefined,'other')).status).toBe(403)})
  it('relationship-scoped coordinator contact contains only required profile fields',async()=>{const r=await api.call('POST','/api/events',valid);const c=await api.call('GET',`/api/events/${r.body.id}/coordinator`);expect(c.body).toMatchObject({id:api.users.coord.id,name:'coord Synthetic',email:'coord@example.test'});expect(c.body).not.toHaveProperty('passwordHash');expect((await api.call('GET',`/api/events/${r.body.id}/coordinator`,undefined,'other')).status).toBe(403)})
- it('drafts and their edits appear in owner cards with updated title/date',async()=>{const r=await api.call('POST','/api/events',{...valid,saveAs:'draft'});const saved=await api.call('PUT','/api/events/'+r.body.id,{version:r.body.version,eventName:'Renamed',proposedDate:'2028-12-01'});expect(saved.status).toBe(200);const list=await api.call('GET','/api/events');expect(list.body.events.find((x:any)=>x.id===r.body.id)).toMatchObject({title:'Renamed',status:'DRAFT',meta:expect.stringContaining('2028-12-01')});expect((await api.call('GET','/api/events',undefined,'other')).body.events).toEqual([])})
+ it('drafts and their edits appear in owner cards with updated title/date',async()=>{const r=await api.call('POST','/api/events',{...valid,saveAs:'draft'});const saved=await api.call('PUT','/api/events/'+r.body.id,{version:r.body.version,eventName:'Renamed',proposedDate:'2028-12-01'});expect(saved.status).toBe(200);const list=await api.call('GET','/api/events');expect(list.body.events.find((x:any)=>x.id===r.body.id)).toMatchObject({title:'Renamed',status:'DRAFT',meta:expect.stringContaining('Dec 1')});expect((await api.call('GET','/api/events',undefined,'other')).body.events).toEqual([])})
  it('unknown persisted IDs fail without synthesising mock records',async()=>{expect((await api.call('GET','/api/events/e2')).status).toBe(404)})
 })
 describe('CS-30 — TC-CS30-06 queue authorisation',()=>{
@@ -370,7 +402,7 @@ describe('CS-30 — TC-CS30-06 queue authorisation',()=>{
  it('rejects Organisers and missing sessions',async()=>{expect((await api.call('GET','/api/review-queue')).status).toBe(403);expect((await api.call('GET','/api/review-queue',undefined,null)).status).toBe(401)})
 })
 describe('CS-30 — TC-CS30-07 existing decision controls use shared guard',()=>{
- it('approve creates a distinct Planning Event and closes further decisions',async()=>{const r=await api.call('POST','/api/events',valid);const p=`/api/events/${r.body.id}/decision`;const d=await api.call('POST',p,{decision:'approve',version:r.body.version},'coord');expect(d.status).toBe(200);expect(d.body).toMatchObject({status:'APPROVED',eventStatus:'ARRANGEMENT_PENDING',statusLabel:'Planning'});expect(d.body.eventId).not.toBe(r.body.id);expect((await api.call('POST',p,{decision:'approve',version:d.body.version},'coord')).status).toBe(409)})
+ it('approve creates a distinct Planning Event and closes further decisions',async()=>{const r=await api.call('POST','/api/events',valid);const p=`/api/events/${r.body.id}/decision`;const d=await api.call('POST',p,{decision:'approve',version:r.body.version},'coord');expect(d.status).toBe(200);expect(d.body).toMatchObject({status:'APPROVED',eventStatus:'ARRANGEMENT_PENDING',statusLabel:'Planning'});expect(d.body.eventId).not.toBe(r.body.id);expect((await api.call('GET',`/api/events/${r.body.id}`)).body).toMatchObject({eventId:d.body.eventId,eventStatus:'ARRANGEMENT_PENDING'});expect((await api.call('POST',p,{decision:'approve',version:d.body.version},'coord')).status).toBe(409)})
  it('reject and return require comments and return their explanations',async()=>{for(const decision of ['reject','amendments']){const r=await api.call('POST','/api/events',valid);const p=`/api/events/${r.body.id}/decision`;expect((await api.call('POST',p,{decision,version:r.body.version},'coord')).status).toBe(422);const d=await api.call('POST',p,{decision,version:r.body.version,notes:'Explain'},'coord');expect(d.status).toBe(200);expect(d.body.decisionReason).toBe('Explain')}})
  it('owner cannot approve; unknown action and unknown ID keep their error status',async()=>{const r=await api.call('POST','/api/events',valid);expect((await api.call('POST',`/api/events/${r.body.id}/decision`,{decision:'approve',version:r.body.version})).status).toBe(403);expect((await api.call('POST',`/api/events/${r.body.id}/decision`,{decision:'explode',version:r.body.version},'coord')).status).toBe(400);expect((await api.call('POST','/api/events/missing/decision',{decision:'approve',version:1},'coord')).status).toBe(404)})
 })
