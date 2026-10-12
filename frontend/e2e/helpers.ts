@@ -47,7 +47,7 @@ export async function signIn(page: Page, email = emails.owner, password?: string
     expect(attempt, 'Gateway kept rate limiting live login').toBeLessThan(2)
     await rateLimitPause(response.headers())
   }
-  await expect(page).toHaveURL(new URL(expectedHome ?? (email === emails.staff ? '/venue' : email === emails.attendee ? '/attendee' : email === emails.support ? '/support' : '/'), baseURL).href)
+  await expect(page).toHaveURL(new URL(expectedHome ?? (email === emails.staff ? '/venue' : email === emails.attendee ? '/attendee' : email === emails.support ? '/technical-support' : '/'), baseURL).href)
 }
 
 export async function session(request: APIRequest, email = emails.owner) {

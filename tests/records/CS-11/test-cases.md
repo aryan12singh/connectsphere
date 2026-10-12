@@ -1,6 +1,6 @@
 # CS-11 — Test Case Specification (IS212 / IEEE 829)
 
-> Requirements-owned test cases written before implementation. Execution evidence belongs in `test-runs/<YYYY-MM-DDTHH-mm-ss>.md`; no `latest.md` alias is used.
+> Requirements-owned test cases written before implementation. Execution evidence is retained with the test run's workflow artifacts.
 
 Story: *As an Event Organiser, I want to submit my event requirements and view the recorded request so that ConnectSphere can begin planning from accurate information.*
 
