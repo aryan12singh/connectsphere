@@ -28,11 +28,19 @@ class BookingServiceContractTest(unittest.TestCase):
     def setUpClass(cls):
         class EventFixture(BaseHTTPRequestHandler):
             def do_GET(self):
-                allowed = self.path == "/events/event-1/booking-access"
+                if self.path == "/internal/events/event-1/planning-context":
+                    body = {"id":"event-1","eventRequestId":"request-fixture","status":"ARRANGEMENT_PENDING","currentCoordinatorId":"coordinator-1","startAt":"2026-11-01T00:00:00.000Z","endAt":"2026-12-31T23:59:00.000Z","expectedAttendance":80,"preferredLayout":"THEATRE","venueType":"PHYSICAL","accessibilityNeeds":[],"venueRequirements":"","equipmentNeeds":[]}
+                    allowed = self.headers.get("x-internal-api-key") == "change-me-dev-internal-key"
+                elif self.path.startswith('/venues/') and self.path.endswith('/internal'):
+                    body = {"id":self.path.split('/')[2],"name":"Isolated venue","version":1,"capacity":100,"venueType":"PHYSICAL","isActive":True,"setupMinutes":0,"turnaroundMinutes":0,"supportedLayouts":["THEATRE"],"facilities":[],"accessibilityTags":[],"timeZone":"Asia/Singapore","operatingHours":[{"weekday":day,"isClosed":False,"opensAt":"00:00","closesAt":"23:59"} for day in ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY']]}
+                    allowed = self.headers.get("x-internal-api-key") == "change-me-dev-internal-key"
+                else:
+                    body = {"id":"event-1"}
+                    allowed = self.path == "/events/event-1/booking-access" and self.headers.get('x-test-user-id') == 'coordinator-1' and self.headers.get('x-test-role') == 'EVENT_COORDINATOR'
                 self.send_response(200 if allowed else 403)
                 self.send_header("content-type", "application/json")
                 self.end_headers()
-                self.wfile.write(json.dumps({"id": "event-1"} if allowed else {}).encode())
+                self.wfile.write(json.dumps(body if allowed else {}).encode())
             def log_message(self, *args):
                 pass
         cls.event_fixture = ThreadingHTTPServer(("127.0.0.1", 0), EventFixture)
@@ -42,7 +50,7 @@ class BookingServiceContractTest(unittest.TestCase):
         cls.addClassCleanup(cls.event_fixture.shutdown)
         cls.port = int(os.environ.get("BOOKING_TEST_PORT", "0"))
         env = os.environ.copy()
-        env.update({"PORT": str(cls.port), "NODE_ENV": "test", "DATA_MODE": "memory", "EVENT_SERVICE_URL": f"http://127.0.0.1:{cls.event_fixture.server_port}"})
+        env.update({"PORT": str(cls.port), "NODE_ENV": "test", "DATA_MODE": "memory", "EVENT_SERVICE_URL": f"http://127.0.0.1:{cls.event_fixture.server_port}","VENUE_SERVICE_URL":f"http://127.0.0.1:{cls.event_fixture.server_port}"})
         cls.process = subprocess.Popen(
             ["node", "src/server.js"],
             cwd=os.path.join(os.path.dirname(__file__), ".."),
@@ -129,7 +137,8 @@ class BookingServiceContractTest(unittest.TestCase):
     def valid_payload(self):
         return {
             "eventId": "event-1",
-            "venueId": "venue-1",
+            # Independent tests must not compete for another test's live hold.
+            "venueId": "venue-1-" + self._testMethodName,
             "title": "Autumn Product Summit",
             "reason": "Customer conference",
             "startAt": "2026-11-20T01:00:00.000Z",
@@ -213,14 +222,22 @@ class BookingServiceContractTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(updated["status"], "CANCELLED")
 
-    def test_venue_staff_can_replace_a_booking_with_any_persisted_status(self):
+    def test_venue_staff_decisions_follow_current_transition_and_version_guards(self):
+        # The legacy any-status expectation is superseded by live CS-38/39:
+        # no workflow/conflict override; approve/reject only an active hold.
         booking = self.create_booking("booking-4")
+        status, approved = self.request("PUT", f"/venue-bookings/{booking['id']}", {
+            **booking,"status":"CONFIRMED","reason":"Room verified",
+        },role="VENUE_STAFF",user_id="staff-1")
+        self.assertEqual(status,200)
+        self.assertEqual(approved['status'],'CONFIRMED')
         for next_status in PERSISTED_STATUSES:
-            status, booking = self.request("PUT", f"/venue-bookings/{booking['id']}", {
-                **booking, "status": next_status, "reason": f"Set to {next_status}",
+            status, _ = self.request("PUT", f"/venue-bookings/{booking['id']}", {
+                **approved, "status": next_status, "reason": f"Attempt override {next_status}",
             }, role="VENUE_STAFF", user_id="staff-1")
-            self.assertEqual(status, 200)
-            self.assertEqual(booking["status"], next_status)
+            self.assertEqual(status,409 if next_status in ['CONFIRMED','REJECTED'] else 403)
+            _, current=self.request('GET',f"/venue-bookings/{booking['id']}",role='VENUE_STAFF',user_id='staff-1')
+            self.assertEqual(current,approved)
 
     def test_repeating_a_submission_returns_the_original_booking(self):
         first_status, first = self.request("POST", "/venue-bookings", self.valid_payload(), key="booking-5")
@@ -244,7 +261,7 @@ class BookingServiceContractTest(unittest.TestCase):
             **booking, "status": "CONFIRMED", "reason": "Approved by venue staff",
         }, role="VENUE_STAFF", user_id="staff-2")
         self.assertEqual(status, 200)
-        status, history = self.request("GET", "/venue-bookings/history?venueId=venue-1", role="VENUE_STAFF", user_id="staff-2")
+        status, history = self.request("GET", f"/venue-bookings/history?venueId={booking['venueId']}", role="VENUE_STAFF", user_id="staff-2")
         self.assertEqual(status, 200)
         roles = {item["actorRole"] for item in history["items"]}
         self.assertIn("EVENT_COORDINATOR", roles)

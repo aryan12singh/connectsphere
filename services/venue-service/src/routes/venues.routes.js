@@ -2,6 +2,7 @@ const express = require('express');
 const { requireAuth, requireAnyPermission, internalOnly } = require('../auth');
 const store = require('../store');
 const bookingClient = require('../bookingClient');
+const config = require('../config');
 const { VENUE_TYPES, LAYOUTS, text, validateVenue, normaliseVenue, validateHours } = require('../validation');
 
 const router = express.Router();
@@ -14,6 +15,7 @@ function validationError(res, fields) {
 }
 
 router.get('/options', auth, view, (req, res) => res.json({
+  maxBufferMinutes:config.maxBufferMinutes,
   venueTypes: VENUE_TYPES.map((value) => ({ value, label: value[0] + value.slice(1).toLowerCase() })),
   supportedLayouts: LAYOUTS.map((value) => ({ value, label: value[0] + value.slice(1).toLowerCase() })),
   facilities: [
@@ -26,6 +28,7 @@ router.get('/options', auth, view, (req, res) => res.json({
     ['ACCESSIBLE_RESTROOMS', 'Accessible restrooms nearby'],
   ].map(([value, label]) => ({ value, label })),
 }));
+router.get('/internal/catalogue',internalOnly,async(req,res)=>res.json({items:await store.listVenues()}));
 
 router.get('/', auth, view, async (req, res) => {
   const search = String(req.query.search || '').toLowerCase();
@@ -55,7 +58,8 @@ router.put('/:id/operating-hours', auth, manage, async (req, res) => {
   if (Object.keys(errors).length) return validationError(res, errors);
   const hours = req.body?.items ?? req.body;
   if (!text(req.body?.reason)) return validationError(res, { reason: ['Reason is required'] });
-  return res.json({ venueId: venue.id, timeZone: venue.timeZone, items: await store.setOperatingHours(venue.id, hours, req.actor, req.body?.reason || 'Operating hours updated') });
+  if (req.body?.version!==undefined && (!Number.isSafeInteger(req.body.version)||req.body.version<1)) return validationError(res,{version:['Use the current venue version']});
+  return res.json({ venueId: venue.id, timeZone: venue.timeZone, items: await store.setOperatingHours(venue.id, hours, req.actor, req.body?.reason || 'Operating hours updated',req.body?.version) });
 });
 
 router.get('/:id', auth, view, async (req, res) => {
@@ -68,20 +72,23 @@ router.put('/:id', auth, manage, async (req, res) => {
   if (!venue) return res.status(404).json({ error: 'Venue not found' });
   const errors = validateVenue(req.body || {});
   if (Object.keys(errors).length) return validationError(res, errors);
-  return res.json(await store.replaceVenue(venue.id, normaliseVenue(req.body), req.actor));
+  if (req.body.version!==undefined && (!Number.isSafeInteger(req.body.version)||req.body.version<1)) return validationError(res,{version:['Use the current venue version']});
+  const input = {...normaliseVenue(req.body),version:req.body.version,
+    setupMinutes:req.body.setupMinutes,turnaroundMinutes:req.body.turnaroundMinutes};
+  return res.json(await store.replaceVenue(venue.id, input, req.actor));
 });
 
 router.delete('/:id', auth, manage, async (req, res) => {
   const venue = await store.getVenue(req.params.id);
   if (!venue) return res.status(404).json({ error: 'Venue not found' });
-  let blockingCount;
+  let result;
   try {
-    blockingCount = await bookingClient.blockingBookingCount(venue.id);
+    result = await bookingClient.removeUnusedVenue(venue.id,req.actor);
   } catch (error) {
     console.error(error);
     return res.status(503).json({ error: { code: 'BOOKING_SERVICE_UNAVAILABLE', message: 'Unable to verify linked bookings' } });
   }
-  if (blockingCount > 0) {
+  if (result.blockingCount > 0) {
     return res.status(409).json({
       error: {
         code: 'VENUE_HAS_BLOCKING_BOOKINGS',
@@ -89,11 +96,10 @@ router.delete('/:id', auth, manage, async (req, res) => {
         fields: { venueId: ['Venue cannot be deleted while blocking bookings exist'] },
       },
       venueId: venue.id,
-      blockingCount,
+      blockingCount:result.blockingCount,
     });
   }
-  const deleted = await store.deleteVenue(venue.id);
-  return deleted ? res.status(204).end() : res.status(404).json({ error: 'Venue not found' });
+  return result.deleted ? res.status(204).end() : res.status(404).json({ error: 'Venue not found' });
 });
 
 router.get('/:id/internal', internalOnly, async (req, res) => {

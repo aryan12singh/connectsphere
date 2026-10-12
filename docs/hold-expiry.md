@@ -1,9 +1,11 @@
 # Hold expiry and occupied-window foundations
 
-CS-78 technical spike and CS-85 domain foundation, 9 October 2026. The runnable
-proof uses real PostgreSQL transactions in a disposable schema. It is not wired
-to business routes, the calendar or a scheduler. CS-37/90 and the full CS-85
-consumer integration remain unfinished; see the [pending policies](venue-policy-decisions.md).
+CS-78 technical spike and CS-85 domain foundation, initially 9 October 2026;
+integration update 12 October. The research worker below still uses disposable
+PostgreSQL tables. Production requests, decisions, extensions, search, calendar
+and readiness now persist/use buffers, versions and deadlines. The production
+expiry/reminder scheduler (CS-90) and actual notification delivery remain pending;
+see the [working policies](venue-policy-decisions.md).
 
 ## Reusable domain code
 
@@ -23,11 +25,12 @@ explicit inclusive/strict occupied-start policy. These helpers share the
 calendar-valid ISO input, at most millisecond precision and finite Date range.
 Sub-millisecond input is rejected rather than silently truncated.
 
-They are exported through `availability.js` for future consumers. The existing
-`filterAvailability`/route behavior is unchanged. CS-85 must later apply the same
-reviewed rule to search, calendar shading, suitability and booking writes; CS-39
-must enforce competing writes atomically. Existing API data still lacks buffers
-and hold deadlines.
+They are exported through `availability.js` and reused by production
+[workflows](../services/booking-service/src/workflows.js). Availability now derives
+current occupied intervals and excludes ineffective holds. Writes serialize on
+Event/venue locks, use the current database clock after waits and upstream checks,
+and refuse stale/expired decisions. Calendar projections expose expiry and
+separate buffer shading without changing the advertised Event time.
 
 ## Read responsibilities and worker responsibilities
 
@@ -61,7 +64,7 @@ schema only when this invocation created it.
 | Approval/expiry transaction | Row lock plus conditional active/deadline update allows one terminal winner. Approval at the deadline fails. A successful earlier approval clears the lease; an old worker then does nothing. |
 | Multiple workers | One SQL claim with `FOR UPDATE SKIP LOCKED`, explicit batch size and persisted lease. Concurrent workers get disjoint rows and do not wait for a locked candidate. |
 | Crash/retry | Lease deadline is persisted. At the lease boundary another attempt may claim; a fresh token fences the old attempt even with the same worker identity. |
-| Revision fencing | Claim contains booking ID, version and token; processing requires all to match, with an unexpired lease. A controlled fixture revision invalidates the old claim. This is not an implemented hold-extension API. |
+| Revision fencing | Research claim contains booking ID, version and token; processing requires all to match, with an unexpired lease. A controlled fixture revision invalidates the old claim. The separate production extension API checks the booking version and current deadline. |
 | Warning deduplication | `warned_version` plus deterministic `booking:version:HOLD_WARNING` action ID. No warning after expiry; an explicit zero lead disables the warning. |
 | Release/notice intent | Expiry updates the row and inserts `booking:version:HOLD_EXPIRED` in one transaction. A rejecting SQL constraint rolls back the transition and leaves a retryable claim. |
 | Restart/catch-up | Disconnect/reconnect uses the same schema without reseeding. Deadline/lease survive and the expired row is already excluded on read; the resumed worker produces one expiry action. |
@@ -118,8 +121,10 @@ and JSON. It remains part of the existing required `Sprint 2 checks` aggregate.
 checks (cases 01–05) and ten PostgreSQL scenarios (06–15). Case 07 exercises 12
 exact-deadline races, six races straddling the boundary, and the real database
 clock. Case 14 observes an actual PostgreSQL lock wait before advancing the
-controlled clock. [CS-85 cases](../tests/records/CS-85/test-cases.md) contain 35
-domain checks; original API/browser cases 02–06 and 08–10 stay Not Executed.
-Failed runs are retained alongside successful reruns. [DEVLOG](devlogs/DEVLOG.md)
-records the tested revision/fingerprint and final counts. These checks verify
-the foundation and spike, not completed production stories or PO acceptance.
+controlled clock. [CS-85 cases](../tests/records/CS-85/test-cases.md) include domain
+and later component/preflight checks. Separate CS-36/37/38/39/84/86/87 records cover
+integrated venue workflows; a passing related case does not imply execution of
+every original API/browser scenario. Failed runs remain alongside reruns.
+[Phase delivery](devlogs/2026-10-12-venue-workflows.md) records current layers,
+commands and remaining gates. Neither the spike nor this phase establishes PO
+acceptance or completed Safety/notification stories.

@@ -2,7 +2,7 @@
 import { computed, watch } from 'vue'
 import { BoxesIcon, Building2Icon, HashIcon, HistoryIcon, LayoutGridIcon } from '@lucide/vue'
 
-interface Venue { id: string, venueType?: string, supportedLayouts?: string[], facilities?: string[], accessibilityTags?: string[] }
+interface Venue { id: string, venueType?: string, supportedLayouts?: string[], facilities?: string[], accessibilityTags?: string[], setupMinutes?: number, turnaroundMinutes?: number }
 const props = defineProps<{ venue: Venue }>()
 const { data, error } = await useFetch(() => `/api/venues/${props.venue.id}/history/combined`, { watch: [() => props.venue.id] })
 const { showError } = useErrorAlert()
@@ -12,6 +12,7 @@ const history = computed(() => ((data.value as { items?: Array<{ id: string, occ
 
 <template>
   <section class="mt-8 grid max-w-xl gap-6 text-sm">
+    <div><h3 class="font-medium">Preparation and turnaround</h3><p class="mt-2">Setup: {{ venue.setupMinutes ?? 0 }} minutes · Turnaround: {{ venue.turnaroundMinutes ?? 0 }} minutes</p></div>
     <div><h3 class="flex items-center gap-2 font-medium"><Building2Icon class="size-4 text-primary" />Venue Type</h3><p class="mt-2">{{ venue.venueType ? venue.venueType[0] + venue.venueType.slice(1).toLowerCase() : '—' }}</p></div>
     <div><h3 class="flex items-center gap-2 font-medium"><LayoutGridIcon class="size-4 text-primary" />Supported layouts</h3><ul class="mt-2 list-disc space-y-1 pl-5"><li v-for="layout in venue.supportedLayouts ?? []" :key="layout">{{ layout[0] + layout.slice(1).toLowerCase() }}</li></ul></div>
     <div><h3 class="flex items-center gap-2 font-medium"><BoxesIcon class="size-4 text-primary" />Amenities available in this venue</h3><p class="mt-2 text-xs text-muted-foreground">Equipment</p><ul class="mt-1 list-disc space-y-1 pl-5"><li v-for="facility in venue.facilities ?? []" :key="facility">{{ facility.replaceAll('_', ' ').toLowerCase() }}</li></ul><p class="mt-3 text-xs text-muted-foreground">Accessibility tags</p><ul class="mt-1 list-disc space-y-1 pl-5"><li v-for="tag in venue.accessibilityTags ?? []" :key="tag">{{ tag.replaceAll('_', ' ').toLowerCase() }}</li></ul></div>

@@ -13,7 +13,7 @@ const instant=new Date(data.startTime??Date.now()),stamp=instant.toISOString().r
 const date=instant.toISOString(), entries=new Map<string,{status:string,names:string[],actual:string}>()
 for(const suite of data.testResults??[])for(const t of suite.assertionResults??[]){
  const id=t.title.match(/TC-CS\d+-\d+/)?.[0]??(t.ancestorTitles??[]).join(' ').match(/TC-CS\d+-\d+/)?.[0];if(!id)continue
- const status=t.status==='passed'?'Pass':t.status==='failed'?'Fail':t.status==='skipped'?'Blocked':'Not Executed'
+ const status=t.status==='passed'?'Pass':t.status==='failed'?'Fail':t.status==='blocked'?'Blocked':'Not Executed'
  const actual=status==='Pass'?'Assertions passed; see scenario and layer limitations':(t.failureMessages?.[0]?.split('\n')[0]?.slice(0,240)??t.status)
  const previous=entries.get(id);const rank={Fail:4,Blocked:3,'Not Executed':2,Pass:1}
  entries.set(id,{status:previous && rank[previous.status]>rank[status]?previous.status:status,names:[...(previous?.names??[]),t.title],actual:previous && rank[previous.status]>rank[status]?previous.actual:actual})

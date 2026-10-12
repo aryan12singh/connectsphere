@@ -43,10 +43,12 @@ jobs:
             frontend/package-lock.json
             services/event-service/package-lock.json
             services/venue-service/package-lock.json
+            services/booking-service/package-lock.json
       - name: Install frontend and real boundary fixtures
         run: |
           npm ci --prefix services/event-service
           npm ci --prefix services/venue-service
+          npm ci --prefix services/booking-service
           npm ci --prefix frontend
           cd services/event-service
           npx prisma generate

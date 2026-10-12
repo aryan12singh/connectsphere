@@ -4,13 +4,24 @@ const config = require('./config');
 const isMemory = config.dataMode !== 'prisma';
 const prisma = isMemory ? null : require('./db');
 
-const state = { bookings: new Map(), activities: [], idempotency: new Map() };
+const state = { bookings: new Map(), activities: [], idempotency: new Map(), outbox: [] };
+const clock = require('./clock');
+let memoryTail = Promise.resolve();
 
 function id() { return crypto.randomUUID(); }
-function now() { return new Date().toISOString(); }
+function now() { return clock.now().toISOString(); }
 function iso(value) { return value instanceof Date ? value.toISOString() : value; }
 function safeJson(value) { return JSON.parse(JSON.stringify(value)); }
-function fingerprint(payload) { return JSON.stringify(payload, Object.keys(payload).sort()); }
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])]));
+  return value;
+}
+function fingerprint(payload) { return crypto.createHash('sha256').update(JSON.stringify(canonical(payload))).digest('hex'); }
+const metadataKeys = ['expiresAt','expectedAttendance','layout','facilities','accessibilityNeeds','required','setupMinutes','turnaroundMinutes','occupiedStart','occupiedEnd','venueVersion','requirements','requirementsFingerprint','flags'];
+function metadata(input, dates = false) {
+  return Object.fromEntries(metadataKeys.filter(key=>input[key] !== undefined).map(key=>[key, dates && key==='requirements' && input[key]===null ? require('@prisma/client').Prisma.DbNull : dates && ['expiresAt','occupiedStart','occupiedEnd'].includes(key) && input[key] ? new Date(input[key]) : input[key]]));
+}
 
 function toApiBooking(booking) {
   if (!booking) return null;
@@ -30,6 +41,21 @@ function toApiBooking(booking) {
     statusChangedRole: booking.statusChangedRole || null,
     statusChangedAt: iso(booking.statusChangedAt),
     statusReason: booking.statusReason || null,
+    version: booking.version ?? 1,
+    expiresAt: iso(booking.expiresAt) || null,
+    expectedAttendance: booking.expectedAttendance ?? null,
+    layout: booking.layout || null,
+    facilities: booking.facilities || [],
+    accessibilityNeeds: booking.accessibilityNeeds || [],
+    required: booking.required ?? true,
+    setupMinutes: booking.setupMinutes ?? 0,
+    turnaroundMinutes: booking.turnaroundMinutes ?? 0,
+    occupiedStart: iso(booking.occupiedStart || booking.startAt || booking.requestedStart),
+    occupiedEnd: iso(booking.occupiedEnd || booking.endAt || booking.requestedEnd),
+    venueVersion: booking.venueVersion ?? 0,
+    requirements: booking.requirements || null,
+    requirementsFingerprint: booking.requirementsFingerprint || null,
+    flags: booking.flags || [],
     createdAt: iso(booking.createdAt),
     updatedAt: iso(booking.updatedAt),
   };
@@ -58,6 +84,7 @@ function reset() {
     state.bookings.clear();
     state.activities.length = 0;
     state.idempotency.clear();
+    state.outbox.length = 0;
   }
 }
 
@@ -71,9 +98,9 @@ function appendActivity(booking, actor, action, reason, changes, fromStatus, toS
   return entry;
 }
 
-function createBooking(input, actor, key) {
+function createBooking(input, actor, key, transaction) {
   if (isMemory) {
-    const timestamp = now();
+    const timestamp = input.createdAt || now();
     const booking = {
       id: id(), eventId: input.eventId || null, venueId: input.venueId,
       requestedById: actor.id, title: input.title, reason: input.reason,
@@ -81,13 +108,16 @@ function createBooking(input, actor, key) {
       status: input.status, idempotencyKey: key,
       statusChangedById: actor.id, statusChangedRole: actor.role, statusChangedAt: timestamp,
       statusReason: input.reason, createdAt: timestamp, updatedAt: timestamp,
+      version:1, expiresAt:null, expectedAttendance:null, layout:null, facilities:[], accessibilityNeeds:[], required:true,
+      setupMinutes:0,turnaroundMinutes:0,occupiedStart:input.startAt,occupiedEnd:input.endAt,venueVersion:0,flags:[],
+      ...metadata(input),requestFingerprint:input.requestFingerprint || fingerprint(input),
     };
     state.bookings.set(booking.id, booking);
-    state.idempotency.set(`${actor.id}:${key}`, { fingerprint: fingerprint(input), bookingId: booking.id });
+    state.idempotency.set(`${actor.id}:${key}`, { fingerprint: booking.requestFingerprint, bookingId: booking.id });
     appendActivity(booking, actor, 'BOOKING_CREATED', input.reason, { after: booking }, null, booking.status);
     return booking;
   }
-  return prisma.$transaction(async (tx) => {
+  const save = async (tx) => {
     const created = await tx.venueBookingRequest.create({
       data: {
         eventId: input.eventId || null,
@@ -104,6 +134,9 @@ function createBooking(input, actor, key) {
         statusChangedRole: actor.role,
         statusChangedAt: new Date(),
         statusReason: input.reason,
+        ...(input.createdAt?{createdAt:new Date(input.createdAt),updatedAt:new Date(input.createdAt),statusChangedAt:new Date(input.createdAt)}:{}),
+        ...metadata(input,true),
+        requestFingerprint:input.requestFingerprint || fingerprint(input),
       },
     });
     const apiBooking = toApiBooking(created);
@@ -120,10 +153,11 @@ function createBooking(input, actor, key) {
       },
     });
     return apiBooking;
-  });
+  };
+  return transaction ? save(transaction) : prisma.$transaction(save);
 }
 
-function replaceBooking(current, input, actor) {
+function replaceBooking(current, input, actor, transaction) {
   if (isMemory) {
     const before = { ...current };
     const updated = {
@@ -137,6 +171,7 @@ function replaceBooking(current, input, actor) {
       timeZone: input.timeZone,
       status: input.status,
       updatedAt: now(),
+      ...metadata(input), version:(current.version ?? 1)+1,
     };
     if (before.status !== updated.status) {
       updated.statusChangedById = actor.id;
@@ -145,10 +180,10 @@ function replaceBooking(current, input, actor) {
       updated.statusReason = input.reason;
     }
     state.bookings.set(current.id, updated);
-    appendActivity(updated, actor, before.status !== updated.status ? 'STATUS_CHANGED' : 'BOOKING_UPDATED', input.reason, { before, after: updated }, before.status, updated.status);
+    appendActivity(updated, actor, input.activityAction || (before.status !== updated.status ? 'STATUS_CHANGED' : 'BOOKING_UPDATED'), input.activityReason || input.reason, { before, after: updated }, before.status, updated.status);
     return updated;
   }
-  return prisma.$transaction(async (tx) => {
+  const save = async (tx) => {
     const beforeRecord = await tx.venueBookingRequest.findUnique({ where: { id: current.id } });
     if (!beforeRecord) return null;
     const changedStatus = beforeRecord.status !== input.status;
@@ -163,6 +198,7 @@ function replaceBooking(current, input, actor) {
         requestedEnd: new Date(input.endAt),
         timeZone: input.timeZone,
         status: input.status,
+        ...metadata(input,true), version:{increment:1},
         ...(changedStatus ? {
           statusChangedById: actor.id,
           statusChangedRole: actor.role,
@@ -178,22 +214,23 @@ function replaceBooking(current, input, actor) {
         bookingId: current.id,
         actorId: actor.id,
         actorRole: actor.role,
-        action: changedStatus ? 'STATUS_CHANGED' : 'BOOKING_UPDATED',
+        action: input.activityAction || (changedStatus ? 'STATUS_CHANGED' : 'BOOKING_UPDATED'),
         fromStatus: beforeRecord.status,
         toStatus: updatedRecord.status,
-        reason: input.reason,
+        reason: input.activityReason || input.reason,
         changes: safeJson({ before, after }),
       },
     });
     return after;
-  });
+  };
+  return transaction ? save(transaction) : prisma.$transaction(save);
 }
 
-function findIdempotency(actorId, key) {
+function findIdempotency(actorId, key, transaction) {
   if (isMemory) return state.idempotency.get(`${actorId}:${key}`) || null;
-  return prisma.venueBookingRequest.findUnique({
+  return (transaction || prisma).venueBookingRequest.findUnique({
     where: { requestedById_idempotencyKey: { requestedById: actorId, idempotencyKey: key } },
-  }).then((booking) => booking ? { fingerprint: fingerprint({
+  }).then((booking) => booking ? { fingerprint: booking.requestFingerprint || fingerprint({
     eventId: booking.eventId || null,
     venueId: booking.venueId,
     title: booking.title,
@@ -205,14 +242,49 @@ function findIdempotency(actorId, key) {
   }), bookingId: booking.id } : null);
 }
 
-function getBooking(idValue) {
+function getBooking(idValue, transaction) {
   if (isMemory) return state.bookings.get(idValue) || null;
-  return prisma.venueBookingRequest.findUnique({ where: { id: idValue } }).then(toApiBooking);
+  return (transaction || prisma).venueBookingRequest.findUnique({ where: { id: idValue } }).then(toApiBooking);
 }
 
-function listBookings() {
-  if (isMemory) return [...state.bookings.values()];
-  return prisma.venueBookingRequest.findMany({ orderBy: { createdAt: 'asc' } }).then((items) => items.map(toApiBooking));
+function listBookings(transaction, where = {}) {
+  if (isMemory) return [...state.bookings.values()].filter(row=>Object.entries(where).every(([key,value])=>row[key]===value));
+  return (transaction || prisma).venueBookingRequest.findMany({ where,orderBy: { createdAt: 'asc' } }).then((items) => items.map(toApiBooking));
+}
+
+async function withLocks(keys, work) {
+  if (!isMemory) return prisma.$transaction(async tx=>{
+    for (const key of [...new Set(keys)].sort()) await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+    const [row] = await tx.$queryRaw`SELECT clock_timestamp() AS now`;
+    return work(tx,row.now);
+  }, {timeout:30000,maxWait:10000});
+  let release;
+  const preceding = memoryTail;
+  memoryTail = new Promise(resolve=>{release=resolve;});
+  await preceding;
+  const saved = safeJson({bookings:[...state.bookings],activities:state.activities,idempotency:[...state.idempotency],outbox:state.outbox});
+  try { return await work(null,clock.now()); }
+  catch (error) { state.bookings=new Map(saved.bookings);state.activities=saved.activities;state.idempotency=new Map(saved.idempotency);state.outbox=saved.outbox;throw error; }
+  finally {release();}
+}
+
+async function lockMore(transaction,keys) {
+  if (transaction) for (const key of [...new Set(keys)].sort()) await transaction.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+}
+async function transactionNow(transaction) {
+  if (!transaction) return clock.now();
+  const [row]=await transaction.$queryRaw`SELECT clock_timestamp() AS now`;
+  return row.now;
+}
+
+function addOutbox(booking,kind,payload,transaction) {
+  const actionKey=`${booking.id}:${booking.version}:${kind}`;
+  if (isMemory) {
+    const existing=state.outbox.find(row=>row.actionKey===actionKey);
+    if (existing) return existing;
+    const row={id:id(),actionKey,aggregateId:booking.id,kind,payload:safeJson(payload),createdAt:now(),deliveredAt:null};state.outbox.push(row);return row;
+  }
+  return (transaction || prisma).bookingOutbox.upsert({where:{actionKey},create:{actionKey,aggregateId:booking.id,kind,payload:safeJson(payload)},update:{}});
 }
 
 function listHistory(venueId) {
@@ -230,19 +302,20 @@ function listHistory(venueId) {
   }).then((items) => items.map(toApiActivity));
 }
 
-function countBlockingBookings(venueId, at = new Date()) {
+function countBlockingBookings(venueId, at = clock.now()) {
   const statuses = new Set(['TENTATIVELY_HELD', 'CONFIRMED']);
   const instant = at instanceof Date ? at : new Date(at);
   if (isMemory) {
     return [...state.bookings.values()].filter((booking) => statuses.has(booking.status)
       && booking.venueId === venueId
-      && new Date(booking.endAt || booking.requestedEnd) >= instant).length;
+      && new Date(booking.occupiedEnd || booking.endAt || booking.requestedEnd) >= instant
+      && (booking.status==='CONFIRMED' || booking.expiresAt && new Date(booking.expiresAt)>instant)).length;
   }
   return prisma.venueBookingRequest.count({
     where: {
       venueId,
-      status: { in: [...statuses] },
-      requestedEnd: { gte: instant },
+      OR:[{status:'CONFIRMED'},{status:'TENTATIVELY_HELD',expiresAt:{gt:instant}}],
+      AND:[{OR:[{occupiedEnd:{gte:instant}},{occupiedEnd:null,requestedEnd:{gte:instant}}]}],
     },
   });
 }
@@ -250,4 +323,5 @@ function countBlockingBookings(venueId, at = new Date()) {
 module.exports = {
   state, reset, fingerprint, createBooking, replaceBooking, appendActivity,
   findIdempotency, getBooking, listBookings, listHistory, countBlockingBookings, isMemory,
+  withLocks,lockMore,transactionNow,addOutbox,toApiBooking,
 };

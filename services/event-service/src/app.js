@@ -10,6 +10,7 @@ app.use(helmet());
 app.use(express.json({ limit: '10kb' }));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.use('/internal', require('./routes/internal.routes'));
 
 app.use('/event-requests', require('./routes/event-requests.routes'));
 app.use('/events', require('./routes/events.routes'));

@@ -2,10 +2,11 @@ const express = require('express');
 const { requireAuth, requireAnyPermission } = require('../auth');
 const store = require('../store');
 const { STATUSES, validateBooking, text } = require('../validation');
-const { isStaff, statusForCreate, canCreateStatus, canReplace } = require('../policy');
-const { availabilityRange, filterAvailability } = require('../availability');
+const { isStaff, statusForCreate, canCreateStatus } = require('../policy');
+const { availabilityRange } = require('../availability');
 const { canBookEvent } = require('../eventClient');
 const { hasPermission } = require('../../../utils/role-policy');
+const workflows = require('../workflows');
 
 const router = express.Router();
 const auth = requireAuth();
@@ -38,7 +39,7 @@ async function visibleBookings(req, res) {
   if (isStaff(req.actor)) return bookings;
   const allowed = [], checked = new Map();
   try {
-    for (const booking of bookings.filter(b => b.requestedById === req.actor.id)) {
+    for (const booking of bookings.filter(b => b.eventId)) {
       if (!checked.has(booking.eventId)) checked.set(booking.eventId, await canBookEvent(req, booking.eventId));
       if (checked.get(booking.eventId)) allowed.push(booking);
     }
@@ -59,23 +60,29 @@ function normalise(body, actor, forceTentative = false) {
     venueId: text(body.venueId),
     title: text(body.title),
     reason: text(body.reason),
-    startAt: body.startAt,
-    endAt: body.endAt,
+    startAt: new Date(body.startAt).toISOString(),
+    endAt: new Date(body.endAt).toISOString(),
     timeZone: text(body.timeZone) || 'Asia/Singapore',
     status: forceTentative ? statusForCreate(actor, body.status) : (body.status || 'TENTATIVELY_HELD'),
+    ...Object.fromEntries(['expiresAt','expectedAttendance','layout','facilities','accessibilityNeeds','required'].filter(key=>body[key]!==undefined).map(key=>[key,body[key]])),
   };
 }
 
 router.get('/', auth, bookingAccess, async (req, res) => {
   const visible = await visibleBookings(req, res);
   if (!visible) return;
-  const values = visible.filter((booking) => {
-    if (!isStaff(req.actor) && booking.requestedById !== req.actor.id) return false;
+  let values = visible.filter((booking) => {
     if (req.query.venueId && booking.venueId !== req.query.venueId) return false;
     if (req.query.eventId && booking.eventId !== req.query.eventId) return false;
     if (req.query.status && !String(req.query.status).split(',').includes(booking.status)) return false;
     return true;
   });
+  if (isStaff(req.actor) && String(req.query.status || '').split(',').includes('TENTATIVELY_HELD')) {
+    values=values.filter(row=>row.status!=='TENTATIVELY_HELD' || workflows.effective(row,require('../clock').now()));
+    const summaries=new Map();
+    for(const booking of values.filter(row=>row.eventId)) if(!summaries.has(booking.eventId)) summaries.set(booking.eventId,await workflows.summary(req,booking.eventId));
+    values=values.map(row=>summaries.get(row.eventId)?.items.find(item=>item.id===row.id) || row);
+  }
   return res.json({ items: values, total: values.length });
 });
 
@@ -91,22 +98,21 @@ router.get('/history', auth, bookingAccess, async (req, res) => {
 router.get('/availability', auth, requireAnyPermission('venues.view'), async (req, res) => {
   const errors = availabilityRange(req.query);
   if (Object.keys(errors).length) return validationError(res, errors);
-  const values = filterAvailability(
-    (await store.listBookings()).filter((booking) => !req.query.venueId || booking.venueId === req.query.venueId),
-    req.query,
-  );
-  return res.json({ items: values, conflictDetection: 'client-only' });
+  return res.json(await workflows.availability(req,req.query));
 });
+router.get('/events/:eventId/summary',auth,bookingAccess,async(req,res)=>res.json(await workflows.summary(req,req.params.eventId)));
+router.get('/events/:eventId/venue-search',auth,ordinaryCreatePermission,async(req,res)=>res.json(await workflows.search(req,req.params.eventId,req.query)));
 
 router.post('/', auth, createPermission, async (req, res) => {
   const key = req.get('idempotency-key');
   const body = req.body || {};
   const errors = validateBooking(body);
+  for(const field of ['setupMinutes','turnaroundMinutes']) if (body[field]!==undefined) errors[field]=['Buffers are configured on the venue, not per booking'];
   if (!hasPermission(req.actor, 'venue_bookings.decide') && !text(body.eventId)) errors.eventId = ['Event is required for coordinator bookings'];
   if (!key) errors.idempotencyKey = ['Idempotency-Key header is required'];
   if (Object.keys(errors).length) return validationError(res, errors);
   const requestedStatus = statusForCreate(req.actor, body.status);
-  if (!canCreateStatus(req.actor, requestedStatus)) {
+  if (!canCreateStatus(req.actor, requestedStatus) || !['TENTATIVELY_HELD','CANCELLED','BLOCKED','UNAVAILABLE'].includes(requestedStatus)) {
     return res.status(403).json({
       error: {
         code: 'STATUS_NOT_PERMITTED',
@@ -117,18 +123,25 @@ router.post('/', auth, createPermission, async (req, res) => {
   }
   if (!await assignmentAccess(req, res, body.eventId)) return;
   const input = normalise(body, req.actor, true);
-  const existing = await store.findIdempotency(req.actor.id, key);
-  if (existing) {
-    if (existing.fingerprint !== store.fingerprint(input)) return res.status(409).json({ error: { code: 'IDEMPOTENCY_KEY_REUSE', message: 'Idempotency key was reused with a different booking' } });
-    return res.status(200).json(await store.getBooking(existing.bookingId));
-  }
-  return res.status(201).json(await store.createBooking(input, req.actor, key));
+  const result = await workflows.create(req,input,key);
+  return res.status(result.status).json(result.booking);
+});
+
+router.put('/:id/decision',auth,operationalBlockPermission,async(req,res)=>{
+  const body=req.body || {},errors={};
+  if (!['CONFIRMED','REJECTED'].includes(body.status)) errors.status=['Choose approval or rejection'];
+  if (!text(body.reason)) errors.reason=['Decision reason is required'];
+  if (Object.keys(errors).length) return validationError(res,errors);
+  return res.json(await workflows.decision(req,req.params.id,body));
+});
+router.put('/:id/hold-extension',auth,operationalBlockPermission,async(req,res)=>{
+  if (!text(req.body?.reason)) return validationError(res,{reason:['Extension reason is required']});
+  return res.json(await workflows.extend(req,req.params.id,req.body));
 });
 
 router.get('/:id', auth, bookingAccess, async (req, res) => {
   const booking = await store.getBooking(req.params.id);
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
-  if (!isStaff(req.actor) && booking.requestedById !== req.actor.id) return res.status(403).json({ error: 'You do not have access to this booking' });
   if (!await assignmentAccess(req, res, booking.eventId)) return;
   return res.json(booking);
 });
@@ -139,14 +152,8 @@ router.put('/:id', auth, bookingAccess, async (req, res) => {
   const body = req.body || {};
   const errors = validateBooking(body);
   if (Object.keys(errors).length) return validationError(res, errors);
-  const nextStatus = body.status;
-  const decision = canReplace(booking, req.actor, nextStatus);
-  if (!decision.allowed) {
-    if (booking.requestedById !== req.actor.id) return res.status(403).json({ error: 'You do not own this booking' });
-    return res.status(403).json({ error: decision.message });
-  }
-  if (!isStaff(req.actor) && (!await assignmentAccess(req, res, booking.eventId) || !await assignmentAccess(req, res, body.eventId))) return;
-  return res.json(await store.replaceBooking(booking, normalise(body, req.actor), req.actor));
+  if (!await assignmentAccess(req,res,booking.eventId)) return;
+  return res.json(await workflows.replace(req,booking.id,normalise(body,req.actor),body));
 });
 
 module.exports = router;

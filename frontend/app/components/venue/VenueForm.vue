@@ -9,6 +9,7 @@ import { applyOperatingSchedule, createVenueForm, OPERATING_WEEKDAYS, operatingS
 
 interface Option { value: string, label: string }
 interface VenueOptions {
+  maxBufferMinutes?: number
   venueTypes?: Option[]
   supportedLayouts?: Option[]
   facilities?: Option[]
@@ -85,6 +86,15 @@ function updateOperatingTime(type: 'opensAt' | 'closesAt', value: string | numbe
       </FieldGroup>
     </section>
 
+    <section aria-labelledby="venue-preparation" class="grid gap-5">
+      <h2 id="venue-preparation" class="text-xl font-semibold">Preparation and turnaround</h2>
+      <p class="text-sm text-muted-foreground">These times apply to every booking at this venue. Changes also recheck existing commitments.</p>
+      <div class="grid gap-5 sm:grid-cols-2">
+        <Field class="gap-2"><FieldLabel for="venue-setup-minutes">Setup time (minutes)</FieldLabel><Input id="venue-setup-minutes" v-model="form.setupMinutes" type="number" min="0" :max="options?.maxBufferMinutes" step="1" required :aria-invalid="Boolean(errorFor('setupMinutes'))" /><p v-if="errorFor('setupMinutes')" role="alert" class="text-sm text-destructive">{{ errorFor('setupMinutes') }}</p></Field>
+        <Field class="gap-2"><FieldLabel for="venue-turnaround-minutes">Turnaround time (minutes)</FieldLabel><Input id="venue-turnaround-minutes" v-model="form.turnaroundMinutes" type="number" min="0" :max="options?.maxBufferMinutes" step="1" required :aria-invalid="Boolean(errorFor('turnaroundMinutes'))" /><p v-if="errorFor('turnaroundMinutes')" role="alert" class="text-sm text-destructive">{{ errorFor('turnaroundMinutes') }}</p></Field>
+      </div>
+    </section>
+
     <section aria-labelledby="amenity-details" class="grid gap-5">
       <h2 id="amenity-details" class="text-xl font-semibold">Amenity details</h2>
       <div class="grid gap-6 md:grid-cols-3">
@@ -103,6 +113,7 @@ function updateOperatingTime(type: 'opensAt' | 'closesAt', value: string | numbe
 
     <label class="flex items-center gap-2.5 text-sm"><Checkbox v-model="form.isActive" />Venue is active</label>
     <p v-if="errorFor('operatingHours')" role="alert" class="text-sm text-destructive">{{ errorFor('operatingHours') }}</p>
+    <p v-if="errorFor('form')" role="alert" class="text-sm text-destructive">{{ errorFor('form') }}</p>
     <Popover v-model:open="reasonPopoverOpen">
       <PopoverAnchor as-child>
         <Button type="submit" :disabled="!ready || saving" class="w-full">{{ saving ? 'Saving…' : submitLabel }}</Button>

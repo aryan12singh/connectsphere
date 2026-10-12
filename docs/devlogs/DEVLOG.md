@@ -80,6 +80,27 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 2026-10-12 — Independent venue holds, decisions and buffered availability
+
+On `feat/aryan-sprint3-venue-safety`, integrate main `52687d2` and implement the
+next venue phase: Staff buffer configuration, current-Coordinator search and
+independent room requests, persisted hold deadlines, versioned Staff decisions
+and extensions, atomic conflict/move/deletion guards, durable recheck/intent,
+calendar shading/expiry and Event venue readiness. No parent lifecycle or global
+role transition is added. [Delivery notes](2026-10-12-venue-workflows.md) record
+the exact local layers, source fingerprint, reproduction commands and limits.
+
+Final frontend255/255; Venue43 unit/11 HTTP/5 PostgreSQL; Booking35 unit/14 HTTP/10
+PostgreSQL; Event22 route tests; hold spike10/10. Production-stack snapshot passes
+11 smoke,48 desktop/mobile and1 restart; final delayed-read/message refinements
+also pass real-handler regression and are covered by exact-revision hosted CI
+after publishing. Typechecks, production build and API-document checks pass.
+
+PM cases retain their source IDs and unexecuted steps. All customer policy
+answers remain Pending. CS-10/42/77 contracts gate Safety93–95; actual notification
+delivery and the scheduled expiry worker remain on their owning stories. Peer,
+manual/PO acceptance and reviewed main merge are still required before closure.
+
 The 11 October peer review below is preserved as a dated report. Its venue-block,
 sign-up and acceptance-policy questions do not supersede the current customer
 brief/Jira criteria or the earlier human acceptance recorded here. Reconcile

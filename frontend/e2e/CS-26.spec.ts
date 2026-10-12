@@ -51,8 +51,15 @@ test('TC-CS26-14 LIVE only the assigned Coordinator can create an event booking;
     const approval = await mutation(assigned, 'POST', `/api/events/${submitted.id}/decision`, { decision: 'approve', version: submitted.version })
     expect(approval.status()).toBe(200)
     const event = await approval.json(); expect(event.eventId).toBeTruthy()
-    const venues = await (await assigned.get('/api/venues')).json()
-    const body = { eventId: event.eventId, venueId: venues.items[0].id, title: `Assigned booking ${randomUUID()}`, reason: 'Current Coordinator assignment', startAt: '2028-11-20T01:00:00Z', endAt: '2028-11-20T03:00:00Z', timeZone: 'Asia/Singapore', status: 'TENTATIVELY_HELD' }
+    // Week 7 adds suitability/occupied-hours guards. Use an independently
+    // eligible room instead of whichever unrelated calendar fixture sorts first.
+    const staff = await session(playwright.request, emails.staff)
+    let venue: { id: string }
+    try {
+      const result = await mutation(staff, 'POST', '/api/venues', { name: `Assignment room ${randomUUID()}`, address: 'Synthetic assignment venue', capacity: 150, venueType: 'PHYSICAL', supportedLayouts: ['THEATRE'], facilities: [], accessibilityTags: [], timeZone: 'Asia/Singapore', managedById: 'a1000000-0000-4000-8000-000000000008', reason: 'Current assignment regression fixture', operatingHours: [{ weekday: 'MONDAY', isClosed: false, opensAt: '08:00', closesAt: '20:00' }] })
+      expect(result.status()).toBe(200); venue = await result.json()
+    } finally { await staff.dispose() }
+    const body = { eventId: event.eventId, venueId: venue.id, title: `Assigned booking ${randomUUID()}`, reason: 'Current Coordinator assignment', startAt: '2028-11-20T01:00:00Z', endAt: '2028-11-20T03:00:00Z', timeZone: 'Asia/Singapore', status: 'TENTATIVELY_HELD' }
     const booked = await mutation(assigned, 'POST', '/api/bookings', body)
     expect(booked.status()).toBe(200)
     const booking = await booked.json()

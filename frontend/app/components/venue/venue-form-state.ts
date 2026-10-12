@@ -12,6 +12,9 @@ export interface VenueFormState {
   name: string
   address: string
   capacity: number | string
+  setupMinutes: number | string
+  turnaroundMinutes: number | string
+  version?: number
   venueType: VenueType
   supportedLayouts: string[]
   facilities: string[]
@@ -59,6 +62,8 @@ export function createVenueForm(input: Partial<VenueFormState> = {}): VenueFormS
     name: '',
     address: '',
     capacity: '',
+    setupMinutes: 0,
+    turnaroundMinutes: 0,
     venueType: 'PHYSICAL',
     supportedLayouts: [],
     facilities: [],
@@ -78,10 +83,14 @@ export function createVenueForm(input: Partial<VenueFormState> = {}): VenueFormS
 }
 
 export function venuePayload(form: VenueFormState, fallbackManagedById: string) {
+  const minutes = (value: number | string) => typeof value === 'string' ? value.trim() ? Number(value) : null : value
   return {
     name: form.name.trim(),
     address: form.address.trim(),
-    capacity: form.capacity,
+    capacity: form.venueType==='VIRTUAL' && String(form.capacity).trim()==='' ? null : form.capacity,
+    setupMinutes: minutes(form.setupMinutes),
+    turnaroundMinutes: minutes(form.turnaroundMinutes),
+    ...(form.version === undefined ? {} : { version: form.version }),
     venueType: form.venueType,
     supportedLayouts: form.supportedLayouts,
     facilities: form.facilities,

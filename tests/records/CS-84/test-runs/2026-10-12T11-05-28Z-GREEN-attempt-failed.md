@@ -1,0 +1,27 @@
+# CS-84 Test Execution — 2026-10-12T11:05:28.176Z
+
+Yellow section (IS212 / IEEE 829). Phase: GREEN-attempt-failed. Generated from actual Vitest JSON; missing cases remain Not Executed.
+
+Source: /tmp/connectsphere-s3-reconciled-records/connectsphere-cs84-validation-green.json. Code revision/fingerprint: see outside run metadata; early diagnostic not fingerprinted / not supplied.
+
+Focused domain/state and Nuxt component checks plus real Express Event/Venue/Booking HTTP with isolated memory repositories where named. This run is not PostgreSQL durability, live identity/browser, message delivery or manual/PO acceptance. Source case IDs reconciled to the PM tables without changing assertion outcomes or timestamps.
+
+| Test Case ID | Actual Result | Pass/Fail/Not Executed/Blocked | Remarks | Date of Execution |
+|---|---|---|---|---|
+| TC-CS84-01 | Assertions passed; see scenario and layer limitations | Pass | TC-CS84-01 legacy catalogue updates preserve existing buffers | 2026-10-12T11:05:28.176Z |
+| TC-CS84-02 | No assertion executed | Not Executed |  | 2026-10-12T11:05:28.176Z |
+| TC-CS84-03 | No assertion executed | Not Executed |  | 2026-10-12T11:05:28.176Z |
+| TC-CS84-04 | Assertions passed; see scenario and layer limitations | Pass | TC-CS84-04 TC-CS84-06 rejects invalid buffer data (-1) without catalogue/history writes; TC-CS84-04 TC-CS84-06 rejects invalid buffer data (480.5) without catalogue/history writes; TC-CS84-04 TC-CS84-06 rejects invalid buffer data (481) without catalogue/history writes; TC-CS84-04 TC-CS84-06 rejects invalid buffer data (30) without catalogue/history writes; TC-CS84-04 TC-CS84-06 rejects invalid buffer data (abc) without catalogue/history writes; TC-CS84-04 TC-CS84-06 rejects invalid buffer data (null) without catalogue/history writes; TC-CS84-04 TC-CS84-06 rejects invalid buffer data (true) without catalogue/history writes | 2026-10-12T11:05:28.176Z |
+| TC-CS84-05 | No assertion executed | Not Executed |  | 2026-10-12T11:05:28.176Z |
+| TC-CS84-06 | TypeError: The URL must be of scheme file | Fail | TC-CS84-06 accepts an explicit configured boundary (0); TC-CS84-06 accepts an explicit configured boundary (480); TC-CS84-06 refuses an invalid configured cap (-1) at startup; TC-CS84-06 refuses an invalid configured cap (abc) at startup; TC-CS84-06 refuses an invalid configured cap (1.5) at startup | 2026-10-12T11:05:28.176Z |
+| TC-CS84-07 | Assertions passed; see scenario and layer limitations | Pass | TC-CS84-07 stores both supplied durations through the real venue handler | 2026-10-12T11:05:28.176Z |
+| TC-CS84-08 | No assertion executed | Not Executed |  | 2026-10-12T11:05:28.176Z |
+| TC-CS84-09 | No assertion executed | Not Executed |  | 2026-10-12T11:05:28.176Z |
+| TC-CS84-10 | No assertion executed | Not Executed |  | 2026-10-12T11:05:28.176Z |
+| TC-CS84-11 | No assertion executed | Not Executed |  | 2026-10-12T11:05:28.176Z |
+| TC-CS84-12 | No assertion executed | Not Executed |  | 2026-10-12T11:05:28.176Z |
+| TC-CS84-13 | Assertions passed; see scenario and layer limitations | Pass | TC-CS84-13 uses zero compatibility defaults for an existing create payload | 2026-10-12T11:05:28.176Z |
+| TC-CS84-14 | No assertion executed | Not Executed |  | 2026-10-12T11:05:28.176Z |
+| TC-CS84-15 | No assertion executed | Not Executed |  | 2026-10-12T11:05:28.176Z |
+| TC-CS84-16 | No assertion executed | Not Executed |  | 2026-10-12T11:05:28.176Z |
+| TC-CS84-17 | No assertion executed | Not Executed |  | 2026-10-12T11:05:28.176Z |

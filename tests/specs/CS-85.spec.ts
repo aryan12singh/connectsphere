@@ -1,11 +1,29 @@
-// @vitest-environment node
 import { createRequire } from 'node:module'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it,vi } from 'vitest'
+import { mockNuxtImport,mountSuspended } from '@nuxt/test-utils/runtime'
+import {bookingDraftState} from '../../frontend/app/components/venue/booking-state'
+mockNuxtImport('useFetch',()=>async(path:string)=>{const {ref}=await import('vue');return {data:ref(path.includes('availability')?{items:[{id:'buffer-ui',venueId:'venue',title:'Conference',status:'CONFIRMED',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:45:00.000Z',setupMinutes:30,turnaroundMinutes:45}]}:{events:[]}),error:ref(null),refresh:vi.fn()}})
 
 const require = createRequire(import.meta.url)
 const availability = require('../../services/booking-service/src/availability.js')
 
 describe('CS-85 — occupied-window calculation (domain unit tests)', () => {
+  it('TC-CS85-14 calendar preflight uses the server occupied windows and the candidate venue buffers',()=>{
+    const candidate={venueId:'venue',title:'Conference',reason:'Room request',timeZone:'Asia/Singapore',startAt:'2026-12-21T04:15:00.000Z',endAt:'2026-12-21T06:00:00.000Z',status:'TENTATIVELY_HELD'}
+    const existing={id:'room',venueId:'venue',title:'Existing',status:'CONFIRMED',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:30:00.000Z'}
+    expect(bookingDraftState(candidate,[existing],null,false,{setupMinutes:30,turnaroundMinutes:30,allowTouching:true} as any).canSubmit).toBe(false)
+  })
+  it('TC-CS85-03 shades setup and turnaround in the actual calendar around the advertised booking',async()=>{
+    vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-12-21T00:00:00Z'))
+    try {
+      const component=(await import('../../frontend/app/components/venue/VenueCalendar.vue')).default
+      const wrapper=await mountSuspended(component,{props:{venueId:'venue',venueName:'Bay Hall',timeZone:'Asia/Singapore',canCreate:false,canDecide:false}})
+      expect(wrapper.find('[data-buffer="setup"]').exists()).toBe(true)
+      expect(wrapper.find('[data-buffer="turnaround"]').exists()).toBe(true)
+      expect(wrapper.findAll('button').find(b=>b.text().includes('Conference'))?.attributes('title')).toContain('Occupied: 2026-12-21 09:30')
+      wrapper.unmount()
+    } finally {vi.useRealTimers()}
+  })
   it('TC-CS85-01 expands the advertised interval by the venue setup and turnaround', () => {
     expect(availability.occupiedWindow?.({
       startAt: '2026-12-22T10:00:00+08:00',

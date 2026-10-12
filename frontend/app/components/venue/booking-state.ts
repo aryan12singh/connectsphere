@@ -9,6 +9,7 @@ export interface BookingDraft {
   timeZone: string
   status: string
   eventId?: string | null
+  version?: number
 }
 
 const BLOCKING_STATUSES = new Set(['BLOCKED', 'TENTATIVELY_HELD', 'CONFIRMED', 'UNAVAILABLE'])
@@ -56,11 +57,15 @@ function localToInstant(date: string, time: string, timeZone: string) {
   return matches[0]
 }
 
-function overlaps(left: BookingDraft, right: CalendarBooking) {
-  return new Date(left.startAt) < new Date(right.endAt) && new Date(right.startAt) < new Date(left.endAt)
+interface BufferPolicy {setupMinutes:number;turnaroundMinutes:number;allowTouching:boolean}
+function overlaps(left: BookingDraft, right: CalendarBooking,buffers:BufferPolicy) {
+  const operational=['BLOCKED','UNAVAILABLE'].includes(left.status)
+  const start=Date.parse(left.startAt)-(operational?0:buffers.setupMinutes)*60000,end=Date.parse(left.endAt)+(operational?0:buffers.turnaroundMinutes)*60000
+  const otherStart=Date.parse(right.occupiedStart || right.startAt),otherEnd=Date.parse(right.occupiedEnd || right.endAt)
+  return buffers.allowTouching?start<otherEnd && otherStart<end:start<=otherEnd && otherStart<=end
 }
 
-export function bookingDraftState(draft: BookingDraft, existing: CalendarBooking[], excludeBookingId?: string | null, requiresEvent = false) {
+export function bookingDraftState(draft: BookingDraft, existing: CalendarBooking[], excludeBookingId?: string | null, requiresEvent = false,buffers:BufferPolicy={setupMinutes:0,turnaroundMinutes:0,allowTouching:true}) {
   const errors: Record<string, string> = {}
   if (!draft.title.trim()) errors.title = 'Title is required.'
   if (!draft.reason.trim()) errors.reason = 'Reason is required.'
@@ -72,8 +77,8 @@ export function bookingDraftState(draft: BookingDraft, existing: CalendarBooking
   const affected = existing
     .filter(interval => interval.id !== excludeBookingId)
     .filter(interval => interval.venueId === undefined || interval.venueId === draft.venueId)
-    .filter(interval => overlaps(draft, interval))
-  if (draft.status !== 'BLOCKED' && affected.some(interval => BLOCKING_STATUSES.has(interval.status))) {
+    .filter(interval => overlaps(draft, interval,buffers))
+  if (!['BLOCKED','UNAVAILABLE','CANCELLED','REJECTED'].includes(draft.status) && affected.some(interval => BLOCKING_STATUSES.has(interval.status))) {
     errors.interval = 'This booking overlaps an unavailable interval.'
   }
   return {
@@ -107,8 +112,8 @@ export function venueStaffCreationState(editing: boolean) {
   }
 }
 
-export function coordinatorBookingEditState(booking: Pick<CalendarBooking, 'requestedById' | 'status'> | null | undefined, actorId: string | null | undefined) {
-  const canEdit = Boolean(booking && actorId && booking.requestedById === actorId && ['TENTATIVELY_HELD', 'CANCELLED'].includes(booking.status))
+export function coordinatorBookingEditState(booking: Pick<CalendarBooking, 'requestedById' | 'currentCoordinatorId' | 'status'> | null | undefined, actorId: string | null | undefined) {
+  const canEdit = Boolean(booking && actorId && (booking.currentCoordinatorId ?? booking.requestedById) === actorId && ['TENTATIVELY_HELD', 'CANCELLED'].includes(booking.status))
   return {
     canEdit,
     readOnly: Boolean(booking) && !canEdit,
@@ -131,6 +136,7 @@ export function bookingDraftForExisting(booking: CalendarBooking): BookingDraft 
     timeZone,
     status: booking.status,
     eventId: booking.eventId ?? null,
+    version: booking.version,
   }
 }
 

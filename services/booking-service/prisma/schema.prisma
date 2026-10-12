@@ -34,6 +34,22 @@ model VenueBookingRequest {
   statusChangedRole String?
   statusChangedAt   DateTime?
   statusReason      String?
+  version           Int                @default(1)
+  expiresAt         DateTime?
+  expectedAttendance Int?
+  layout            String?
+  facilities        String[]           @default([])
+  accessibilityNeeds String[]          @default([])
+  required          Boolean            @default(true)
+  setupMinutes      Int                @default(0)
+  turnaroundMinutes Int                @default(0)
+  occupiedStart     DateTime?
+  occupiedEnd       DateTime?
+  venueVersion      Int                @default(0)
+  requirements      Json?
+  requirementsFingerprint String?
+  requestFingerprint String?
+  flags             String[]           @default([])
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   activity          VenueBookingActivity[]
@@ -42,6 +58,19 @@ model VenueBookingRequest {
   @@index([venueId, requestedStart, requestedEnd])
   @@index([venueId, status])
   @@map("venue_booking_requests")
+}
+
+model BookingOutbox {
+  id          String   @id @default(uuid())
+  actionKey   String   @unique
+  aggregateId String
+  kind        String
+  payload     Json
+  createdAt   DateTime @default(now())
+  deliveredAt DateTime?
+
+  @@index([deliveredAt, createdAt])
+  @@map("booking_outbox")
 }
 
 model VenueBookingActivity {

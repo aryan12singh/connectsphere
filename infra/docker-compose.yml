@@ -177,6 +177,8 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/venue_db
       MAX_VENUE_CAPACITY: ${MAX_VENUE_CAPACITY:-10000}
+      MAX_VENUE_BUFFER_MINUTES: ${MAX_VENUE_BUFFER_MINUTES:-480}
+      BOOKING_SERVICE_URL: http://booking-service:3000
       AUTH_SERVICE_URL: http://auth-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
       DATA_MODE: prisma
@@ -197,6 +199,10 @@ services:
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/booking_db
       AUTH_SERVICE_URL: http://auth-service:3000
       EVENT_SERVICE_URL: http://event-service:3000
+      VENUE_SERVICE_URL: http://venue-service:3000
+      VENUE_HOLD_HOURS: ${VENUE_HOLD_HOURS:-72}
+      VENUE_ALLOW_TOUCHING: ${VENUE_ALLOW_TOUCHING:-true}
+      VENUE_ALLOW_EXPIRY_AT_SETUP: ${VENUE_ALLOW_EXPIRY_AT_SETUP:-true}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
       DATA_MODE: prisma
       ROLE_PERMISSIONS_PATH: /app/utils/role-permissions.js

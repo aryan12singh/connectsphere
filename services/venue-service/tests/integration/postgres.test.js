@@ -33,3 +33,43 @@ test('TC-CS33-10 internal roles can view; only Venue Staff can mutate', async ()
     assert.equal((await api.http(`/venues/${venue.id}`, { method: 'PUT', headers, body: values })).status, role === 'VENUE_STAFF' ? 200 : 403);
   }
 });
+
+test('TC-CS84-14 PostgreSQL buffer edits persist one versioned recheck and stale retries preserve all tables',async()=>{
+  const current=(await api.http(`/venues/${venue.id}`,{headers:staff})).body;
+  const historyBefore=await prisma.venueHistory.count({where:{venueId:venue.id}});
+  const outboxBefore=await prisma.venueRecheckOutbox.count({where:{venueId:venue.id}});
+  const body={...values,version:current.version,setupMinutes:30,turnaroundMinutes:45,reason:'Persisted buffer update'};
+  const changed=await api.http(`/venues/${venue.id}`,{method:'PUT',headers:staff,body});
+  assert.equal(changed.status,200);assert.equal(changed.body.version,current.version+1);
+  const saved=await prisma.venue.findUnique({where:{id:venue.id}});
+  assert.equal(saved.setupMinutes,30);assert.equal(saved.turnaroundMinutes,45);
+  assert.equal(await prisma.venueHistory.count({where:{venueId:venue.id}}),historyBefore+1);
+  assert.equal(await prisma.venueRecheckOutbox.count({where:{venueId:venue.id}}),outboxBefore+1);
+  const intent=await prisma.venueRecheckOutbox.findUnique({where:{venueId_version:{venueId:venue.id,version:saved.version}}});
+  assert.equal(intent.payload.version,saved.version);assert.equal(intent.payload.actor.id,'venue-staff');assert.equal(intent.deliveredAt,null);
+  assert.equal((await api.http(`/venues/${venue.id}`,{method:'PUT',headers:staff,body})).status,409);
+  assert.deepEqual(await prisma.venue.findUnique({where:{id:venue.id}}),saved);
+  assert.equal(await prisma.venueHistory.count({where:{venueId:venue.id}}),historyBefore+1);
+  assert.equal(await prisma.venueRecheckOutbox.count({where:{venueId:venue.id}}),outboxBefore+1);
+});
+
+test('TC-CS84-15 PostgreSQL recheck survives reconnect and cannot acknowledge an old Booking version',async()=>{
+  const store=require('../../src/store'),worker=require('../../src/rechecks'),config=require('../../src/config');
+  const originalFetch=global.fetch,originalUrl=config.bookingServiceUrl,calls=[];
+  await prisma.$disconnect();
+  let valid=false;
+  config.bookingServiceUrl='http://127.0.0.1:9';
+  global.fetch=async(url,options)=>{
+    const payload=JSON.parse(options.body);calls.push(payload);
+    return {ok:true,json:async()=>({venueId:payload.venueId,version:valid?payload.version:payload.version-1})};
+  };
+  try {
+    await worker.drain();
+    const pending=await store.pendingRechecks();assert.ok(pending.length>0);assert.ok(pending.every(row=>row.attempts===1 && row.lastError));
+    await prisma.$disconnect();valid=true;await worker.drain();
+    assert.deepEqual(await store.pendingRechecks(),[]);
+    const actionIds=calls.map(c=>c.actionId);assert.equal(new Set(actionIds).size,actionIds.length/2);
+    const delivered=await prisma.venueRecheckOutbox.findMany({where:{venueId:venue.id}});
+    assert.ok(delivered.every(row=>row.deliveredAt && row.attempts===2));
+  } finally {global.fetch=originalFetch;config.bookingServiceUrl=originalUrl;}
+});

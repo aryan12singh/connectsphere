@@ -4,7 +4,7 @@ const config = require('./config');
 const isMemory = config.dataMode !== 'prisma';
 const prisma = isMemory ? null : require('./db');
 
-const state = { venues: new Map(), history: [] };
+const state = { venues: new Map(), history: [], outbox: [] };
 
 function id() { return crypto.randomUUID(); }
 function now() { return new Date().toISOString(); }
@@ -36,6 +36,9 @@ function toApiVenue(venue) {
     timeZone: venue.timeZone,
     isActive: venue.isActive,
     managedById: venue.managedById,
+    setupMinutes: venue.setupMinutes ?? 0,
+    turnaroundMinutes: venue.turnaroundMinutes ?? 0,
+    version: venue.version ?? 1,
     operatingHours: toApiHours(venue.operatingHours),
     createdAt: iso(venue.createdAt),
     updatedAt: iso(venue.updatedAt),
@@ -61,6 +64,7 @@ function reset() {
   if (isMemory) {
     state.venues.clear();
     state.history.length = 0;
+    state.outbox.length = 0;
   }
 }
 
@@ -82,6 +86,7 @@ function createVenue(input, actor) {
       facilities: [...input.facilities], accessibilityTags: [...input.accessibilityTags],
       timeZone: input.timeZone, isActive: input.isActive ?? true,
       managedById: input.managedById,
+      setupMinutes: input.setupMinutes ?? 0, turnaroundMinutes: input.turnaroundMinutes ?? 0, version: 1,
       operatingHours: input.operatingHours.map((hour) => ({ ...hour, id: hour.id || id() })),
       createdAt: timestamp, updatedAt: timestamp,
     };
@@ -96,6 +101,7 @@ function createVenue(input, actor) {
         venueType: input.venueType, supportedLayouts: input.supportedLayouts,
         facilities: input.facilities, accessibilityTags: input.accessibilityTags,
         timeZone: input.timeZone, isActive: input.isActive ?? true, managedById: input.managedById,
+        setupMinutes: input.setupMinutes ?? 0, turnaroundMinutes: input.turnaroundMinutes ?? 0,
       },
     });
     await tx.venueOperatingHour.createMany({
@@ -125,20 +131,27 @@ function replaceVenue(idValue, input, actor) {
   if (isMemory) {
     const current = state.venues.get(idValue);
     if (!current) return null;
+    checkVersion(current,input.version);
     const updated = {
       ...current, name: input.name, address: input.address, capacity: input.capacity,
       venueType: input.venueType, supportedLayouts: [...input.supportedLayouts],
       facilities: [...input.facilities], accessibilityTags: [...input.accessibilityTags],
       timeZone: input.timeZone, isActive: input.isActive, managedById: input.managedById, updatedAt: now(),
+      setupMinutes: input.setupMinutes ?? current.setupMinutes ?? 0,
+      turnaroundMinutes: input.turnaroundMinutes ?? current.turnaroundMinutes ?? 0,
+      version: (current.version ?? 1) + 1,
       operatingHours: input.operatingHours.map((hour) => ({ ...hour, id: hour.id || id(), venueId: idValue })),
     };
     state.venues.set(idValue, updated);
     recordHistory(idValue, actor, 'VENUE_UPDATED', input.reason || 'Venue updated', { before: current, after: updated });
+    enqueueRecheck(updated,actor,input.reason || 'Venue updated');
     return updated;
   }
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM venues WHERE id = ${idValue} FOR UPDATE`;
     const current = await tx.venue.findUnique({ where: { id: idValue }, include: { operatingHours: true } });
     if (!current) return null;
+    checkVersion(current,input.version);
     await tx.venue.update({
       where: { id: idValue },
       data: {
@@ -146,6 +159,9 @@ function replaceVenue(idValue, input, actor) {
         venueType: input.venueType, supportedLayouts: input.supportedLayouts,
         facilities: input.facilities, accessibilityTags: input.accessibilityTags,
         timeZone: input.timeZone, isActive: input.isActive, managedById: input.managedById,
+        setupMinutes: input.setupMinutes ?? current.setupMinutes ?? 0,
+        turnaroundMinutes: input.turnaroundMinutes ?? current.turnaroundMinutes ?? 0,
+        version: { increment: 1 },
       },
     });
     await tx.venueOperatingHour.deleteMany({ where: { venueId: idValue } });
@@ -169,23 +185,29 @@ function replaceVenue(idValue, input, actor) {
         changes: safeJson({ before, after }),
       },
     });
+    await enqueueRecheck(after,actor,input.reason || 'Venue updated',tx);
     return after;
   });
 }
 
-function setOperatingHours(venueId, hours, actor, reason) {
+function setOperatingHours(venueId, hours, actor, reason, version) {
   if (isMemory) {
     const venue = state.venues.get(venueId);
     if (!venue) return null;
+    checkVersion(venue,version);
     const before = venue.operatingHours;
     venue.operatingHours = hours.map((hour) => ({ ...hour, id: hour.id || id(), venueId }));
     venue.updatedAt = now();
+    venue.version=(venue.version ?? 1)+1;
     recordHistory(venueId, actor, 'OPERATING_HOURS_UPDATED', reason, { before, after: venue.operatingHours });
+    enqueueRecheck(venue,actor,reason);
     return venue.operatingHours;
   }
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM venues WHERE id = ${venueId} FOR UPDATE`;
     const venue = await tx.venue.findUnique({ where: { id: venueId }, include: { operatingHours: true } });
     if (!venue) return null;
+    checkVersion(venue,version);
     const before = toApiHours(venue.operatingHours);
     await tx.venueOperatingHour.deleteMany({ where: { venueId } });
     await tx.venueOperatingHour.createMany({
@@ -194,7 +216,7 @@ function setOperatingHours(venueId, hours, actor, reason) {
         opensAt: hour.opensAt || null, closesAt: hour.closesAt || null,
       })),
     });
-    const updated = await tx.venue.update({ where: { id: venueId }, data: { name: venue.name }, include: { operatingHours: true } });
+    const updated = await tx.venue.update({ where: { id: venueId }, data: { version:{increment:1} }, include: { operatingHours: true } });
     const after = toApiHours(updated.operatingHours);
     await tx.venueHistory.create({
       data: {
@@ -202,8 +224,27 @@ function setOperatingHours(venueId, hours, actor, reason) {
         changes: safeJson({ before, after }),
       },
     });
+    await enqueueRecheck(toApiVenue(updated),actor,reason,tx);
     return after;
   });
+}
+
+function checkVersion(current,version) {
+  if (version!==undefined && current.version!==version) throw Object.assign(new Error('Venue changed. Reload before saving.'),{status:409,code:'STALE_VENUE'});
+}
+function enqueueRecheck(venue,actor,reason,transaction) {
+  const payload={venueId:venue.id,version:venue.version,actor:{id:actor.id,role:actor.role},reason};
+  if (isMemory) { const row={id:id(),venueId:venue.id,version:venue.version,payload,attempts:0,lastError:null,createdAt:now(),deliveredAt:null};state.outbox.push(row);return row; }
+  return transaction.venueRecheckOutbox.create({data:{venueId:venue.id,version:venue.version,payload:safeJson(payload)}});
+}
+function pendingRechecks() {
+  if (isMemory) return state.outbox.filter(row=>!row.deliveredAt).slice(0,20);
+  return prisma.venueRecheckOutbox.findMany({where:{deliveredAt:null},orderBy:{createdAt:'asc'},take:20});
+}
+function finishRecheck(idValue,error) {
+  const data={attempts:{increment:1},lastError:error?String(error.message).slice(0,160):null,...(!error?{deliveredAt:new Date()}: {})};
+  if (isMemory) { const row=state.outbox.find(row=>row.id===idValue);if(row && !row.deliveredAt){row.attempts++;row.lastError=data.lastError;if(!error)row.deliveredAt=now();}return; }
+  return prisma.venueRecheckOutbox.updateMany({where:{id:idValue,deliveredAt:null},data});
 }
 
 function listHistory(venueId) {
@@ -234,6 +275,7 @@ function deleteVenue(idValue) {
     if (!state.venues.has(idValue)) return false;
     state.venues.delete(idValue);
     state.history = state.history.filter((entry) => entry.venueId !== idValue);
+    state.outbox = state.outbox.filter(row=>row.venueId!==idValue);
     return true;
   }
   return prisma.venue.delete({ where: { id: idValue } }).then(() => true).catch((error) => {
@@ -245,4 +287,5 @@ function deleteVenue(idValue) {
 module.exports = {
   state, reset, createVenue, replaceVenue, setOperatingHours, listHistory,
   getVenue, listVenues, deleteVenue, isMemory,
+  pendingRechecks,finishRecheck,
 };

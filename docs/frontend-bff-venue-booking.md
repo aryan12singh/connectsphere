@@ -21,7 +21,11 @@ opaque bearer token held in the sealed session cookie.
 | `POST /api/bookings` | `POST /venue-bookings` | Create booking; forwards `Idempotency-Key` |
 | `GET /api/bookings/:bookingId` | `GET /venue-bookings/:bookingId` | Booking detail |
 | `PUT /api/bookings/:bookingId` | `PUT /venue-bookings/:bookingId` | Booking/status change |
-| `GET /api/bookings/availability?venueId=` | `GET /venue-bookings/availability?venueId=` | Client-side conflict indication |
+| `PUT /api/bookings/:bookingId/decision` | `PUT /venue-bookings/:bookingId/decision` | Versioned Venue Staff approve/reject with reason |
+| `PUT /api/bookings/:bookingId/hold-extension` | `PUT /venue-bookings/:bookingId/hold-extension` | Versioned active-hold extension with future deadline/reason |
+| `GET /api/bookings/events/:eventId/summary` | `GET /venue-bookings/events/:eventId/summary` | Independent rooms, current assignment, expiry, flags and venue readiness |
+| `GET /api/bookings/events/:eventId/venue-search` | `GET /venue-bookings/events/:eventId/venue-search` | Current Coordinator's requirement-aware room search |
+| `GET /api/bookings/availability?venueId=` | `GET /venue-bookings/availability?venueId=` | Server-derived occupied intervals; client preflight uses the returned timing policy |
 
 The BFF does not rename or normalize service fields. Venue form values remain
 `supportedLayouts`, `facilities`, `accessibilityTags`, `timeZone`,
@@ -37,6 +41,33 @@ first; it does not write either history store.
 
 The frontend contract is intentionally named `/api/bookings/*`; only the Kong
 and booking-service contract retains the `/venue-bookings/*` path.
+
+## Sprint 3 venue integration — 12 October 2026
+
+The Event page adds room search/request/release using the current interface while
+the Sprint 3 Figma work is pending. It uses the distinct approved Event ID, not
+the request ID. Defaults come from current Event requirements; the Booking
+projection maps known request-form labels to catalogue codes. Search lists
+full/partial matches and occupied intervals without reserving. Each request
+retains its idempotency key for the same payload, creates an independent hold,
+and displays its persisted deadline/countdown and read version.
+
+Venue create/edit carries `setupMinutes`, `turnaroundMinutes` and `version`.
+Calendar shows separate buffers and hides a fetched hold at its deadline without
+navigation. Read-only viewers retain operational closure labels but cannot see
+another Event's private title/reason or mutate it. Coordinator editing follows
+current assignment rather than the original requester.
+
+The Staff queue uses versioned decision/extension routes with an entered reason,
+current needs, occupied timing, flags and deadline. Ordinary creation cannot
+confirm a booking; unrestricted Staff status changes are superseded by guarded
+active-hold decisions. Stale/conflicting/expired attempts have no history or
+intent effect. BFF error status/body remain preserved; refresh/retry are explicit.
+
+All remaining required rooms must be approved for current needs for venue
+readiness. That projection is not full Event readiness, technical approval or a
+Safety decision. [Policy register](venue-policy-decisions.md) and
+[phase delivery](devlogs/2026-10-12-venue-workflows.md) identify the pending gates.
 
 ## Authentication and errors
 

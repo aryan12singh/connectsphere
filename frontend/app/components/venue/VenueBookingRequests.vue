@@ -1,25 +1,46 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { SearchIcon } from '@lucide/vue'
+import { computed,reactive,ref,watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { calendarIsoToWallTime,calendarWallTimeToIso } from './booking-state'
 import type { CalendarBooking } from './calendar-state'
-
-interface RequestBooking extends CalendarBooking { createdAt?: string, statusChangedById?: string | null }
-const props = defineProps<{ canDecide: boolean }>()
-const emit = defineEmits<{ updated: [] }>()
-const { data, error, refresh } = await useFetch('/api/bookings', { query: { status: 'TENTATIVELY_HELD' } })
-const { showError } = useErrorAlert()
-watch(error, value => { if (value) showError(value, 'Unable to load booking requests') }, { immediate: true })
-const search = ref('')
-const deciding = ref<string | null>(null)
-const message = ref('')
-const items = computed(() => ((data.value as { items?: RequestBooking[] } | null)?.items ?? []).filter(item => `${item.title} ${item.venueId} ${item.requestedById}`.toLowerCase().includes(search.value.toLowerCase())))
-function timeAgo(value?: string) { if (!value) return 'Recently'; const minutes = Math.max(1, Math.round((Date.now() - new Date(value).getTime()) / 60_000)); return minutes < 60 ? `${minutes} minutes ago` : `${Math.round(minutes / 60)} hours ago` }
-async function decide(booking: RequestBooking, status: 'CONFIRMED' | 'REJECTED') { if (!props.canDecide || deciding.value) return; deciding.value = booking.id; message.value = ''; try { await $fetch(`/api/bookings/${booking.id}`, { method: 'PUT', body: { ...booking, status, reason: booking.reason ?? '' } } as any); await refresh(); emit('updated') } catch (caught) { showError(caught, 'Unable to update booking request') } finally { deciding.value = null } }
+interface Request extends CalendarBooking {version:number;venueName?:string;venueCapacity?:number|null;organiserId?:string;currentCoordinatorId?:string;currentVenueNotes?:string;effectiveStatus?:string;expectedAttendance?:number;layout?:string;facilities?:string[];accessibilityNeeds?:string[]}
+const props=defineProps<{canDecide:boolean}>(),emit=defineEmits<{updated:[]}>()
+const {data,error,refresh}=await useFetch<{items:Request[]}>('/api/bookings',{query:{status:'TENTATIVELY_HELD'}})
+const {showError}=useErrorAlert()
+const requestFetch=useRequestFetch()
+watch(error,value=>{if(value)showError(value,'Unable to load booking requests')},{immediate:true})
+const search=ref(''),saving=ref<string|null>(null),reasons=reactive<Record<string,string>>({}),extensions=reactive<Record<string,string>>({})
+const items=computed(()=>(data.value?.items ?? []).filter(row=>`${row.title} ${row.venueName || row.venueId} ${row.currentCoordinatorId || ''}`.toLowerCase().includes(search.value.toLowerCase())))
+function format(value:string|undefined,booking:Request){return value?calendarIsoToWallTime(value,booking.timeZone || 'Asia/Singapore').replace('T',' '):'—'}
+function active(booking:Request){return props.canDecide && booking.status==='TENTATIVELY_HELD' && Boolean(booking.expiresAt) && Date.parse(booking.expiresAt!)>Date.now() && booking.effectiveStatus!=='EXPIRED'}
+async function decide(booking:Request,status:'CONFIRMED'|'REJECTED'){
+  if (!active(booking) || saving.value || !reasons[booking.id]?.trim())return
+  saving.value=booking.id
+  try {await requestFetch(`/api/bookings/${encodeURIComponent(booking.id)}/decision`,{method:'PUT',body:{status,version:booking.version,reason:reasons[booking.id]!.trim()}});reasons[booking.id]='';await refresh();emit('updated')}
+  catch(caught){showError(caught,'Unable to decide this booking');await refresh()}
+  finally{saving.value=null}
+}
+async function extend(booking:Request){
+  if(!active(booking) || saving.value || !reasons[booking.id]?.trim() || !extensions[booking.id])return
+  saving.value=booking.id
+  try{const expiresAt=calendarWallTimeToIso(extensions[booking.id]!,booking.timeZone || 'Asia/Singapore');await requestFetch(`/api/bookings/${encodeURIComponent(booking.id)}/hold-extension`,{method:'PUT',body:{version:booking.version,expiresAt,reason:reasons[booking.id]!.trim()}});extensions[booking.id]='';await refresh();emit('updated')}
+  catch(caught){showError(caught,'Unable to extend this hold');await refresh()}
+  finally{saving.value=null}
+}
 </script>
-
 <template>
-  <section class="mt-7"><h2 class="text-xl font-semibold">Pending booking requests</h2><label class="relative mt-4 block"><SearchIcon class="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" /><input v-model="search" type="search" placeholder="Search requests, organisers, or venues..." class="h-8 w-full rounded-2xl border border-border bg-background pl-9 pr-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label><p v-if="!error && items.length === 0" class="mt-4 text-sm text-muted-foreground">No booking requests awaiting review.</p><div v-else-if="!error" class="mt-4 grid gap-3"><Card v-for="booking in items" :key="booking.id" class="rounded-[18px] p-7"><h3 class="text-xl font-medium">{{ booking.title }} @{{ booking.venueId }}</h3><dl class="mt-4 grid gap-4 text-sm sm:grid-cols-3"><div><dt class="text-xs text-muted-foreground">Organiser</dt><dd class="mt-1">{{ booking.requestedById || '—' }}</dd></div><div><dt class="text-xs text-muted-foreground">Assigned coordinator</dt><dd class="mt-1">{{ booking.statusChangedById || 'Unassigned' }}</dd></div><div><dt class="text-xs text-muted-foreground">Submitted by coordinator</dt><dd class="mt-1">{{ timeAgo(booking.createdAt) }}</dd></div><div class="sm:col-span-3"><dt class="text-xs text-muted-foreground">Reason</dt><dd class="mt-1">{{ booking.reason || '—' }}</dd></div></dl><div class="mt-4 flex flex-wrap gap-2"><Button size="sm" :disabled="!canDecide || deciding === booking.id" @click="decide(booking, 'CONFIRMED')">Approve</Button><Button size="sm" variant="secondary" :disabled="!canDecide || deciding === booking.id" @click="message = 'Amendment requests are not available yet.'">Ask for amendments</Button><Button size="sm" variant="destructive" :disabled="!canDecide || deciding === booking.id" @click="decide(booking, 'REJECTED')">Reject</Button></div></Card></div><p v-if="message" role="alert" class="mt-3 text-sm text-destructive">{{ message }}</p>
+  <section class="mt-7 grid gap-4"><h2 class="text-xl font-semibold">Pending booking requests</h2><label class="grid gap-1 text-sm">Search requests<input v-model="search" type="search" placeholder="Event, venue or Coordinator" class="h-9 rounded-xl border border-border px-3" /></label>
+    <p v-if="!error && !items.length" class="text-sm text-muted-foreground">No booking requests awaiting review.</p>
+    <Card v-for="booking in error ? [] : items" :key="booking.id" class="grid gap-4 rounded-[18px] p-5" :data-booking-id="booking.id">
+      <h3 class="text-xl font-medium">{{ booking.title }} · {{ booking.venueName || booking.venueId }}</h3><p class="break-all text-xs text-muted-foreground">Booking {{ booking.id }} · Event {{ booking.eventId || 'Missing Event link' }}</p>
+      <dl class="grid gap-3 text-sm sm:grid-cols-3"><div><dt class="text-xs text-muted-foreground">Organiser</dt><dd>{{ booking.organiserId || '—' }}</dd></div><div><dt class="text-xs text-muted-foreground">Assigned coordinator</dt><dd>{{ booking.currentCoordinatorId || 'Unavailable' }}</dd></div><div><dt class="text-xs text-muted-foreground">Requested by</dt><dd>{{ booking.requestedById || '—' }}</dd></div><div><dt class="text-xs text-muted-foreground">Attendance / capacity</dt><dd>{{ booking.expectedAttendance ?? '—' }} / {{ booking.venueCapacity ?? '—' }}</dd></div><div><dt class="text-xs text-muted-foreground">Layout</dt><dd>{{ booking.layout || '—' }}</dd></div></dl>
+      <p class="text-sm">Event time: {{ format(booking.startAt,booking) }}–{{ format(booking.endAt,booking) }}</p><p class="text-sm text-muted-foreground">Occupied: {{ format(booking.occupiedStart,booking) }}–{{ format(booking.occupiedEnd,booking) }} · Setup {{ booking.setupMinutes ?? 0 }} min · Turnaround {{ booking.turnaroundMinutes ?? 0 }} min</p>
+      <p class="text-sm">Hold expires {{ format(booking.expiresAt || undefined,booking) }} ({{ booking.timeZone }})</p><p v-if="booking.facilities?.length" class="text-sm">Required facilities: {{ booking.facilities.join(', ') }}</p><p v-if="booking.accessibilityNeeds?.length" class="text-sm">Accessibility: {{ booking.accessibilityNeeds.join(', ') }}</p><p v-if="booking.currentVenueNotes" class="text-sm">Current Event venue notes: {{ booking.currentVenueNotes }}</p><p class="text-sm">Request reason: {{ booking.reason }}</p>
+      <p v-if="booking.flags?.length" role="alert" class="text-sm text-destructive">Resolve before approval: {{ booking.flags.join(', ') }}</p><p v-if="!active(booking)" class="text-sm text-muted-foreground">This hold is expired or unavailable for a decision.</p>
+      <label :for="`decision-reason-${booking.id}`" class="grid gap-1 text-sm">Decision or extension reason<input :id="`decision-reason-${booking.id}`" v-model="reasons[booking.id]" :disabled="!active(booking) || Boolean(saving)" class="h-9 rounded-xl border border-border px-3" /></label>
+      <div class="flex flex-wrap gap-2"><Button size="sm" :disabled="!active(booking) || Boolean(saving) || !reasons[booking.id]?.trim() || Boolean(booking.flags?.length)" @click="decide(booking,'CONFIRMED')">Approve</Button><Button size="sm" variant="destructive" :disabled="!active(booking) || Boolean(saving) || !reasons[booking.id]?.trim()" @click="decide(booking,'REJECTED')">Reject</Button><Button size="sm" variant="outline" :disabled="Boolean(saving)" @click="refresh()">Refresh request</Button></div>
+      <details v-if="active(booking)" class="text-sm"><summary class="cursor-pointer">Extend hold deadline</summary><div class="mt-3 flex flex-wrap items-end gap-3"><label class="grid gap-1">New deadline ({{ booking.timeZone }})<input v-model="extensions[booking.id]" type="datetime-local" :disabled="Boolean(saving)" class="h-9 rounded-xl border border-border px-3" /></label><Button size="sm" variant="outline" :disabled="Boolean(saving) || !extensions[booking.id] || !reasons[booking.id]?.trim()" @click="extend(booking)">Extend hold</Button></div></details>
+    </Card>
   </section>
 </template>

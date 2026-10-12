@@ -32,6 +32,11 @@ function validateVenue(body, partial = false) {
   if (body?.timeZone !== undefined && !text(body.timeZone)) errors.timeZone = ['Time zone is required'];
   if (body?.managedById !== undefined && !text(body.managedById)) errors.managedById = ['A venue staff manager is required'];
   if (body?.reason !== undefined && !text(body.reason)) errors.reason = ['Reason is required'];
+  for (const field of ['setupMinutes', 'turnaroundMinutes']) {
+    if (body?.[field] !== undefined && (!Number.isSafeInteger(body[field]) || body[field] < 0 || body[field] > config.maxBufferMinutes)) {
+      errors[field] = [`Use whole minutes from 0 to ${config.maxBufferMinutes}`];
+    }
+  }
   if (body?.operatingHours !== undefined) Object.assign(errors, validateHours(body.operatingHours));
   return errors;
 }
@@ -58,6 +63,8 @@ function normaliseVenue(body) {
     timeZone: text(body.timeZone) || 'Asia/Singapore',
     isActive: body.isActive !== false,
     managedById: text(body.managedById),
+    setupMinutes: body.setupMinutes ?? 0,
+    turnaroundMinutes: body.turnaroundMinutes ?? 0,
     reason: text(body.reason),
     operatingHours: normaliseHours(body.operatingHours),
   };

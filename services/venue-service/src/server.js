@@ -1,5 +1,6 @@
 const config = require('./config');
 const app = require('./app');
+const stopRechecks=require('./rechecks').start();
 
 const server = app.listen(config.port, (error) => {
   if (error) {
@@ -9,3 +10,4 @@ const server = app.listen(config.port, (error) => {
   }
   console.log(`venue-service listening on port ${server.address().port}`);
 });
+process.on('SIGTERM',()=>{stopRechecks();server.close(()=>process.exit(0));});
