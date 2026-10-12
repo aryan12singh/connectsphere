@@ -18,6 +18,15 @@ beforeEach(() => fixture.reset())
 afterAll(async () => { await api.close() })
 
 describe('CS-87 — independent venue bookings', () => {
+  it('TC-CS87-12 server-rendered room actions stay disabled until browser handlers attach',async()=>{
+    const {createSSRApp}=await import('vue'),{renderToString}=await import('@vue/server-renderer')
+    const component=(await import('../../frontend/app/components/venue/EventVenueArrangements.vue')).default
+    const html=await renderToString(createSSRApp(component,{eventId:'event-ui'}))
+    const document=new DOMParser().parseFromString(html,'text/html')
+    const add=[...document.querySelectorAll('button')].find(b=>b.textContent?.includes('Add another venue'))
+    const refresh=[...document.querySelectorAll('button')].find(b=>b.textContent?.includes('Refresh arrangements'))
+    expect(add?.hasAttribute('disabled')).toBe(true);expect(refresh?.hasAttribute('disabled')).toBe(true)
+  })
   it('TC-CS87-11 bridges the existing request form labels and lowercase layout to venue catalogue codes without dropping unknown needs',async()=>{
     const {event}=await fixture.eventFixture({venueType:'physical',preferredLayout:'theatre',accessibilityNeeds:['Wheelchair accessible entrance & seating','Hearing loop / assisted listening','Accessible restrooms nearby']})
     const v=await api.venue.http('/venues',{method:'POST',headers:fixture.staff,body:fixture.venueInput({accessibilityTags:['WHEELCHAIR_ACCESS','HEARING_LOOP','ACCESSIBLE_RESTROOMS']})})

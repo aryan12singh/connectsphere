@@ -13,6 +13,15 @@ afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals()})
 afterAll(async()=>{await api.close()})
 async function hold(){const {event,request}=await f.eventFixture();const v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()});const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'decision'},body:{eventId:event.id,venueId:v.body.id,title:'Conference room',reason:'Client conference',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}});expect(r.status).toBe(201);return {booking:r.body,event,request,venue:v.body}}
 describe('CS-38 — guarded independent decisions',()=>{
+  it('TC-CS38-12 server-rendered Staff inputs and actions stay disabled until handlers attach',async()=>{
+    const {createSSRApp}=await import('vue'),{renderToString}=await import('@vue/server-renderer')
+    const component=(await import('../../frontend/app/components/venue/VenueBookingRequests.vue')).default
+    const html=await renderToString(createSSRApp(component,{canDecide:true}))
+    const document=new DOMParser().parseFromString(html,'text/html')
+    const reason=document.querySelector('#decision-reason-room-ui')
+    expect(reason?.hasAttribute('disabled')).toBe(true)
+    expect([...document.querySelectorAll('input,button')].every(control=>control.hasAttribute('disabled'))).toBe(true)
+  })
   it('TC-CS38-03 shows the current Coordinator and collects a real rejection reason in the Staff queue',async()=>{
     const component=(await import('../../frontend/app/components/venue/VenueBookingRequests.vue')).default
     const wrapper=await mountSuspended(component,{props:{canDecide:true}})

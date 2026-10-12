@@ -14,11 +14,11 @@ The new UI follows existing components while Figma is delayed. Manual design/PO 
 
 ## Verification
 
-Node22.23.3, disposable PostgreSQL16, real service boundaries where stated. Final code/test/infra/API-document SHA256 (excluding generated records and project Markdown): `be5c17f61ef1ad90823438447ec9136f2a9c97a73953a4da802dc2aa29a700b3`.
+Node22.23.3, disposable PostgreSQL16, real service boundaries where stated. Final code/test/infra/API-document SHA256 (excluding generated records and project Markdown): `73c9497b3936eea87495c250e564bf2ac24fa114681bc08004d733740005503c`.
 
 | Layer | Actual result | Scope / limits |
 | --- | --- | --- |
-| Frontend full regression/coverage | 255/255, zero skipped | Includes 106 checks for CS-36/37/38/39/84/85/86/87; HTTP memory fixtures, Nuxt components/state, and existing request regressions. Source coverage is measured, not claimed complete. |
+| Frontend full regression/coverage | 257/257, zero skipped | Includes 108 checks for CS-36/37/38/39/84/85/86/87; HTTP memory fixtures, Nuxt components/state, and existing request regressions. Source coverage is measured, not claimed complete. |
 | Venue unit / HTTP contracts / PostgreSQL | 43/43 · 11/11 · 5/5 | PostgreSQL includes atomic buffer/version/history/intent, stale rejection, reconnect and invalid acknowledgement retry. |
 | Booking unit / HTTP contracts / PostgreSQL | 35/35 · 14/14 · 10/10 | PostgreSQL includes one-winner parallel commitments/decisions, actual lock-wait expiry and rejected-intent rollback of booking/history/outbox. |
 | Event route regression | 22/22 | Existing route/coverage suite plus the guarded planning projection in the story subset. |
@@ -31,6 +31,20 @@ Final local outputs are outside Git under `/tmp/connectsphere-s3-delivery-*`. Li
 Blue specifications and dated yellow records stay in `tests/records/CS-xx`. Source PM IDs were reconciled without changing recorded assertion outcomes/timestamps; original raw reports remain outside Git. Early fixture/import failures are diagnostic attempts, not valid behavioral RED proof. Accepted assignment/security assertions were retained. The former unrestricted Staff-status test was strengthened to the current CS-38/39 guarded-transition requirement; CS-26 browser setup now creates an eligible isolated room instead of depending on an unrelated first catalogue result.
 
 Observed RED fixes include competing holds, missing expiry/intent, stale/unauthorized decisions, expiry during slow reads/lock waits, configuration retries, room moves/rollback, current assignment, mandatory accessibility, combined-role confirmation bypass, calendar expiry/buffers, virtual null capacity and real form-label compatibility. Canonical decision intents are `VenueBookingApproved` / `VenueBookingRejected`, matching the independent-booking contract.
+
+## Hosted startup regression follow-up
+
+The first hosted run on `1710623` passed all six frontend/service jobs and47/48
+browser scenarios. The mobile room workflow exposed an enabled server-rendered
+button accepting a click before its handlers attached. The new Event panel and
+Staff queue now disable controls until mounted and guard their actions. Real
+SSR assertions failed before the fix, then both story suites passed16/16.
+The full frontend suite passes257/257, both typechecks and the production build
+pass, and desktop/mobile room workflows pass2/2 with JavaScript-disabled checks.
+The accepted workflow assertions remain; no click retry, fixed wait or test
+weakening was added. The failed hosted evidence is retained in
+[run38262028860](https://github.com/aryan12singh/connectsphere/actions/runs/38262028860).
+Exact final branch CI remains the publication gate.
 
 ## Continue and review
 

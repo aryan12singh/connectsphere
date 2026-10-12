@@ -90,11 +90,15 @@ calendar shading/expiry and Event venue readiness. No parent lifecycle or global
 role transition is added. [Delivery notes](2026-10-12-venue-workflows.md) record
 the exact local layers, source fingerprint, reproduction commands and limits.
 
-Final frontend255/255; Venue43 unit/11 HTTP/5 PostgreSQL; Booking35 unit/14 HTTP/10
+Final frontend257/257; Venue43 unit/11 HTTP/5 PostgreSQL; Booking35 unit/14 HTTP/10
 PostgreSQL; Event22 route tests; hold spike10/10. Production-stack snapshot passes
 11 smoke,48 desktop/mobile and1 restart; final delayed-read/message refinements
 also pass real-handler regression and are covered by exact-revision hosted CI
 after publishing. Typechecks, production build and API-document checks pass.
+First hosted run1710623 exposed a mobile early-click regression (47/48); the
+follow-up disables new room/queue controls until handlers attach, adds observed
+SSR RED/GREEN proof and passes both actual desktop/mobile workflows (2/2).
+Failure evidence remains linked in the delivery notes; final hosted CI is the gate.
 
 PM cases retain their source IDs and unexecuted steps. All customer policy
 answers remain Pending. CS-10/42/77 contracts gate Safety93–95; actual notification

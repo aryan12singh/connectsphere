@@ -24,3 +24,7 @@ Contract alignment: requests use the distinct Planning Event ID; pending venue s
 | TC-CS87-09 | Virtual room compatibility | Virtual Event and venue; no physical capacity/layout | Request room | Independent tentative hold with VIRTUAL layout; no physical suitability false rejection | Real HTTP / memory | 2026-10-12T19:13:47+08:00 |
 | TC-CS87-10 | Removed rejected venue remains auditable | Rejected room and catalogue removal | Read Event arrangements and explicitly release rejected room | Room remains visible/unready; explicit cancellation succeeds; no silent deletion | Real HTTP / memory | 2026-10-12T19:13:47+08:00 |
 | TC-CS87-11 | Existing form/canonical catalogue compatibility | Lowercase layout/type, known form accessibility labels and unknown other need | Read summary and request an eligible room; try unknown need | Known labels map to catalogue codes; normal request201; unknown need remains unmet422 | Real Event/Venue/Booking HTTP / memory | 2026-10-12T19:13:47+08:00 |
+
+| Test Case ID | Derived regression | Pre-conditions | Steps | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS87-12 | Room-action hydration safety | Assigned Planning Event in production/server-rendered HTML | Read without JavaScript; then mount normally and add another room | SSR Add/Refresh disabled; mounted click opens prefilled form without a lost click | Vue SSR/component; CS-87 also actual production browser | 2026-10-12T14:37:16+00:00 |

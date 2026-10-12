@@ -18,6 +18,14 @@ test('TC-CS87-03 LIVE Coordinator requests independent rooms and Staff decisions
     }
     await signIn(page,contact.email)
     await page.goto(`/events/${event.eventId}`)
+    // Actual production HTML must be inert until hydration; accepted workflow
+    // assertions below still use normal user clicks, without delays or retries.
+    const beforeHydration=await browser.newContext({baseURL:new URL(page.url()).origin,storageState:await page.context().storageState(),viewport:page.viewportSize() ?? undefined,javaScriptEnabled:false})
+    try {
+      const ssr=await beforeHydration.newPage();await ssr.goto(`/events/${event.eventId}`)
+      await expect(ssr.getByRole('button',{name:'Add another venue',exact:true})).toBeDisabled()
+      await expect(ssr.getByRole('button',{name:'Refresh arrangements',exact:true})).toBeDisabled()
+    }finally{await beforeHydration.close()}
     await page.getByRole('button',{name:'Add another venue',exact:true}).click()
     await expect(page.getByLabel('Room attendance')).toHaveValue('80')
     await page.getByLabel('Room start (Asia/Singapore)',{exact:true}).fill('2028-11-20T10:00')

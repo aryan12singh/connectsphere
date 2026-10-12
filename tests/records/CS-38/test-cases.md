@@ -24,3 +24,7 @@ Contract alignment: requests use the distinct Planning Event ID; pending venue s
 | TC-CS38-09 | Concurrent PostgreSQL decisions | Persisted active hold, two Staff decisions with same version | Approve and reject concurrently | One200 and one409; one immutable decision activity and intent | Real HTTP / PostgreSQL | 2026-10-12T19:13:47+08:00 |
 | TC-CS38-10 | Coordinator cannot decide | Active hold and ordinary Coordinator | Call Staff decision endpoint | 403 without status/history/intent change | Real HTTP / memory | 2026-10-12T19:13:47+08:00 |
 | TC-CS38-11 | Requirements changed while pending | Active hold; current parent requirements changed | Approve with previously valid booking version | 409 REQUIREMENTS_CHANGED; no approval write | Real HTTP / memory | 2026-10-12T19:13:47+08:00 |
+
+| Test Case ID | Derived regression | Pre-conditions | Steps | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS38-12 | Staff queue hydration safety | Active hold and authorized Staff queue in server-rendered HTML | Read before client handlers attach; mount normally and enter a reason | Search/reason/deadline/action controls disabled before hydration; mounted reason and decisions remain usable | Vue SSR/component; CS-87 also actual production browser | 2026-10-12T14:37:16+00:00 |
