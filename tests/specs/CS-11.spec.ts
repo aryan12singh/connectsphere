@@ -207,8 +207,8 @@ describe('CS-11 — TC-CS11-25 form hydration safety', () => {
   it('SSR disables editing and actions until Vue attaches handlers, for every form mode', async () => {
     const { createSSRApp } = await import('vue')
     const { renderToString } = await import('@vue/server-renderer')
-    const { default: FormPage } = await import('../../frontend/app/components/RequestFormPage.vue')
-    const { emptyRequestForm } = await import('../../frontend/app/components/request-form-state')
+    const { default: FormPage } = await import('../../frontend/app/components/events/RequestFormPage.vue')
+    const { emptyRequestForm } = await import('../../frontend/app/components/events/request-form-state')
     for (const mode of ['create', 'draft', 'edit', 'readonly'] as const) {
       const modelValue = { ...emptyRequestForm(), purpose: 'Meaningful preloaded draft' }
       const html = await renderToString(createSSRApp(FormPage, { modelValue, mode, title: 'Request', statusLabel: 'Draft', canEdit: true }))

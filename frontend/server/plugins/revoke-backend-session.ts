@@ -2,7 +2,7 @@
  * Live mode: whenever the login cookie is cleared, also end the backend
  * session behind it.
  *
- * Why a hook: the Sign out button (app/components/UserMenu.vue) calls
+ * Why a hook: the Sign out button (app/components/navbar/UserMenu.vue) calls
  * nuxt-auth-utils' built-in DELETE /api/_auth/session, not our
  * DELETE /api/auth. Both end in clearUserSession(), which fires this
  * 'clear' hook, so every way of signing out revokes the backend session.

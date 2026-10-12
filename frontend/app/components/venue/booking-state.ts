@@ -1,4 +1,3 @@
-import { localToInstant } from '../../../../services/event-service/src/domain/validation.js'
 import type { CalendarBooking } from './calendar-state'
 
 export interface BookingDraft {
@@ -14,6 +13,48 @@ export interface BookingDraft {
 
 const BLOCKING_STATUSES = new Set(['BLOCKED', 'TENTATIVELY_HELD', 'CONFIRMED', 'UNAVAILABLE'])
 const ALL_BOOKING_STATUSES = ['AVAILABLE', 'TENTATIVELY_HELD', 'CONFIRMED', 'BLOCKED', 'UNAVAILABLE', 'REJECTED', 'CANCELLED'] as const
+
+function zonedParts(instant: Date, timeZone: string) {
+  return Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(instant).map(part => [part.type, part.value]))
+}
+
+function localToInstant(date: string, time: string, timeZone: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    throw new Error('Use a valid date and clock time')
+  }
+  const dateValue = new Date(`${date}T00:00:00Z`)
+  if (Number.isNaN(dateValue.getTime()) || dateValue.toISOString().slice(0, 10) !== date) {
+    throw new Error('Use a valid date and clock time')
+  }
+
+  const wallTime = Date.parse(`${date}T${time}:00Z`)
+  const offsets = new Set<number>()
+  for (const days of [-2, -1, 0, 1, 2]) {
+    const sample = new Date(wallTime + days * 86_400_000)
+    const parts = zonedParts(sample, timeZone)
+    offsets.add(Date.parse(`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}Z`) - sample.getTime())
+  }
+
+  const matches = [...offsets]
+    .map(offset => new Date(wallTime - offset))
+    .filter((instant) => {
+      const parts = zonedParts(instant, timeZone)
+      return `${parts.year}-${parts.month}-${parts.day}` === date && `${parts.hour}:${parts.minute}` === time
+    })
+  if (matches.length !== 1) {
+    throw new Error(matches.length ? 'This clock time occurs twice. Choose an unambiguous time.' : 'This clock time does not exist in the selected time zone.')
+  }
+  return matches[0]
+}
 
 function overlaps(left: BookingDraft, right: CalendarBooking) {
   return new Date(left.startAt) < new Date(right.endAt) && new Date(right.startAt) < new Date(left.endAt)

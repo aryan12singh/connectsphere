@@ -32,7 +32,6 @@ jobs:
       DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/event_db
       NUXT_AUTH_MODE: mock
       NUXT_SESSION_PASSWORD: isolated-ci-cookie-password-at-least-32-characters
-      TEST_RUN_PHASE: GREEN
       CS_VERIFY_REVISION: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -71,7 +70,6 @@ jobs:
           path: |
             ${{ runner.temp }}/frontend-results.json
             ${{ runner.temp }}/frontend-coverage
-            tests/records/*/test-runs/*.md
 
   event:
     name: Event service checks

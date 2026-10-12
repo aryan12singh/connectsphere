@@ -5,7 +5,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardFooter, CardHeader } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { REQUEST_STATUS_LABELS } from '@/components/status-labels'
+import ReviewQueue from '@/components/events/ReviewQueue.vue'
+import { REQUEST_STATUS_LABELS } from '@/components/events/status-labels'
 const activeTab = ref('all')
 
 const { user } = useUserSession()

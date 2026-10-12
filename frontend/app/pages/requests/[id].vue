@@ -1,10 +1,12 @@
 <script setup lang="ts">
 const requestFetch=useRequestFetch()
 import { computed,onMounted,ref } from 'vue'
-import { emptyRequestForm,formToPayload,recordToForm } from '@/components/request-form-state'
-import { operationIntent,fieldErrors as extractFields } from '@/components/request-errors'
+import RequestActivityHistory from '@/components/events/RequestActivityHistory.vue'
+import RequestFormPage from '@/components/events/RequestFormPage.vue'
+import { emptyRequestForm,formToPayload,recordToForm } from '@/components/events/request-form-state'
+import { operationIntent,fieldErrors as extractFields } from '@/components/events/request-errors'
 import { apiErrorMessage } from '@/components/shared/api-error'
-import { REQUEST_STATUS_LABELS } from '@/components/status-labels'
+import { REQUEST_STATUS_LABELS } from '@/components/events/status-labels'
 const route=useRoute(),id=String(route.params.id ?? '')
 const {data:record,error:recordError}=await useFetch(`/api/events/${id}`,{key:`event-request-${id}`})
 const loaded=computed(()=>record.value as Record<string,any>|null)
