@@ -80,6 +80,21 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 2026-10-13 — Aryan — Automatic buffer rollout, venue evidence and Safety UI
+
+CS-86 now automatically evaluates inherited venues through durable initial
+receipts and a bounded fair retry queue, preserving approved commitments across
+restart. CS-93 has a reachable current-Coordinator preparation panel; CS-94/95
+have reusable default-disabled decision/rework components with current-proof,
+privacy, reason/area and repeat-failure validation. Actual Safety commands remain
+dependent on CS-10/42/77 and inbox delivery on CS-50/51. Full frontend317/317;
+Venue43 unit/11 HTTP/9 PostgreSQL; Booking35/14/15; Event22 and hold research10;
+full production68 desktop/mobile,11 smoke and1 restart pass. The independent
+audit's findings were reproduced, fixed and re-reviewed. See the
+[phase report](2026-10-13-venue-rollout-safety-ui.md) for source fingerprints,
+evidence layers, the screenshot pack and preserved failures. Human review,
+customer answers, reviewed main merge/CI and acceptance remain open. No new PR.
+
 ### 2026-10-13 — Aryan — Current venue conflicts, room alternatives and audit fixes
 
 CS-36/37/38/39/84/85/86/87 continue on `feat/aryan-sprint3-venue-safety`:

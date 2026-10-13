@@ -82,6 +82,25 @@ yet recorded the planning timebox/policy approvals or independent spike review.
 Event completion (CS-31) and waiting-list offers (CS-49) may reuse clock/lease
 mechanics, but need their own business transitions and deadlines.
 
+## Shared scheduling impact review — 13 October 2026
+
+CS-78 identifies the following reusable mechanisms and distinct policies. This
+analysis is available for the owners' review; it does not implement their jobs,
+record an agreed spike timebox or settle customer processing targets.
+
+| Owner story | Reusable mechanism | Business proof and boundary |
+| --- | --- | --- |
+| CS-90 hold expiry/reminders, Sprint 4 | UTC database clock after lock waits, bounded lease claims, token/version fencing, atomic transition plus outbox and repeat/restart deduplication | Saved hold deadline and current booking version; extension invalidates older claims; expiry removes only its commitment; current venue readiness excludes expired holds immediately |
+| Javier CS-31 Event completion | Controlled current-clock check and a repeat-safe status/history/outbox transaction | Agreed parent lifecycle, current Confirmed state and Event end; do not complete a Planning/pending-Safety Event or use a room's turnaround end as the Event end |
+| CS-49 waiting-list offer expiry | Bounded claims and deadline/version fencing reusable after attendance ownership/contract review | Offer deadline is the recorded48-hour-or-registration-close policy, distinct from hold duration; acceptance versus expiry has one winner, and releasing/offering a place changes capacity exactly once |
+| Marc CS-50/51/52 delivery | Stable action/recipient/type identity, durable retries and consumer deduplication | Deliver only permitted current links/content; message retry never replays a booking, confirmation, withdrawal or offer command |
+
+Individual hold expiry, room replacement or cancellation must not generate an
+Attendee withdrawal, release unrelated equipment or automatically cancel/complete
+the parent Event. A reusable scheduler cannot supply those business decisions.
+Record agreed target intervals, failure visibility and owners in CS-76/77 before
+their production jobs; numerical warning/processing targets remain pending.
+
 ## Run and evidence
 
 Use Node 22 and a fresh local PostgreSQL 16 **`booking_test`** database. Credentials

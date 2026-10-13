@@ -29,6 +29,50 @@ async function inheritedPair(gapMinutes=15){
   return {event,venue:edited.body,rooms}
 }
 describe('CS-86 — preserve and recheck inherited commitments',()=>{
+  it('TC-CS86-22 initial rollout automatically flags inherited approvals once without a configuration edit',async()=>{
+    const {venue,rooms}=await inheritedPair()
+    // Simulate a deployed legacy catalogue: buffers are present, but no change
+    // event exists to trigger its initial evaluation.
+    f.venues.state.outbox.length=0
+    f.venues.state.rollouts.length=0
+    const venueBefore=JSON.parse(JSON.stringify(f.venues.getVenue(venue.id))),historyBefore=f.venues.state.history.length
+    const worker=require('../../services/venue-service/src/rechecks')
+    await worker.drain()
+    for(const room of rooms)expect(f.bookings.getBooking(room.id)).toMatchObject({status:'CONFIRMED',flags:['BUFFER_CONFLICT']})
+    expect(f.venues.getVenue(venue.id)).toEqual(venueBefore)
+    expect(f.venues.state.history).toHaveLength(historyBefore)
+    const changes=f.bookings.state.activities.filter((row:any)=>row.action==='VENUE_RECHECKED')
+    expect(changes).toHaveLength(rooms.length)
+    expect(changes.every((row:any)=>row.actorId==='venue-buffer-rollout' && row.actorRole==='SYSTEM')).toBe(true)
+    const before=JSON.parse(JSON.stringify({history:f.bookings.state.activities,intents:f.bookings.state.outbox}))
+    await worker.drain()
+    expect({history:f.bookings.state.activities,intents:f.bookings.state.outbox}).toEqual(before)
+    const rollouts=f.venues.state.rollouts ?? []
+    expect(rollouts).toHaveLength(1)
+    expect(rollouts[0].completedAt).toBeTruthy()
+  })
+  it('TC-CS86-23 initial rollout survives an unavailable Booking service and retries the same action',async()=>{
+    const {venue,rooms}=await inheritedPair();f.venues.state.outbox.length=0;f.venues.state.rollouts.length=0
+    const worker=require('../../services/venue-service/src/rechecks'),native=globalThis.fetch
+    const failed=vi.spyOn(globalThis,'fetch').mockImplementation(async(url:any,options:any)=>String(url).includes('/internal/venue-rechecks')?new Response('Unavailable',{status:503}):native(url,options))
+    await worker.drain();failed.mockRestore()
+    const pending=await f.venues.pendingRechecks()
+    expect(pending.filter((row:any)=>row.venueId===venue.id)).toHaveLength(1)
+    expect(pending[0]).toMatchObject({attempts:1,deliveredAt:null})
+    expect(f.bookings.getBooking(rooms[0].id).flags).toEqual([])
+    const actionId=pending[0].id
+    await worker.drain()
+    expect(await f.venues.pendingRechecks()).toEqual([])
+    expect(f.venues.state.rollouts.find((row:any)=>row.id===actionId)).toMatchObject({attempts:2})
+    for(const room of rooms)expect(f.bookings.getBooking(room.id).flags).toContain('BUFFER_CONFLICT')
+  })
+  it('TC-CS86-24 initial rollout catches a venue arriving after startup without cancelling existing bookings',async()=>{
+    const worker=require('../../services/venue-service/src/rechecks')
+    await worker.drain()
+    const {rooms}=await inheritedPair();f.venues.state.outbox.length=0;f.venues.state.rollouts.length=0
+    await worker.drain()
+    for(const room of rooms)expect(f.bookings.getBooking(room.id)).toMatchObject({status:'CONFIRMED',flags:['BUFFER_CONFLICT']})
+  })
   it.each([{id:'20',path:'/venue-bookings/conflicts',stage:'lock'},{id:'21',path:'/venue-bookings/availability',stage:'venue'}])('TC-CS86-$id an expired hold whose venue is removed during a $stage wait cannot poison the read',async({path,stage})=>{
     const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
     const held=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'read-remove-'+stage},body:{eventId:event.id,venueId:v.body.id,title:'Expired before read completes',reason:'Read and deletion race',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})

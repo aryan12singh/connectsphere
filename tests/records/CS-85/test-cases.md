@@ -1,5 +1,9 @@
 # CS-85 — Test Case Specification (IS212 / IEEE 829)
 
+## 13 October production browser evidence
+
+Date of Creation: 2026-10-13T21:11:00+08:00. TC-CS85-30 covers occupied window and original event time. Preconditions and steps: Hold10–12 with30/45 buffers; competing ordinary Coordinator room request at12:30; read UI/database. Expected result: Advertised10–12 unchanged; occupied09:30–12:45; competing ordinary request409. Operational Staff closures retain their separate accepted behavior: they succeed and flag affected commitments. Run desktop/mobile on the isolated production stack. Screenshots and captured query results remain CI/Jira evidence. Explicit fixture setup is labelled; this case does not establish unimplemented inbox delivery, whole-Event Safety transitions, customer policy approval or human acceptance.
+
 Blue section. Date of Creation: 2026-10-08T15:59:21Z (23:59:21 Singapore time).
 
 Story: As an Event Coordinator, I want venue availability and conflict checks to include each venue's setup and turnaround time so that the room can be prepared and reset safely.

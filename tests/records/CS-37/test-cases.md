@@ -1,5 +1,9 @@
 # CS-37 — Test Case Specification (IS212 / IEEE 829)
 
+## 13 October production browser evidence
+
+Date of Creation: 2026-10-13T21:11:00+08:00. TC-CS37-30 covers persisted deadline and immediate expiry. Preconditions and steps: Real hold; advance only its deadline in isolated booking_db; Staff attempts approval; Coordinator refreshes. Expected result: Deadline visible, expired approval409, UI expired, original saved hold retained without scheduler. Run desktop/mobile on the isolated production stack. Screenshots and captured query results remain CI/Jira evidence. Explicit fixture setup is labelled; this case does not establish unimplemented inbox delivery, whole-Event Safety transitions, customer policy approval or human acceptance.
+
 Blue section. Date of Creation: 2026-10-12T19:13:47+08:00. Reconciled 12 October 2026.
 
 Source: [CS-37](https://spmg8.atlassian.net/browse/CS-37), live acceptance criteria and PM supplemental tables. Source cases retain their IDs and intent. Additional cases below cover observed integration regressions. These are specifications, not execution results; dated yellow records report only the assertions and layers actually run. Passing a related check does not execute the source's browser, message-delivery, parent transition or manual/PO steps.

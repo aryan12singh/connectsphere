@@ -1,5 +1,9 @@
 # CS-36 — Test Case Specification (IS212 / IEEE 829)
 
+## 13 October production browser evidence
+
+Date of Creation: 2026-10-13T21:11:00+08:00. TC-CS36-30 covers full/partial suitability and empty search. Preconditions and steps: Current Coordinator searches unique catalogue names; full venue has required projector; partial lacks it. Expected result: Full match first, explicit missing facility, partial request disabled, empty state visible. Run desktop/mobile on the isolated production stack. Screenshots and captured query results remain CI/Jira evidence. Explicit fixture setup is labelled; this case does not establish unimplemented inbox delivery, whole-Event Safety transitions, customer policy approval or human acceptance.
+
 Blue section. Date of Creation: 2026-10-12T19:13:47+08:00. Reconciled 12 October 2026.
 
 Source: [CS-36](https://spmg8.atlassian.net/browse/CS-36), live acceptance criteria and PM supplemental tables. Source cases retain their IDs and intent. Additional cases below cover observed integration regressions. These are specifications, not execution results; dated yellow records report only the assertions and layers actually run. Passing a related check does not execute the source's browser, message-delivery, parent transition or manual/PO steps.

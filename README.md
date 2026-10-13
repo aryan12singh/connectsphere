@@ -13,6 +13,7 @@ Event Planning and Venue Booking System for ConnectSphere Event Services. IS212 
 - [Event workflow decisions](docs/event-workflow-decisions.md) — contract choices requiring team/customer review.
 - [Venue data model](docs/venue-data-model.md) — authoritative running tables, consultation review and remaining schema gaps.
 - [Venue policy decisions](docs/venue-policy-decisions.md) — pending Week 7 choices and affected stories.
+- [Operational Safety UI](docs/safety-ui.md) — current Coordinator preparation, independent review/rework validation and the exact remaining integration handoff.
 - [Hold expiry and occupied windows](docs/hold-expiry.md) — reusable timing code, isolated PostgreSQL spike and its integration limits.
 - [Development log](docs/devlogs/DEVLOG.md) — decisions, verified progress and next dependencies, newest first.
 

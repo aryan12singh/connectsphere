@@ -138,6 +138,10 @@ export function eventService(action: 'stop' | 'start') {
   const file = reviewCompose()
   execFileSync('docker', ['compose', '-f', file, action, 'event-service'], { stdio: 'pipe' })
 }
+export function venueService(action:'stop'|'start') {
+  const file=reviewCompose()
+  execFileSync('docker',['compose','-f',file,action,'venue-service'],{stdio:'pipe'})
+}
 
 export function recreateBookingService() {
   const file = reviewCompose()

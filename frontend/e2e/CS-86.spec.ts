@@ -1,6 +1,54 @@
-import { test, created, validRequest, assignedSession, session, emails, mutation, signIn } from './helpers'
+import { test, created, validRequest, assignedSession, session, emails, mutation, signIn, venueService } from './helpers'
+import {createVenue,planningEvent,hold,reviewDatabase,databaseEvidence} from './venue-fixtures'
 import { expect } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
+
+test('TC-CS86-30 LIVE startup automatically rechecks legacy buffers and retains its completed receipt after restart',async({page,playwright,owner},info)=>{
+  const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner)
+  try {
+    const venue=await createVenue(staff,{setupMinutes:0,turnaroundMinutes:0}),rooms=[]
+    for(let i=0;i<2;i++){
+      const room=await hold(p.coordinator,p.event.eventId,venue.id,{startAt:i?'2028-11-20T04:15:00Z':'2028-11-20T02:00:00Z',endAt:i?'2028-11-20T06:00:00Z':'2028-11-20T04:00:00Z'})
+      const approved=await mutation(staff,'PUT',`/api/bookings/${room.id}/decision`,{version:room.version,status:'CONFIRMED',reason:'Approved under zero buffers'})
+      expect(approved.status()).toBe(200);rooms.push(await approved.json())
+    }
+    // Fixture setup models a legacy catalogue at its first buffer rollout.
+    // Only this unique venue is changed, while its service is stopped.
+    venueService('stop')
+    try {
+      await reviewDatabase('venue',async db=>{
+        await db.query('BEGIN')
+        try {
+          await db.query('UPDATE venues SET "turnaroundMinutes"=45,version=version+1 WHERE id=$1',[venue.id])
+          await db.query('DELETE FROM venue_buffer_rollouts WHERE "venueId"=$1',[venue.id])
+          await db.query('COMMIT')
+        }catch(error){await db.query('ROLLBACK');throw error}
+      })
+    }finally{venueService('start')}
+    await expect.poll(async()=> (await staff.get(`/api/venues/${venue.id}`)).status(),{timeout:45_000}).toBe(200)
+    const query='SELECT id,status,version,flags,"occupiedStart","occupiedEnd" FROM venue_booking_requests WHERE "venueId"=$1 ORDER BY id'
+    await expect.poll(async()=>{
+      const result=await reviewDatabase('booking',async db=>db.query(query,[venue.id]))
+      return result.rows.filter((row:any)=>row.flags.includes('BUFFER_CONFLICT')).length
+    },{timeout:45_000}).toBe(2)
+    const rolloutQuery='SELECT id,"venueId",version,attempts,"completedAt","completionReason",payload FROM venue_buffer_rollouts WHERE "venueId"=$1'
+    await expect.poll(async()=>Boolean((await reviewDatabase('venue',async db=>db.query(rolloutQuery,[venue.id]))).rows[0]?.completedAt),{timeout:30_000}).toBe(true)
+    const before=await reviewDatabase('booking',async db=>db.query(query,[venue.id]))
+    expect(before.rows.map((row:any)=>row.status)).toEqual(['CONFIRMED','CONFIRMED'])
+    const receipt=await reviewDatabase('venue',async db=>db.query(rolloutQuery,[venue.id]))
+    expect(receipt.rows).toHaveLength(1);expect(receipt.rows[0].payload.actor).toEqual({id:'venue-buffer-rollout',role:'SYSTEM'})
+    venueService('stop');venueService('start')
+    await expect.poll(async()=> (await staff.get(`/api/venues/${venue.id}`)).status(),{timeout:45_000}).toBe(200)
+    const after=await reviewDatabase('booking',async db=>db.query(query,[venue.id]))
+    expect(after.rows).toEqual(before.rows)
+    expect((await reviewDatabase('venue',async db=>db.query(rolloutQuery,[venue.id]))).rows).toEqual(receipt.rows)
+    await signIn(page,emails.staff);await page.getByRole('button',{name:'Buffer conflicts',exact:true}).click()
+    await page.getByRole('navigation',{name:'Flagged venue bookings'}).getByRole('button').filter({hasText:rooms[0].title}).click()
+    await expect(page.locator('.conflict-pane')).toHaveCount(2)
+    await page.screenshot({path:info.outputPath('TC-CS86-30-automatic-retained-conflicts.png'),fullPage:true})
+    await databaseEvidence(page,info,'TC-CS86-30',[{database:'booking_db',query,rows:after.rows},{database:'venue_db',query:rolloutQuery,rows:receipt.rows}])
+  }finally{await staff.dispose();await p.coordinator.dispose()}
+})
 
 test('TC-CS86-03 LIVE Staff compare retained approvals and recheck inherited buffer conflicts', async ({ page, playwright, owner }, testInfo) => {
   const staff = await session(playwright.request, emails.staff)

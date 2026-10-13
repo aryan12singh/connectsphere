@@ -1,5 +1,9 @@
 # CS-86 — Test Case Specification (IS212 / IEEE 829)
 
+## 13 October production browser evidence
+
+Date of Creation: 2026-10-13T21:11:00+08:00. TC-CS86-30 covers automatic initial rollout and restart. Preconditions and steps: Two inherited approvals, simulated legacy45-minute buffers with service stopped; restart and await persisted receipt. Expected result: Both approved records flagged automatically; service actor recorded; completed receipt and booking versions unchanged after restart. Run desktop/mobile on the isolated production stack. Screenshots and captured query results remain CI/Jira evidence. Explicit fixture setup is labelled; this case does not establish unimplemented inbox delivery, whole-Event Safety transitions, customer policy approval or human acceptance.
+
 Blue section. Date of Creation: 2026-10-12T19:13:47+08:00. Reconciled 12 October 2026.
 
 Source: [CS-86](https://spmg8.atlassian.net/browse/CS-86), live acceptance criteria and PM supplemental tables. Source cases retain their IDs and intent. Additional cases below cover observed integration regressions. These are specifications, not execution results; dated yellow records report only the assertions and layers actually run. Passing a related check does not execute the source's browser, message-delivery, parent transition or manual/PO steps.
@@ -54,3 +58,18 @@ Current execution boundary: both panes, current occupied windows, protected dele
 | --- | --- | --- | --- | --- | --- |
 | TC-CS86-20 | AC1/3/6: expiry/removal while report waits | Active hold preselects venue; lock acquisition paused | At deadline delete unoccupied venue, resume unfiltered report | 200 empty result, no mutation; explicit unknown venue still404 | 2026-10-13T19:07:55+08:00 |
 | TC-CS86-21 | AC1/3/6: expiry/removal while availability waits | Active hold snapshot; Venue context request paused | At exact deadline delete venue, resume lookup | Fresh clock excludes now-ineffective hold;200 empty, no booking/history rewrite | 2026-10-13T19:07:55+08:00 |
+
+## 13 October initial rollout automation
+
+Date of Creation: 2026-10-13T20:39:13+08:00. These cases exercise the production worker and real Venue/Booking/Event HTTP handlers. Notification assertions cover durable intent only; CS-50/51 inbox delivery remains pending.
+
+| Test Case ID | Scenario / AC | Preconditions and steps | Expected result | Layer |
+| --- | --- | --- | --- | --- |
+| TC-CS86-22 | AC1/2/6: automatic initial rollout | Two inherited approved commitments conflict under current buffers; no configuration-change intent. Drain and repeat. | Both flags persist, approvals/catalogue remain, explicit service actor, one durable rollout and no duplicate history/intent | Real HTTP and production worker |
+| TC-CS86-23 | AC1/6: dependency failure and retry | Initial rollout; Booking service returns503, then recovers | Pending intent/error survive; same action retries, succeeds once and preserves approvals | Real HTTP and production worker |
+| TC-CS86-24 | AC1/2: catalogue seeded after startup | Drain an empty catalogue; then add inherited commitments and drain again | New venue receives its one-time rollout; existing bookings remain approved | Real HTTP and production worker |
+| TC-CS86-25 | AC1/6: concurrent discovery and restart | Two discovery calls on migrated venue_test; disconnect/reconnect | One persisted receipt per venue; stable ID/version/payload; no catalogue/history mutation | PostgreSQL production store |
+| TC-CS86-26 | AC1/2/6: configuration race and completed restart | Discover rollout, change buffer version, drain and reconnect | Worker accepts acknowledged newer version; original receipt retained; no completed replay | PostgreSQL store/worker with explicit Booking acknowledgement fixture |
+| TC-CS86-27 | AC1/6: failure isolation | 22 imported venues; one Booking response fails; drain bounded batches | All 21 healthy venues finish; failed intent remains retryable | PostgreSQL store/worker with explicit Booking failure fixture |
+
+Initial-rollout fixtures remove the atomic new-Venue empty-catalogue completion proof to represent a legacy/imported catalogue. A newly created API Venue is already configured and has no inherited commitments; its first configuration edit retains the existing single-action retry contract (TC-CS84-15). Rollout receipts use completion time/reason, distinct from actual configuration or inbox message delivery.

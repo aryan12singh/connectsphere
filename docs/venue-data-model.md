@@ -8,10 +8,11 @@ Updated 13 October 2026 on `feat/aryan-sprint3-venue-safety`, after integrating 
 | --- | --- | --- |
 | Venue / `venue_db` | `venues`: setup/turnaround whole minutes and positive version; operating hours and immutable history; `venue_recheck_outbox` with unique venue/version intent, attempts and acknowledgement | [Buffers](../services/venue-service/prisma/migrations/20261012190000_venue_buffers/migration.sql), [durable rechecks](../services/venue-service/prisma/migrations/20261012194500_durable_venue_rechecks/migration.sql) |
 | Booking / `booking_db` | Independent `venue_booking_requests`: version, expiry, per-room attendance/layout/needs, required marker, requirements fingerprint, immutable original-request fingerprint, venue version, buffer/window snapshot and conflict flags; activity ledger; `booking_outbox` with unique action key | [Checked holds and intent](../services/booking-service/prisma/migrations/20261012193000_checked_venue_holds/migration.sql) |
+| Venue initial rollout / `venue_db` | `venue_buffer_rollouts`: unique local Venue receipt, captured version/intent, attempts/error, completion time/reason; cascades only when its local Venue is legitimately deleted | [Initial rollout](../services/venue-service/prisma/migrations/20261013204500_initial_buffer_rollout/migration.sql) |
 
 Full definitions: [Venue schema](../services/venue-service/prisma/schema.prisma), [Booking schema](../services/booking-service/prisma/schema.prisma).
 
-UUID text identifiers for Venue, Event, manager and actors are cross-service references, without cross-database foreign keys. Local history/hour/outbox relationships remain in their owning database. Event service supplies the actual Event ID, Planning state, current Coordinator and requirements through its guarded, read-only planning-context route. Booking never reads `event_db` directly. The projection maps the existing form's known layout/accessibility labels to catalogue codes; unknown needs remain unmet.
+Venue, Event, manager and human actor UUID text identifiers are logical cross-service references, without cross-database foreign keys. Automated rollout uses an explicit service actor rather than impersonating a user. Local history/hour/outbox/rollout relationships remain in their owning database. Event service supplies the actual Event ID, Planning state, current Coordinator and requirements through its guarded, read-only planning-context route. Booking never reads `event_db` directly. The projection maps the existing form's known layout/accessibility labels to catalogue codes; unknown needs remain unmet.
 
 ## Persistence and concurrency
 
@@ -25,6 +26,43 @@ UUID text identifiers for Venue, Event, manager and actors are cross-service ref
 No database exclusion constraint is claimed. Guarded writes supply conflict protection while permitting required operational closures and inherited conflict flags. Recheck/removal control routes under `/internal` are not routed through Kong. Catalogue/record proof routes also require the shared internal key; their `/venues` prefix does not itself confer public access.
 
 ## Current conflict and history projections
+
+Initial buffer rollout is automatic after migration/server startup. Each poll
+discovers at most100 legacy/imported venues under row locks with SKIP LOCKED,
+persisting one receipt per Venue before any remote request. Configuration and
+rollout queues share bounded20-action processing; lower-attempt work is considered
+first so a failing dependency cannot starve later healthy venues. Failed intents
+retain their action ID and retry after restart. Completion needs Booking's
+acknowledgement of the captured or a newer version; it is not inbox delivery.
+
+A newly created API Venue has a new random ID and no inherited commitments. Its
+creation transaction records `NEW_VENUE_NO_INHERITED_COMMITMENTS` with zero attempts,
+avoiding an extra rollout request beside its first configuration-change action.
+Legacy/imported venues receive `BOOKING_ACKNOWLEDGED` only after the real recheck.
+No startup pass rewrites Venue settings/history, deletes bookings, or changes the
+Event lifecycle. The explicit service actor is `venue-buffer-rollout` / `SYSTEM`;
+it grants no user role. Completed receipts prevent replay after restart.
+
+```mermaid
+flowchart LR
+  V[Venue store] --> R[Initial rollout receipts]
+  V --> C[Configuration recheck outbox]
+  R --> W[Venue recheck worker]
+  C --> W
+  W -->|Private versioned request| B[Booking service]
+  B --> L[Commitment locks and current Venue/Event proof]
+  L --> F[Preserved bookings, flags, activity and notice intent]
+  B -->|Acknowledged version| W
+```
+
+Baseline consultation review: the authoritative Venue schema retains catalogue
+type, capacity/layout/facilities/accessibility, local operating hours/timezone,
+manager references and immutable local history. Calendar/operational commitments
+remain in Booking; overlap and removal use current guarded interfaces. Week 7
+buffer/version/hold/independent-room additions are additive and documented above.
+No cross-database foreign key or second competing schema is introduced. Another
+developer must still review this baseline comparison under CS-74, and CS-77 owns
+the cross-service design review.
 
 Venue Staff can read `/venue-bookings/conflicts` and explicitly recheck current
 settings through `/venue-bookings/rechecks` with the read Venue version and a reason.

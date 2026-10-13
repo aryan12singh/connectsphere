@@ -3,8 +3,9 @@ import { computed,onMounted,onUnmounted,reactive,ref,watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { calendarIsoToWallTime,calendarWallTimeToIso } from './booking-state'
+import CoordinatorSafetyPreparation from '../safety/CoordinatorSafetyPreparation.vue'
 
-interface Room {id:string;eventId:string;venueId:string;venueName?:string;title:string;reason:string;timeZone:string;status:string;effectiveStatus?:string;version:number;startAt:string;endAt:string;occupiedStart:string;occupiedEnd:string;expiresAt:string|null;expectedAttendance:number;layout:string;facilities?:string[];accessibilityNeeds?:string[];flags:string[]}
+interface Room {id:string;eventId:string;venueId:string;venueName?:string;venueType?:string|null;venueCapacity?:number|null;title:string;reason:string;timeZone:string;status:string;effectiveStatus?:string;version:number;startAt:string;endAt:string;occupiedStart:string;occupiedEnd:string;expiresAt:string|null;expectedAttendance:number;layout:string;facilities?:string[];accessibilityNeeds?:string[];flags:string[]}
 interface Event {id:string;title:string;status:string;venueType?:string;currentCoordinatorId:string;startAt:string;endAt:string;timeZone:string;expectedAttendance:number;preferredLayout:string;accessibilityNeeds:string[];venueRequirements?:string}
 interface Summary {event:Event;items:Room[];venueReady:boolean;outstanding:Array<{bookingId:string|null;venueName?:string;reasons:string[]}>}
 interface Match {id:string;name:string;address?:string;capacity:number|null;setupMinutes:number;turnaroundMinutes:number;match:'FULL'|'PARTIAL';gaps:string[];canRequest:boolean;occupiedStart:string;occupiedEnd:string}
@@ -72,6 +73,7 @@ async function release(room:Room){if(!ready.value || !canArrange.value || postin
       <p role="status" class="text-sm">{{ data.venueReady ? 'All required venues are approved for the current requirements.' : 'Venue arrangements are outstanding.' }}</p>
       <ul v-if="data.outstanding.length" id="venue-outstanding" class="list-disc pl-5 text-sm text-muted-foreground"><li v-for="item in data.outstanding" :key="item.bookingId ?? 'none'">{{ item.venueName || item.bookingId || 'Venue booking' }}: {{ item.reasons.map(r => r.replaceAll('_',' ').toLowerCase()).join(', ') }}</li></ul>
       <p class="text-sm text-muted-foreground">Technical/support approval and a current Safety Officer review are also required before preparation.</p>
+      <CoordinatorSafetyPreparation v-if="data.event.id === props.eventId && data.event.currentCoordinatorId === user?.id" :event-id="props.eventId" :event-title="data.event.title" :rooms="data.items" :venue-ready="data.venueReady" :outstanding="data.outstanding" />
       <p v-if="!data.items.length" class="text-sm text-muted-foreground">No venues requested yet.</p>
       <Card v-for="room in data.items" :key="room.id" class="existing-booking grid gap-3 p-5" :data-booking-id="room.id">
         <div class="flex flex-wrap items-start justify-between gap-2"><div><h3 class="font-semibold">{{ room.venueName || room.venueId }}</h3><p class="mt-1 break-all text-xs text-muted-foreground">Booking {{ room.id }}</p></div><span class="rounded-xl bg-muted px-3 py-1 text-sm">{{ status(room) }}</span></div>

@@ -4,7 +4,7 @@ const config = require('./config');
 const isMemory = config.dataMode !== 'prisma';
 const prisma = isMemory ? null : require('./db');
 
-const state = { venues: new Map(), history: [], outbox: [] };
+const state = { venues: new Map(), history: [], outbox: [], rollouts: [] };
 
 function id() { return crypto.randomUUID(); }
 function now() { return new Date().toISOString(); }
@@ -65,6 +65,7 @@ function reset() {
     state.venues.clear();
     state.history.length = 0;
     state.outbox.length = 0;
+    state.rollouts.length = 0;
   }
 }
 
@@ -92,6 +93,9 @@ function createVenue(input, actor) {
     };
     state.venues.set(venue.id, venue);
     recordHistory(venue.id, actor, 'VENUE_CREATED', input.reason || 'Venue created', { created: venue });
+    // A new random Venue ID has no inherited commitments. Record that fact in
+    // the same creation operation, so its next edit has only one recheck action.
+    state.rollouts.push({...rolloutData(venue),attempts:0,lastError:null,createdAt:timestamp,completedAt:timestamp,completionReason:'NEW_VENUE_NO_INHERITED_COMMITMENTS'});
     return venue;
   }
   return prisma.$transaction(async (tx) => {
@@ -123,6 +127,7 @@ function createVenue(input, actor) {
         changes: safeJson({ created: apiVenue }),
       },
     });
+    await tx.venueBufferRollout.create({data:{...rolloutData(apiVenue),completedAt:new Date(),completionReason:'NEW_VENUE_NO_INHERITED_COMMITMENTS'}});
     return apiVenue;
   });
 }
@@ -237,13 +242,42 @@ function enqueueRecheck(venue,actor,reason,transaction) {
   if (isMemory) { const row={id:id(),venueId:venue.id,version:venue.version,payload,attempts:0,lastError:null,createdAt:now(),deliveredAt:null};state.outbox.push(row);return row; }
   return transaction.venueRecheckOutbox.create({data:{venueId:venue.id,version:venue.version,payload:safeJson(payload)}});
 }
-function pendingRechecks() {
-  if (isMemory) return state.outbox.filter(row=>!row.deliveredAt).slice(0,20);
-  return prisma.venueRecheckOutbox.findMany({where:{deliveredAt:null},orderBy:{createdAt:'asc'},take:20});
+function rolloutData(venue) {
+  return {
+    id:id(),venueId:venue.id,version:venue.version,
+    payload:{venueId:venue.id,version:venue.version,actor:{id:'venue-buffer-rollout',role:'SYSTEM'},reason:'Initial venue buffer rollout'},
+  };
 }
-function finishRecheck(idValue,error) {
+async function enqueueInitialBufferRechecks() {
+  if (isMemory) {
+    for(const venue of state.venues.values()) {
+      if(state.rollouts.some(row=>row.venueId===venue.id))continue;
+      state.rollouts.push({...rolloutData(venue),attempts:0,lastError:null,createdAt:now(),completedAt:null,completionReason:null});
+    }
+    return;
+  }
+  // Lock only a bounded batch of not-yet-evaluated venues. Concurrent startups
+  // skip another instance's rows; subsequent polls collect any deferred rows.
+  await prisma.$transaction(async tx=>{
+    const venues=await tx.$queryRaw`
+      SELECT v.id,v.version FROM venues v
+      WHERE NOT EXISTS (SELECT 1 FROM venue_buffer_rollouts r WHERE r."venueId"=v.id)
+      ORDER BY v.id LIMIT 100 FOR UPDATE OF v SKIP LOCKED`;
+    if(venues.length)await tx.venueBufferRollout.createMany({data:venues.map(rolloutData),skipDuplicates:true});
+  });
+}
+async function pendingRechecks() {
+  const order=(a,b)=>a.attempts-b.attempts || new Date(a.createdAt)-new Date(b.createdAt) || a.id.localeCompare(b.id);
+  if (isMemory) return [...state.outbox.map(row=>({...row,queue:'configuration'})),...state.rollouts.map(row=>({...row,deliveredAt:row.completedAt,queue:'rollout'}))].filter(row=>!row.deliveredAt).sort(order).slice(0,20);
+  const query={where:{deliveredAt:null},orderBy:[{attempts:'asc'},{createdAt:'asc'},{id:'asc'}],take:20};
+  const [configuration,rollout]=await Promise.all([prisma.venueRecheckOutbox.findMany(query),prisma.venueBufferRollout.findMany({...query,where:{completedAt:null}})]);
+  return [...configuration.map(row=>({...row,queue:'configuration'})),...rollout.map(row=>({...row,deliveredAt:row.completedAt,queue:'rollout'}))].sort(order).slice(0,20);
+}
+function finishRecheck(idValue,error,queue='configuration') {
   const data={attempts:{increment:1},lastError:error?String(error.message).slice(0,160):null,...(!error?{deliveredAt:new Date()}: {})};
-  if (isMemory) { const row=state.outbox.find(row=>row.id===idValue);if(row && !row.deliveredAt){row.attempts++;row.lastError=data.lastError;if(!error)row.deliveredAt=now();}return; }
+  const completed=queue==='rollout'?'completedAt':'deliveredAt';
+  if (isMemory) { const row=(queue==='rollout'?state.rollouts:state.outbox).find(row=>row.id===idValue);if(row && !row[completed]){row.attempts++;row.lastError=data.lastError;if(!error){row[completed]=now();if(queue==='rollout')row.completionReason='BOOKING_ACKNOWLEDGED';}}return; }
+  if(queue==='rollout')return prisma.venueBufferRollout.updateMany({where:{id:idValue,completedAt:null},data:{attempts:data.attempts,lastError:data.lastError,...(!error?{completedAt:new Date(),completionReason:'BOOKING_ACKNOWLEDGED'}:{})}});
   return prisma.venueRecheckOutbox.updateMany({where:{id:idValue,deliveredAt:null},data});
 }
 
@@ -277,6 +311,7 @@ function deleteVenue(idValue,version) {
     state.venues.delete(idValue);
     state.history = state.history.filter((entry) => entry.venueId !== idValue);
     state.outbox = state.outbox.filter(row=>row.venueId!==idValue);
+    state.rollouts = state.rollouts.filter(row=>row.venueId!==idValue);
     return true;
   }
   return prisma.$transaction(async tx=>{
@@ -291,5 +326,5 @@ function deleteVenue(idValue,version) {
 module.exports = {
   state, reset, createVenue, replaceVenue, setOperatingHours, listHistory,
   getVenue, listVenues, deleteVenue, isMemory,
-  pendingRechecks,finishRecheck,
+  enqueueInitialBufferRechecks,pendingRechecks,finishRecheck,
 };

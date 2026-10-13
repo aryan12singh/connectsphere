@@ -50,9 +50,28 @@ model Venue {
   operatingHours     VenueOperatingHour[]
   history            VenueHistory[]
   rechecks           VenueRecheckOutbox[]
+  bufferRollout      VenueBufferRollout?
 
   @@index([isActive])
   @@map("venues")
+}
+
+// One initial buffer evaluation per venue. The receipt also retains a durable
+// retry until Booking has acknowledged the captured or a newer configuration.
+model VenueBufferRollout {
+  id          String   @id @default(uuid())
+  venueId     String   @unique
+  venue       Venue    @relation(fields:[venueId],references:[id],onDelete:Cascade)
+  version     Int
+  payload     Json
+  attempts    Int      @default(0)
+  lastError   String?
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+  completionReason String?
+
+  @@index([completedAt,attempts,createdAt])
+  @@map("venue_buffer_rollouts")
 }
 
 model VenueRecheckOutbox {

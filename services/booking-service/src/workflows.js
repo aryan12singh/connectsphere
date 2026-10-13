@@ -238,7 +238,7 @@ async function summary(req,eventId,{allowMissingEvent=false}={}) {
         if ((await conflicts(row,venue,at,tx,row.id)).length) flags.add('BUFFER_CONFLICT');
       }
       const expired=row.status==='TENTATIVELY_HELD' && !effective(row,at);
-      const item={...row,venueName:venue.name,venueCapacity:venue.capacity,venueTimeZone:venue.timeZone,organiserId:context?.organiserId ?? null,currentCoordinatorId:context?.currentCoordinatorId ?? null,eventStatus:context?.status ?? null,currentVenueNotes:context?.venueRequirements ?? null,occupiedStart:occupied.startAt,occupiedEnd:occupied.endAt,setupMinutes:venue.setupMinutes,turnaroundMinutes:venue.turnaroundMinutes,flags:[...flags],effectiveStatus:expired?'EXPIRED':row.status};
+      const item={...row,venueName:venue.name,venueType:venue.removed?null:venue.venueType,venueCapacity:venue.capacity,venueTimeZone:venue.timeZone,organiserId:context?.organiserId ?? null,currentCoordinatorId:context?.currentCoordinatorId ?? null,eventStatus:context?.status ?? null,currentVenueNotes:context?.venueRequirements ?? null,occupiedStart:occupied.startAt,occupiedEnd:occupied.endAt,setupMinutes:venue.setupMinutes,turnaroundMinutes:venue.turnaroundMinutes,flags:[...flags],effectiveStatus:expired?'EXPIRED':row.status};
       items.push(item);
       if (row.required && row.status!=='CANCELLED' && (row.status!=='CONFIRMED' || flags.size)) outstanding.push({bookingId:row.id,venueId:row.venueId,venueName:venue.name,reasons:[...(row.status!=='CONFIRMED'?[expired?'HOLD_EXPIRED':row.status]:[]),...flags]});
     }

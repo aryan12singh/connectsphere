@@ -82,3 +82,62 @@ test('TC-CS84-15 PostgreSQL recheck survives reconnect and cannot acknowledge an
     assert.ok(delivered.every(row=>row.deliveredAt && row.attempts===2));
   } finally {global.fetch=originalFetch;config.bookingServiceUrl=originalUrl;}
 });
+
+test('TC-CS86-25 PostgreSQL concurrent rollout discovery persists one receipt and survives reconnect',async()=>{
+  const store=require('../../src/store')
+  const created=await api.http('/venues',{method:'POST',headers:staff,body:{...values,name:'Initial rollout catalogue',setupMinutes:30,turnaroundMinutes:45}})
+  assert.equal(created.status,201)
+  // Legacy import fixture: remove the new-API empty-catalogue completion proof.
+  await prisma.venueBufferRollout.delete({where:{venueId:created.body.id}})
+  const before=await prisma.venue.findUnique({where:{id:created.body.id},include:{history:true,operatingHours:true}})
+  await Promise.all([store.enqueueInitialBufferRechecks(),store.enqueueInitialBufferRechecks()])
+  assert.equal(await prisma.venueBufferRollout.count({where:{venueId:created.body.id}}),1)
+  const receipt=await prisma.venueBufferRollout.findUnique({where:{venueId:created.body.id}})
+  assert.equal(receipt.version,created.body.version);assert.equal(receipt.completedAt,null)
+  assert.deepEqual(receipt.payload.actor,{id:'venue-buffer-rollout',role:'SYSTEM'})
+  await prisma.$disconnect();await store.enqueueInitialBufferRechecks()
+  assert.deepEqual(await prisma.venueBufferRollout.findUnique({where:{venueId:created.body.id}}),receipt)
+  assert.deepEqual(await prisma.venue.findUnique({where:{id:created.body.id},include:{history:true,operatingHours:true}}),before)
+})
+
+test('TC-CS86-26 PostgreSQL rollout uses the newer configuration and completed receipts are not replayed',async()=>{
+  const store=require('../../src/store'),worker=require('../../src/rechecks'),native=global.fetch
+  const created=await api.http('/venues',{method:'POST',headers:staff,body:{...values,name:'Configuration during rollout'}})
+  assert.equal(created.status,201);await prisma.venueBufferRollout.delete({where:{venueId:created.body.id}});await store.enqueueInitialBufferRechecks()
+  const initial=await prisma.venueBufferRollout.findUnique({where:{venueId:created.body.id}})
+  const edited=await api.http('/venues/'+created.body.id,{method:'PUT',headers:staff,body:{...values,version:created.body.version,turnaroundMinutes:45,reason:'A newer configuration before delivery'}})
+  assert.equal(edited.status,200)
+  const actions=[]
+  global.fetch=async(_url,options)=>{
+    const body=JSON.parse(options.body);actions.push(body)
+    const current=await prisma.venue.findUnique({where:{id:body.venueId}})
+    return {ok:true,json:async()=>({venueId:body.venueId,version:current.version})}
+  }
+  try {
+    await worker.drain()
+    const delivered=await prisma.venueBufferRollout.findUnique({where:{venueId:created.body.id}})
+    assert.equal(delivered.id,initial.id);assert.equal(delivered.version,1);assert.ok(delivered.completedAt)
+    assert.ok(actions.some(a=>a.actionId===initial.id && a.version===1))
+    const count=actions.length;await prisma.$disconnect();await worker.drain()
+    assert.equal(actions.length,count)
+    assert.deepEqual(await store.pendingRechecks(),[])
+  } finally {global.fetch=native}
+})
+
+test('TC-CS86-27 a failing rollout cannot starve later healthy venues across bounded batches',async()=>{
+  const store=require('../../src/store'),worker=require('../../src/rechecks'),native=global.fetch
+  const names=Array.from({length:22},(_,i)=>'Bounded rollout '+i)
+  await prisma.venue.createMany({data:names.map(name=>({name,capacity:100,venueType:'PHYSICAL',supportedLayouts:['THEATRE'],facilities:[],accessibilityTags:[],managedById:'venue-staff'}))})
+  await store.enqueueInitialBufferRechecks()
+  const [failed]=await store.pendingRechecks()
+  global.fetch=async(_url,options)=>{
+    const body=JSON.parse(options.body)
+    return body.venueId===failed.venueId?{ok:false,status:503}:{ok:true,json:async()=>({venueId:body.venueId,version:body.version})}
+  }
+  try {
+    await worker.drain();await worker.drain()
+    const pending=await store.pendingRechecks()
+    assert.equal(pending.length,1);assert.equal(pending[0].id,failed.id);assert.ok(pending[0].attempts>=2)
+    assert.equal(await prisma.venueBufferRollout.count({where:{venue:{name:{in:names}},completedAt:{not:null}}}),21)
+  } finally {global.fetch=native}
+})

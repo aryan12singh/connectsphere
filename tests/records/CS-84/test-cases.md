@@ -1,5 +1,9 @@
 # CS-84 — Test Case Specification (IS212 / IEEE 829)
 
+## 13 October production browser evidence
+
+Date of Creation: 2026-10-13T21:11:00+08:00. TC-CS84-30 covers audited staff buffer form. Preconditions and steps: Save30/45 through real form with reason; inspect actual Venue row. Expected result: Version2, matching hours retained, actual buffers persisted. Run desktop/mobile on the isolated production stack. Screenshots and captured query results remain CI/Jira evidence. Explicit fixture setup is labelled; this case does not establish unimplemented inbox delivery, whole-Event Safety transitions, customer policy approval or human acceptance.
+
 Blue section. Date of Creation: 2026-10-12T19:13:47+08:00. Reconciled 12 October 2026.
 
 Source: [CS-84](https://spmg8.atlassian.net/browse/CS-84), live acceptance criteria and PM supplemental tables. Source cases retain their IDs and intent. Additional cases below cover observed integration regressions. These are specifications, not execution results; dated yellow records report only the assertions and layers actually run. Passing a related check does not execute the source's browser, message-delivery, parent transition or manual/PO steps.
