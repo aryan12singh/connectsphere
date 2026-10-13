@@ -2,6 +2,45 @@ import {test,created,validRequest,assignedSession,session,emails,mutation,signIn
 import {expect} from '@playwright/test'
 import {randomUUID} from 'node:crypto'
 
+test('TC-CS87-13 LIVE Coordinator changes only the selected breakout and Staff can extend its hold',async({page,browser,playwright,owner},testInfo)=>{
+  const submitted=await created(owner,'submit',validRequest({expectedAttendance:80,minimumCapacity:80,accessibilityNeeds:[]})),coordinator=await assignedSession(playwright.request,owner,submitted.id),staff=await session(playwright.request,emails.staff),staffPage=await browser.newPage()
+  try {
+    const contact=await (await owner.get(`/api/events/${submitted.id}/coordinator`)).json(),approved=await mutation(coordinator,'POST',`/api/events/${submitted.id}/decision`,{decision:'approve',version:submitted.version})
+    expect(approved.status()).toBe(200);const event=await approved.json(),suffix=randomUUID(),venues=[]
+    for(let i=0;i<3;i++){
+      const r=await mutation(staff,'POST','/api/venues',{name:`Room change ${i} ${suffix}`,address:'Synthetic review venue',capacity:120,venueType:'PHYSICAL',supportedLayouts:['THEATRE','CLASSROOM'],facilities:['PROJECTOR'],accessibilityTags:[],timeZone:'Asia/Singapore',managedById:'a1000000-0000-4000-8000-000000000008',reason:'Isolated room-change fixture',setupMinutes:30,turnaroundMinutes:30,operatingHours:['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].map(weekday=>({weekday,isClosed:false,opensAt:'08:00',closesAt:'20:00'}))})
+      expect(r.status()).toBe(200);venues.push(await r.json())
+    }
+    const rooms=[]
+    for(let i=0;i<2;i++){
+      const r=await mutation(coordinator,'POST','/api/bookings',{eventId:event.eventId,venueId:venues[i].id,title:i?'Main room':'Small breakout',reason:'Conference spaces',startAt:'2028-11-20T02:00:00.000Z',endAt:'2028-11-20T04:00:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:i?80:40,layout:i?'THEATRE':'CLASSROOM',facilities:['PROJECTOR']})
+      expect(r.status()).toBe(200);rooms.push(await r.json())
+    }
+    await signIn(page,contact.email);await page.goto(`/events/${event.eventId}`)
+    await page.locator(`[data-booking-id="${rooms[0].id}"]`).getByRole('button',{name:'Find alternatives',exact:true}).click()
+    await expect(page.getByLabel('Room attendance')).toHaveValue('40');await expect(page.getByLabel('Room layout')).toHaveValue('CLASSROOM')
+    await page.getByLabel('Location',{exact:true}).fill(suffix)
+    await page.getByRole('button',{name:'Search available venues',exact:true}).click()
+    await expect(page.locator('.venue-search-result').filter({has:page.getByRole('heading',{name:venues[0].name,exact:true})})).toHaveCount(0)
+    const candidate=page.locator('.venue-search-result').filter({has:page.getByRole('heading',{name:venues[2].name,exact:true})})
+    await expect(candidate).toContainText('Full match');await page.getByLabel('Change reason',{exact:true}).fill('Move only the breakout room')
+    await page.screenshot({path:testInfo.outputPath('CS-87-13-booking-specific-alternatives.png'),fullPage:true})
+    await candidate.getByRole('button',{name:'Change this booking',exact:true}).click()
+    await expect(page.locator(`[data-booking-id="${rooms[0].id}"]`)).toContainText(venues[2].name)
+    const summary=await (await coordinator.get(`/api/bookings/events/${event.eventId}/summary`)).json(),moved=summary.items.find((room:any)=>room.id===rooms[0].id),sibling=await (await coordinator.get(`/api/bookings/${rooms[1].id}`)).json()
+    expect(summary.items).toHaveLength(2);expect(moved).toMatchObject({venueId:venues[2].id,version:2,expectedAttendance:40,layout:'CLASSROOM'});expect(sibling).toEqual(rooms[1])
+    await signIn(staffPage,emails.staff);await staffPage.getByRole('button',{name:'Booking requests',exact:true}).click()
+    const card=staffPage.locator(`[data-booking-id="${moved.id}"]`),later=new Date(Date.parse(moved.expiresAt)+3600000+8*3600000).toISOString().slice(0,16)
+    await card.getByLabel('Decision or extension reason').fill('Allow one additional hour for venue review')
+    await card.getByText('Extend hold deadline',{exact:true}).click();await card.getByLabel('New deadline (Asia/Singapore)',{exact:true}).fill(later)
+    await card.getByRole('button',{name:'Extend hold',exact:true}).click()
+    await expect.poll(async()=>{const value=await (await staff.get(`/api/bookings/${moved.id}`)).json();return value.version}).toBe(3)
+    const extended=await (await staff.get(`/api/bookings/${moved.id}`)).json();expect(Date.parse(extended.expiresAt)).toBeGreaterThan(Date.parse(moved.expiresAt));expect(extended.status).toBe('TENTATIVELY_HELD')
+    await staffPage.screenshot({path:testInfo.outputPath('CS-37-11-live-staff-extension.png'),fullPage:true})
+    await page.screenshot({path:testInfo.outputPath('CS-87-13-only-breakout-moved.png'),fullPage:true})
+  }finally{await coordinator.dispose();await staff.dispose();await staffPage.close()}
+})
+
 test('TC-CS87-03 LIVE Coordinator requests independent rooms and Staff decisions update the real Event page',async({page,browser,playwright,owner},testInfo)=>{
   const submitted=await created(owner,'submit',validRequest({expectedAttendance:80,minimumCapacity:80,accessibilityNeeds:['Wheelchair accessible entrance & seating']}))
   const coordinator=await assignedSession(playwright.request,owner,submitted.id)

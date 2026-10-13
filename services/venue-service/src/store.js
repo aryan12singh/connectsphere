@@ -270,17 +270,21 @@ function listVenues() {
     .then((items) => items.map(toApiVenue));
 }
 
-function deleteVenue(idValue) {
+function deleteVenue(idValue,version) {
   if (isMemory) {
     if (!state.venues.has(idValue)) return false;
+    checkVersion(state.venues.get(idValue),version);
     state.venues.delete(idValue);
     state.history = state.history.filter((entry) => entry.venueId !== idValue);
     state.outbox = state.outbox.filter(row=>row.venueId!==idValue);
     return true;
   }
-  return prisma.venue.delete({ where: { id: idValue } }).then(() => true).catch((error) => {
-    if (error?.code === 'P2025') return false;
-    throw error;
+  return prisma.$transaction(async tx=>{
+    const [current]=await tx.$queryRaw`SELECT version FROM venues WHERE id=${idValue} FOR UPDATE`;
+    if(!current)return false;
+    checkVersion(current,version);
+    await tx.venue.delete({where:{id:idValue}});
+    return true;
   });
 }
 

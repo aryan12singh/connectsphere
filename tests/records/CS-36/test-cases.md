@@ -34,3 +34,31 @@ Source discrepancy: TC-CS36-03/10 propose returning under-capacity fallback cand
 | TC-CS36-17 | Mandatory accessibility cannot be dropped | Event needs wheelchair access; venue lacks it | Request with an empty room accessibility filter | 422 with missing accessibility; no booking | Real HTTP / memory | 2026-10-12T19:13:47+08:00 |
 | TC-CS36-18 | Read-only operational closure label | Operational closure with private Staff notes | Read as Technical Support and attempt mutation | Shared closure title visible; private notes/actor hidden; write403 | Real HTTP / memory | 2026-10-12T19:13:47+08:00 |
 | TC-CS36-19 | Deadline after slow upstream reads | Active hold; Venue lookup crosses the deadline | Read calendar, room search and Event summary with the delayed boundary | Calendar omits expired hold, search frees the room and summary reports EXPIRED using current time; stored row unchanged | Real HTTP / memory and controlled clock | 2026-10-12T22:04:26+08:00 |
+
+## 13 October 2026 continuation cases
+
+Date of Creation: 2026-10-13T17:31:06+08:00. Original source IDs and assertions above are preserved. Results below require their named layer; component/intent proof does not establish inbox delivery or human acceptance.
+
+| Test Case ID | Scenario / AC | Pre-conditions | Test steps / data | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS36-20 | AC1/5/6: booking-specific alternative search | An authorized current Coordinator, a 40-person CLASSROOM breakout and a distinct suitable alternative | Search with bookingId and its read bookingVersion; repeat with stale version, another Event and former Coordinator | The original time, attendance, layout/facilities/access needs are prefilled; original venue excluded; no writes; stale409, foreign404, former403 | Real HTTP boundary | 2026-10-13T17:31:06+08:00 |
+
+## 13 October independent-audit regression cases
+
+The cases below preserve current scope and original source assertions. Date of Creation: 2026-10-13T18:49:21+08:00.
+
+| Test Case ID | Scenario / AC | Pre-conditions | Test steps / data | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS36-21 | AC3/6: removed historic venue calendar | Confirmed booking fully beyond its occupied end; venue legitimately deleted | Read an unfiltered future availability range | 200 empty projection; old booking/history/intent unchanged | Real HTTP boundary | 2026-10-13T18:49:21+08:00 |
+
+## 13 October audit follow-up cases
+
+| Test Case ID | Scenario / AC | Pre-conditions | Steps | Expected result | Date of Creation |
+| --- | --- | --- | --- | --- | --- |
+| TC-CS36-22 | AC3/6: removed venue after buffer reduction | Approved advertised end has passed; old snapshot turnaround still future | Attempt deletion during actual turnaround (409); shorten buffer, recheck, delete (204), read calendars/conflicts | Legitimate serialized deletion is honored despite the longer historic snapshot; no rewrite of immutable past records | 2026-10-13T18:56:24+08:00 |
+
+## 13 October final recovery and concurrency cases
+
+| Test Case ID | Scenario / AC | Pre-conditions | Steps | Expected result | Date of Creation |
+| --- | --- | --- | --- | --- | --- |
+| TC-CS36-23 | AC3/6: deletion/configuration race | Room advertised end passed, zero turnaround; deletion paused before private DELETE | Increase turnaround while deletion is in flight | Stale proof409; Venue and confirmed booking retained; retry blocks current occupancy | 2026-10-13T19:02:26+08:00 |

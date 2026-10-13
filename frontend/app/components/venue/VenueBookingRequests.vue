@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed,onMounted,reactive,ref,watch } from 'vue'
+import { computed,onMounted,onUnmounted,reactive,ref,watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { calendarIsoToWallTime,calendarWallTimeToIso } from './booking-state'
@@ -11,20 +11,22 @@ const {showError}=useErrorAlert()
 const requestFetch=useRequestFetch()
 watch(error,value=>{if(value)showError(value,'Unable to load booking requests')},{immediate:true})
 const ready=ref(false)
-onMounted(()=>{ready.value=true})
+const now=ref(Date.now());let timer:ReturnType<typeof setInterval>|undefined
+onMounted(()=>{ready.value=true;timer=setInterval(()=>{now.value=Date.now()},1000)})
+onUnmounted(()=>clearInterval(timer))
 const search=ref(''),saving=ref<string|null>(null),reasons=reactive<Record<string,string>>({}),extensions=reactive<Record<string,string>>({})
 const items=computed(()=>(data.value?.items ?? []).filter(row=>`${row.title} ${row.venueName || row.venueId} ${row.currentCoordinatorId || ''}`.toLowerCase().includes(search.value.toLowerCase())))
 function format(value:string|undefined,booking:Request){return value?calendarIsoToWallTime(value,booking.timeZone || 'Asia/Singapore').replace('T',' '):'—'}
-function active(booking:Request){return props.canDecide && booking.status==='TENTATIVELY_HELD' && Boolean(booking.expiresAt) && Date.parse(booking.expiresAt!)>Date.now() && booking.effectiveStatus!=='EXPIRED'}
+function active(booking:Request,at=now.value){return props.canDecide && !booking.flags?.includes('EVENT_NOT_FOUND') && booking.status==='TENTATIVELY_HELD' && Boolean(booking.expiresAt) && Date.parse(booking.expiresAt!)>at && booking.effectiveStatus!=='EXPIRED'}
 async function decide(booking:Request,status:'CONFIRMED'|'REJECTED'){
-  if (!ready.value || !active(booking) || saving.value || !reasons[booking.id]?.trim())return
+  if (!ready.value || !active(booking,Date.now()) || saving.value || !reasons[booking.id]?.trim())return
   saving.value=booking.id
   try {await requestFetch(`/api/bookings/${encodeURIComponent(booking.id)}/decision`,{method:'PUT',body:{status,version:booking.version,reason:reasons[booking.id]!.trim()}});reasons[booking.id]='';await refresh();emit('updated')}
   catch(caught){showError(caught,'Unable to decide this booking');await refresh()}
   finally{saving.value=null}
 }
 async function extend(booking:Request){
-  if(!ready.value || !active(booking) || saving.value || !reasons[booking.id]?.trim() || !extensions[booking.id])return
+  if(!ready.value || !active(booking,Date.now()) || saving.value || !reasons[booking.id]?.trim() || !extensions[booking.id])return
   saving.value=booking.id
   try{const expiresAt=calendarWallTimeToIso(extensions[booking.id]!,booking.timeZone || 'Asia/Singapore');await requestFetch(`/api/bookings/${encodeURIComponent(booking.id)}/hold-extension`,{method:'PUT',body:{version:booking.version,expiresAt,reason:reasons[booking.id]!.trim()}});extensions[booking.id]='';await refresh();emit('updated')}
   catch(caught){showError(caught,'Unable to extend this hold');await refresh()}

@@ -17,4 +17,40 @@ Contract alignment: requests use the distinct Planning Event ID; pending venue s
 | TC-CS86-07 | Gap vs turnaround 45 (setup 0) (AC1) | V3 turnaround 45; pairs with gaps of 44, 45, 46 min | Run re-check; gaps 44, 45, 46 | 44 flagged; 45, 46 not; A1 assertIn("BUFFER_CONFLICT", flags(gap=44)) A2 assertNotIn("BUFFER_CONFLICT", flags(gap=45)) A3 assertNotIn("BUFFER_CONFLICT", flags(gap=46)) | Boundary · Integration | 2026-10-12T19:13:47+08:00 |
 
 
-Execution boundary: the automated TC-CS86-01 slice proves preserved approvals, both-sided flags, current windows, flag clearing and deduplicated durable intent. It does not prove the source row's Coordinator inbox notices or the separate two-booking resolution pane; CS-50/51 delivery and those UI steps remain unexecuted.
+Execution boundary at 12 October (preceding phase): the automated TC-CS86-01 slice proves preserved approvals, both-sided flags, current windows, flag clearing and deduplicated durable intent. It does not prove the source row's Coordinator inbox notices or the separate two-booking resolution pane; CS-50/51 delivery and those UI steps remain unexecuted.
+
+## 13 October 2026 continuation cases
+
+Date of Creation: 2026-10-13T17:31:06+08:00. Original source IDs and assertions above are preserved. Results below require their named layer; component/intent proof does not establish inbox delivery or human acceptance.
+
+| Test Case ID | Scenario / AC | Pre-conditions | Test steps / data | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS86-08 | AC1/2/3/6: authoritative conflict report | Two approved future bookings become overlapping after a buffer increase; worker not run | Staff reads conflicts; Coordinator and Technical Support attempt the same read | Both commitments/windows/current assignment visible to Staff; no mutation; other roles403 | Real HTTP boundary | 2026-10-13T17:31:06+08:00 |
+| TC-CS86-09 | AC1/2/4/6: initial rollout recheck | Current venue version and two inherited approvals | Staff posts recheck with reason; repeat; try stale version, missing reason and Coordinator | Atomic flags/history/intent with authenticated actor; no duplicate actions; stale409, invalid422, forbidden403 | Real HTTP boundary | 2026-10-13T17:31:06+08:00 |
+| TC-CS86-10 | AC3/6: retired venue history | A rejected booking whose venue was removed plus a current inherited conflict | Read all conflicts | Retired history does not prevent current conflict review | Real HTTP boundary | 2026-10-13T17:31:06+08:00 |
+| TC-CS86-11 | AC3: role-aware Staff workspace | Primary Coordinator plus authorized secondary Venue Staff; separate Technical Support fixture | Mount actual workspace for each role set | Staff tools available only with Venue Staff role and decision capability | Nuxt component | 2026-10-13T17:31:06+08:00 |
+| TC-CS86-12 | AC2/3/6: legacy missing Event | Imported confirmed commitment with unresolved logical Event reference | Read conflict report and perform authorized recheck | Commitment/history retained; EVENT_NOT_FOUND flag; no invented Coordinator or Event; other valid bookings still rechecked | Real HTTP boundary | 2026-10-13T17:31:06+08:00 |
+| TC-CS86-13 | AC1/5/6: slow dependency crosses expiry | Active hold and inherited operational closure; delayed Event context | Run recheck while clock crosses hold deadline | Expired hold excluded, unchanged, and no conflict notice intent for it | Real HTTP boundary with delayed dependency | 2026-10-13T17:31:06+08:00 |
+| TC-CS86-14 | AC1/2/3/6: PostgreSQL report/recheck | Real migrated booking_test; two inherited approved records; current Venue/Event contract fixtures | Read report then recheck twice | Read makes no writes; approvals retained; flags persisted; repeated recheck adds no history/intent | PostgreSQL HTTP integration | 2026-10-13T17:31:06+08:00 |
+| TC-CS86-15 | AC2/6: PostgreSQL atomic rollback | TC-CS86-14 fixture; temporary rejecting outbox trigger | Recheck, observe failure, remove trigger and retry | All booking/history/outbox changes roll back together; retry updates both records once | PostgreSQL HTTP integration | 2026-10-13T17:31:06+08:00 |
+
+TC-CS86-03 now also exercises the actual two-pane Staff workspace and live desktop/mobile comparison. TC-CS86-05/06/07 retain their original meaning and now have explicit past-record, protected-deletion and 44/45/46-minute HTTP checks. The 45-minute adjacency fixture explicitly selects the working allow-touching policy; Q3 remains Pending. Early continuation diagnostics briefly reused labels 07/08 for the new report/recheck probes; their evidence is reconciled to 08/09 without changing assertion outcomes or timestamps. Original raw reports remain outside Git.
+
+## 13 October independent-audit regression cases
+
+The cases below preserve current scope and original source assertions. Date of Creation: 2026-10-13T18:49:21+08:00.
+
+| Test Case ID | Scenario / AC | Pre-conditions | Test steps / data | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS86-16 | AC1/2/3/5: occupied end boundary | A ends04:00, turnaround to04:45; B starts04:15; both flagged | At04:05 read report then recheck | Both panes/flags retained through current turnaround; no clearing intent or audit churn | Real HTTP boundary with controlled clock | 2026-10-13T18:49:21+08:00 |
+| TC-CS86-17 | AC3/6: secondary Staff calendar | Primary Coordinator, authorized secondary Venue Staff and decision capability | Open operational window in actual workspace, fill reason/title, submit to registered Nitro endpoint | Only BLOCKED/UNAVAILABLE creation; authenticated workspace sends operational body without ordinary Event requirement | Nuxt component and Nitro transport fixture | 2026-10-13T18:49:21+08:00 |
+| TC-CS86-18 | AC2/3/6: guarded Staff edits | Current confirmed booking and separate operational block | Open each in actual Staff calendar | Confirmed arrangement read-only; operational edit offers only BLOCKED/UNAVAILABLE/CANCELLED | Nuxt component | 2026-10-13T18:49:21+08:00 |
+
+Current execution boundary: both panes, current occupied windows, protected deletion and audited rollout recheck now have component and live-browser scenarios. Desktop/mobile outcomes are in the dated browser evidence. Durable notice intent is verified; actual Coordinator inbox delivery remains blocked by CS-50/51.
+
+## 13 October read projection race cases
+
+| Test Case ID | Scenario / AC | Pre-conditions | Steps | Expected result | Date of Creation |
+| --- | --- | --- | --- | --- | --- |
+| TC-CS86-20 | AC1/3/6: expiry/removal while report waits | Active hold preselects venue; lock acquisition paused | At deadline delete unoccupied venue, resume unfiltered report | 200 empty result, no mutation; explicit unknown venue still404 | 2026-10-13T19:07:55+08:00 |
+| TC-CS86-21 | AC1/3/6: expiry/removal while availability waits | Active hold snapshot; Venue context request paused | At exact deadline delete venue, resume lookup | Fresh clock excludes now-ineffective hold;200 empty, no booking/history rewrite | 2026-10-13T19:07:55+08:00 |

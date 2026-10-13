@@ -28,3 +28,34 @@ Contract alignment: requests use the distinct Planning Event ID; pending venue s
 | Test Case ID | Derived regression | Pre-conditions | Steps | Expected result | Layer | Date of Creation |
 | --- | --- | --- | --- | --- | --- | --- |
 | TC-CS38-12 | Staff queue hydration safety | Active hold and authorized Staff queue in server-rendered HTML | Read before client handlers attach; mount normally and enter a reason | Search/reason/deadline/action controls disabled before hydration; mounted reason and decisions remain usable | Vue SSR/component; CS-87 also actual production browser | 2026-10-12T14:37:16+00:00 |
+
+## 13 October 2026 continuation cases
+
+Date of Creation: 2026-10-13T17:31:06+08:00. Original source IDs and assertions above are preserved. Results below require their named layer; component/intent proof does not establish inbox delivery or human acceptance.
+
+| Test Case ID | Scenario / AC | Pre-conditions | Test steps / data | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS38-13 | AC2/6: expiry while the Staff queue remains open | Active rendered hold ending at the next controlled clock tick | Enter decision reason, advance through deadline and attempt approval | Decision/extension controls disable; no decision or extension request | Nuxt component with controlled clock | 2026-10-13T17:31:06+08:00 |
+| TC-CS38-14 | AC1/6: expiry during pending queue lookup | Hold active at admission; delayed current venue lookup crosses expiry | GET pending queue through the real handler | Expired hold omitted; total0; persisted row/history unchanged | Real HTTP boundary | 2026-10-13T17:31:06+08:00 |
+
+## 13 October independent-audit regression cases
+
+The cases below preserve current scope and original source assertions. Date of Creation: 2026-10-13T18:49:21+08:00.
+
+| Test Case ID | Scenario / AC | Pre-conditions | Test steps / data | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS38-15 | AC3/6: orphan hold isolation | Valid request plus imported hold whose Event is missing | Read pending queue, attempt orphan rejection | Healthy requests readable; orphan visible with EVENT_NOT_FOUND, no invented Coordinator; mutation fails closed with unchanged history | Real HTTP boundary | 2026-10-13T18:49:21+08:00 |
+| TC-CS38-16 | AC3/6: orphan hold controls | Imported pending row with EVENT_NOT_FOUND | Mount Staff queue | Decision reason/approve/reject disabled; no extension action | Nuxt component | 2026-10-13T18:49:21+08:00 |
+
+## 13 October audit follow-up cases
+
+| Test Case ID | Scenario / AC | Pre-conditions | Steps | Expected result | Date of Creation |
+| --- | --- | --- | --- | --- | --- |
+| TC-CS38-17 | AC3/6: null Event link | Healthy pending request plus imported active hold with eventId null | Read Staff pending queue | Null link flagged EVENT_NOT_FOUND with no invented Coordinator; healthy request unchanged | 2026-10-13T18:56:24+08:00 |
+| TC-CS38-18 | AC1/3/6: queue and decision race | Real migrated booking_test, read queued behind current Staff decision under controlled advisory lock | Approve first; read pending queue after lock is released | Current CONFIRMED record omitted from tentative queue; exactly one decision history | 2026-10-13T18:56:24+08:00 |
+
+## 13 October read projection race cases
+
+| Test Case ID | Scenario / AC | Pre-conditions | Steps | Expected result | Date of Creation |
+| --- | --- | --- | --- | --- | --- |
+| TC-CS38-19 | AC3/6: current venue after queue wait | PostgreSQL queue at A waits behind a supported room move to B | Move wins lock; Staff reads A tentative queue | Moved booking omitted; all original filters reapply to current rows | 2026-10-13T19:07:55+08:00 |

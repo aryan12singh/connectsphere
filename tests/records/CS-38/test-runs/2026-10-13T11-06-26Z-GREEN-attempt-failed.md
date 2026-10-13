@@ -1,0 +1,28 @@
+# CS-38 Test Execution — 2026-10-13T11:06:26.643Z
+
+Yellow section (IS212 / IEEE 829). Phase: GREEN-attempt-failed. Generated from actual Vitest JSON; missing cases remain Not Executed.
+
+Source: /tmp/connectsphere-s3-20261013-phase3/focused-source-final.json. Code revision/fingerprint: 153c15d+phase3-worktree / not supplied.
+
+Nuxt components and real HTTP boundaries; isolated deterministic dependencies
+
+| Test Case ID | Actual Result | Pass/Fail/Not Executed/Blocked | Remarks | Date of Execution |
+|---|---|---|---|---|
+| TC-CS38-01 | skipped | Not Executed | TC-CS38-01 approves its own active hold once without treating it as a conflict | 2026-10-13T11:06:26.643Z |
+| TC-CS38-02 | skipped | Not Executed | TC-CS38-02 requires a rejection reason and releases only that booking | 2026-10-13T11:06:26.643Z |
+| TC-CS38-03 | skipped | Not Executed | TC-CS38-03 shows the current Coordinator and collects a real rejection reason in the Staff queue | 2026-10-13T11:06:26.643Z |
+| TC-CS38-04 | No assertion executed | Not Executed |  | 2026-10-13T11:06:26.643Z |
+| TC-CS38-05 | No assertion executed | Not Executed |  | 2026-10-13T11:06:26.643Z |
+| TC-CS38-06 | No assertion executed | Not Executed |  | 2026-10-13T11:06:26.643Z |
+| TC-CS38-07 | No assertion executed | Not Executed |  | 2026-10-13T11:06:26.643Z |
+| TC-CS38-08 | skipped | Not Executed | TC-CS38-08 refuses approval when the hold expires while the upstream venue check is in flight | 2026-10-13T11:06:26.643Z |
+| TC-CS38-09 | No assertion executed | Not Executed |  | 2026-10-13T11:06:26.643Z |
+| TC-CS38-10 | skipped | Not Executed | TC-CS38-10 denies coordinator decisions without side effects | 2026-10-13T11:06:26.643Z |
+| TC-CS38-11 | skipped | Not Executed | TC-CS38-11 rechecks current requirements and refuses stale approval | 2026-10-13T11:06:26.643Z |
+| TC-CS38-12 | skipped | Not Executed | TC-CS38-12 server-rendered Staff inputs and actions stay disabled until handlers attach | 2026-10-13T11:06:26.643Z |
+| TC-CS38-13 | skipped | Not Executed | TC-CS38-13 the open Staff queue disables decisions and extension controls at the hold deadline | 2026-10-13T11:06:26.643Z |
+| TC-CS38-14 | skipped | Not Executed | TC-CS38-14 pending queue reads omit a hold that expires during its current-context lookup | 2026-10-13T11:06:26.643Z |
+| TC-CS38-15 | skipped | Not Executed | TC-CS38-15 one imported hold without an Event stays visible and cannot prevent Staff from reviewing valid requests | 2026-10-13T11:06:26.643Z |
+| TC-CS38-16 | skipped | Not Executed | TC-CS38-16 an imported hold without its Event has no decision or extension controls | 2026-10-13T11:06:26.643Z |
+| TC-CS38-17 | skipped | Not Executed | TC-CS38-17 a legacy hold with a null Event link is also explicitly non-actionable without poisoning healthy requests | 2026-10-13T11:06:26.643Z |
+| TC-CS38-18 | No assertion executed | Not Executed |  | 2026-10-13T11:06:26.643Z |

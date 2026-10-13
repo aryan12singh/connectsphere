@@ -6,13 +6,14 @@ requireTestDatabase('booking');
 const prisma = require('../../src/db');
 const defaults = require('../../../utils/role-permissions');
 let api, booking, actor, assigned = true, assignmentUnavailable = false;
+const venueOverrides=new Map();
 const nativeFetch = global.fetch;
 global.fetch = async (url, options) => {
   if (String(url).endsWith('/internal/sessions/validate')) return { ok: true, json: async () => ({ valid: true, user: actor, permissions: actor.permissions }) };
   if (String(url).includes('/booking-access') && assignmentUnavailable) throw new Error('Isolated upstream outage');
   if (String(url).includes('/booking-access')) return { ok: assigned && String(url).includes('/assigned-event/'), status: assigned && String(url).includes('/assigned-event/') ? 200 : 403, json: async () => ({ id: 'assigned-event' }) };
   if (String(url).includes('/planning-context')) return {ok:true,status:200,json:async()=>({id:'assigned-event',eventRequestId:'request-fixture',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',organiserId:'organiser',startAt:'2026-10-01T00:00:00.000Z',endAt:'2026-12-31T23:59:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',venueType:'PHYSICAL',accessibilityNeeds:[],venueRequirements:'',equipmentNeeds:[]})};
-  if (String(url).includes('/venues/') && String(url).endsWith('/internal')) return {ok:true,status:200,json:async()=>({id:decodeURIComponent(new URL(url).pathname.split('/')[2]),name:'Isolated venue',version:1,capacity:100,venueType:'PHYSICAL',isActive:true,setupMinutes:0,turnaroundMinutes:0,supportedLayouts:['THEATRE'],facilities:[],accessibilityTags:[],timeZone:'Asia/Singapore',operatingHours:['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].map(weekday=>({weekday,isClosed:false,opensAt:'00:00',closesAt:'23:59'}))})};
+  if (String(url).includes('/venues/') && String(url).endsWith('/internal')) {const id=decodeURIComponent(new URL(url).pathname.split('/')[2]);return {ok:true,status:200,json:async()=>({id,name:'Isolated venue',version:1,capacity:100,venueType:'PHYSICAL',isActive:true,setupMinutes:0,turnaroundMinutes:0,supportedLayouts:['THEATRE'],facilities:[],accessibilityTags:[],timeZone:'Asia/Singapore',operatingHours:['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].map(weekday=>({weekday,isClosed:false,opensAt:'00:00',closesAt:'23:59'})),...(venueOverrides.get(id) || {})})};}
   return nativeFetch(url, options);
 };
 const headers = { authorization: 'Bearer isolated-fixture', 'idempotency-key': randomUUID() };
@@ -90,6 +91,26 @@ test('TC-CS35-01 operational block persists audit data and appears for even a on
 
 function coordinatorActor() {actor={id:'coordinator',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR'],permissions:[...defaults.EVENT_COORDINATOR]};}
 function independentValues(venueId) {return {...values,venueId,startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z'};}
+test('TC-CS87-18 PostgreSQL movement retains immutable origin history and current-assignment privacy for both venues',async()=>{
+  coordinatorActor();const origin='pg-history-a-'+randomUUID(),destination='pg-history-b-'+randomUUID(),body=independentValues(origin)
+  const held=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':origin},body});assert.equal(held.status,201)
+  const creation=await prisma.venueBookingActivity.findFirst({where:{bookingId:held.body.id}})
+  // Earlier imported records have no before/after payload. Preserve them by
+  // anchoring to the first immutable venue snapshot available for this booking.
+  const legacy=await prisma.venueBookingActivity.create({data:{bookingId:held.body.id,actorId:'original-importer',actorRole:'VENUE_STAFF',action:'BOOKING_CREATED',toStatus:'TENTATIVELY_HELD',reason:'Imported baseline history',changes:{source:'seed'},occurredAt:new Date(Date.parse(creation.occurredAt)-1000)}})
+  const moved=await api.http('/venue-bookings/'+held.body.id,{method:'PUT',headers,body:{...held.body,venueId:destination,version:1,status:'TENTATIVELY_HELD',reason:'Move only this room'}});assert.equal(moved.status,200)
+  const movement=await prisma.venueBookingActivity.findFirst({where:{bookingId:held.body.id,action:'BOOKING_UPDATED'}})
+  actor={id:'staff',role:'VENUE_STAFF',roles:['VENUE_STAFF'],permissions:[...defaults.VENUE_STAFF]}
+  for(const [venueId,expected] of [[origin,[creation.id,legacy.id,movement.id]],[destination,[movement.id]]]){
+    const r=await api.http('/venue-bookings/history?venueId='+venueId,{headers});assert.equal(r.status,200)
+    const items=r.body.items.filter(row=>row.bookingId===held.body.id);assert.deepEqual(items.map(row=>row.id).sort(),expected.sort());assert.ok(items.every(row=>row.venueId===venueId))
+  }
+  assert.deepEqual(await prisma.venueBookingActivity.findUnique({where:{id:creation.id}}),creation)
+  assert.deepEqual(await prisma.venueBookingActivity.findUnique({where:{id:legacy.id}}),legacy)
+  coordinatorActor();assigned=false
+  try{for(const venueId of [origin,destination])assert.deepEqual((await api.http('/venue-bookings/history?venueId='+venueId,{headers})).body.items,[])}finally{assigned=true}
+  for(const venueId of [origin,destination])assert.ok((await api.http('/venue-bookings/history?venueId='+venueId,{headers})).body.items.some(row=>row.bookingId===held.body.id))
+})
 test('TC-CS39-09 PostgreSQL parallel commitments produce one winner, one history and one request intent',async()=>{
   coordinatorActor();const venueId='pg-parallel-'+randomUUID(),body=independentValues(venueId);
   const results=await Promise.all(['first','second'].map(key=>api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+key},body})));
@@ -107,6 +128,41 @@ test('TC-CS38-09 PostgreSQL concurrent decisions retain one immutable decision a
   assert.equal(await prisma.venueBookingActivity.count({where:{bookingId:hold.body.id}}),2);
   assert.equal(await prisma.bookingOutbox.count({where:{aggregateId:hold.body.id,kind:{in:['VenueBookingApproved','VenueBookingRejected']}}}),1);
 });
+test('TC-CS38-18 PostgreSQL pending queue rechecks status after waiting behind a successful Staff decision',async()=>{
+  coordinatorActor();const venueId='pg-queue-decision-'+randomUUID(),body=independentValues(venueId)
+  const held=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId},body});assert.equal(held.status,201)
+  actor={id:'staff',role:'VENUE_STAFF',roles:['VENUE_STAFF'],permissions:[...defaults.VENUE_STAFF]}
+  let decision,queue
+  async function waiting(count){for(let i=0;i<200;i++){const [row]=await prisma.$queryRaw`SELECT COUNT(*)::integer AS n FROM pg_stat_activity WHERE datname=current_database() AND wait_event='advisory'`;if(row.n>=count)return;await new Promise(resolve=>setTimeout(resolve,10))}assert.fail('Expected controlled advisory-lock waiters')}
+  await prisma.$transaction(async tx=>{
+    const key='booking:event:assigned-event';await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${key},0))`
+    decision=api.http('/venue-bookings/'+held.body.id+'/decision',{method:'PUT',headers,body:{version:1,status:'CONFIRMED',reason:'Current Staff approval'}})
+    await waiting(1)
+    queue=api.http('/venue-bookings?status=TENTATIVELY_HELD&venueId='+venueId,{headers})
+    await waiting(2)
+  })
+  assert.equal((await decision).status,200)
+  const listed=await queue;assert.equal(listed.status,200);assert.deepEqual(listed.body.items,[]);assert.equal(listed.body.total,0)
+  assert.equal((await prisma.venueBookingRequest.findUnique({where:{id:held.body.id}})).status,'CONFIRMED')
+  assert.equal(await prisma.venueBookingActivity.count({where:{bookingId:held.body.id}}),2)
+})
+test('TC-CS38-19 PostgreSQL pending venue filter follows a room move completed ahead of its summary read',async()=>{
+  coordinatorActor();const origin='pg-queue-origin-'+randomUUID(),destination='pg-queue-destination-'+randomUUID(),body=independentValues(origin)
+  const held=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':origin},body});assert.equal(held.status,201)
+  let move,queue
+  async function waiting(count){for(let i=0;i<200;i++){const [row]=await prisma.$queryRaw`SELECT COUNT(*)::integer AS n FROM pg_stat_activity WHERE datname=current_database() AND wait_event='advisory'`;if(row.n>=count)return;await new Promise(resolve=>setTimeout(resolve,10))}assert.fail('Expected controlled advisory-lock waiters')}
+  await prisma.$transaction(async tx=>{
+    const key='booking:event:assigned-event';await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${key},0))`
+    move=api.http('/venue-bookings/'+held.body.id,{method:'PUT',headers,body:{...held.body,venueId:destination,reason:'Move this independent room'}})
+    await waiting(1)
+    actor={id:'staff',role:'VENUE_STAFF',roles:['VENUE_STAFF'],permissions:[...defaults.VENUE_STAFF]}
+    queue=api.http('/venue-bookings?status=TENTATIVELY_HELD&venueId='+origin,{headers})
+    await waiting(2)
+  })
+  assert.equal((await move).status,200)
+  const listed=await queue;assert.equal(listed.status,200);assert.deepEqual(listed.body.items,[]);assert.equal(listed.body.total,0)
+  assert.equal((await prisma.venueBookingRequest.findUnique({where:{id:held.body.id}})).venueId,destination)
+})
 test('TC-CS37-18 PostgreSQL waits for a venue lock then uses the current clock to reject an expired hold',async()=>{
   coordinatorActor();const venueId='pg-clock-'+randomUUID(),body=independentValues(venueId);
   const hold=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId},body});assert.equal(hold.status,201);
@@ -132,4 +188,37 @@ test('TC-CS37-19 PostgreSQL outbox failure rolls back the hold and its history',
     const result=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId},body:independentValues(venueId)});assert.equal(result.status,500);
     assert.deepEqual(await Promise.all([prisma.venueBookingRequest.count(),prisma.venueBookingActivity.count(),prisma.bookingOutbox.count()]),before);
   } finally {await prisma.$executeRawUnsafe('DROP TRIGGER cs_s3_reject_intent ON booking_outbox');await prisma.$executeRawUnsafe('DROP FUNCTION cs_s3_reject_intent()');}
+});
+
+async function inheritedPgPair() {
+  coordinatorActor();const venueId='pg-inherited-'+randomUUID(),rooms=[];
+  for(let i=0;i<2;i++){
+    const held=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+i},body:{...independentValues(venueId),startAt:i?'2026-12-21T04:15:00.000Z':'2026-12-21T02:00:00.000Z',endAt:i?'2026-12-21T06:00:00.000Z':'2026-12-21T04:00:00.000Z'}});assert.equal(held.status,201);
+    actor={id:'staff',role:'VENUE_STAFF',roles:['VENUE_STAFF'],permissions:[...defaults.VENUE_STAFF]};
+    const approved=await api.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers,body:{version:1,status:'CONFIRMED',reason:'Verify inherited room'}});assert.equal(approved.status,200);rooms.push(approved.body);coordinatorActor();
+  }
+  venueOverrides.set(venueId,{version:2,turnaroundMinutes:45});
+  actor={id:'staff',role:'VENUE_STAFF',roles:['VENUE_STAFF'],permissions:[...defaults.VENUE_STAFF]};
+  return {venueId,rooms,body:{venueId,version:2,reason:'Initial buffer rollout'}};
+}
+test('TC-CS86-14 PostgreSQL conflict report preserves both approvals and reasoned rechecks deduplicate history and intent',async()=>{
+  const {venueId,rooms,body}=await inheritedPgPair();
+  const before=await prisma.venueBookingRequest.findMany({where:{venueId},orderBy:{id:'asc'}});
+  const report=await api.http('/venue-bookings/conflicts?venueId='+venueId,{headers});assert.equal(report.status,200);assert.equal(report.body.items.length,2);
+  for(const room of report.body.items){assert.equal(room.status,'CONFIRMED');assert.deepEqual(room.flags,['BUFFER_CONFLICT']);assert.equal(room.conflicts.length,1);}
+  assert.deepEqual(await prisma.venueBookingRequest.findMany({where:{venueId},orderBy:{id:'asc'}}),before);
+  const checked=await api.http('/venue-bookings/rechecks',{method:'POST',headers,body});assert.equal(checked.status,200);assert.deepEqual(checked.body.changed.sort(),rooms.map(room=>room.id).sort());
+  for(const room of rooms){const current=await prisma.venueBookingRequest.findUnique({where:{id:room.id}});assert.equal(current.status,'CONFIRMED');assert.deepEqual(current.flags,['BUFFER_CONFLICT']);assert.equal(current.version,3);}
+  const counts=await Promise.all([prisma.venueBookingActivity.count({where:{bookingId:{in:rooms.map(room=>room.id)}}}),prisma.bookingOutbox.count({where:{aggregateId:{in:rooms.map(room=>room.id)}}})]);
+  assert.equal((await api.http('/venue-bookings/rechecks',{method:'POST',headers,body})).status,200);
+  assert.deepEqual(await Promise.all([prisma.venueBookingActivity.count({where:{bookingId:{in:rooms.map(room=>room.id)}}}),prisma.bookingOutbox.count({where:{aggregateId:{in:rooms.map(room=>room.id)}}})]),counts);
+});
+test('TC-CS86-15 PostgreSQL failed conflict intent rolls back the entire inherited recheck and is retryable',async()=>{
+  const {venueId,rooms,body}=await inheritedPgPair(),ids=rooms.map(room=>room.id);
+  const before=await prisma.venueBookingRequest.findMany({where:{venueId},orderBy:{id:'asc'}}),counts=await Promise.all([prisma.venueBookingActivity.count({where:{bookingId:{in:ids}}}),prisma.bookingOutbox.count({where:{aggregateId:{in:ids}}})]);
+  await prisma.$executeRawUnsafe("CREATE FUNCTION cs_phase3_reject_conflict() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.kind = 'VenueConflictChanged' THEN RAISE EXCEPTION 'Isolated recheck rollback proof'; END IF; RETURN NEW; END $$");
+  await prisma.$executeRawUnsafe('CREATE TRIGGER cs_phase3_reject_conflict BEFORE INSERT ON booking_outbox FOR EACH ROW EXECUTE FUNCTION cs_phase3_reject_conflict()');
+  try{const r=await api.http('/venue-bookings/rechecks',{method:'POST',headers,body});assert.equal(r.status,500);assert.deepEqual(await prisma.venueBookingRequest.findMany({where:{venueId},orderBy:{id:'asc'}}),before);assert.deepEqual(await Promise.all([prisma.venueBookingActivity.count({where:{bookingId:{in:ids}}}),prisma.bookingOutbox.count({where:{aggregateId:{in:ids}}})]),counts);}
+  finally{await prisma.$executeRawUnsafe('DROP TRIGGER cs_phase3_reject_conflict ON booking_outbox');await prisma.$executeRawUnsafe('DROP FUNCTION cs_phase3_reject_conflict()');}
+  const retry=await api.http('/venue-bookings/rechecks',{method:'POST',headers,body});assert.equal(retry.status,200);assert.equal(retry.body.changed.length,2);
 });

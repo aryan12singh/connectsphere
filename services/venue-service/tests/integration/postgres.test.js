@@ -52,6 +52,15 @@ test('TC-CS84-14 PostgreSQL buffer edits persist one versioned recheck and stale
   assert.equal(await prisma.venueHistory.count({where:{venueId:venue.id}}),historyBefore+1);
   assert.equal(await prisma.venueRecheckOutbox.count({where:{venueId:venue.id}}),outboxBefore+1);
 });
+test('TC-CS84-18 PostgreSQL private removal requires the exact checked configuration version',async()=>{
+  const current=(await api.http('/venues/'+venue.id,{headers:staff})).body
+  const changed=await api.http('/venues/'+venue.id,{method:'PUT',headers:staff,body:{...current,version:current.version,turnaroundMinutes:60,reason:'New reset requirements'}});assert.equal(changed.status,200)
+  const before=await prisma.venue.findUnique({where:{id:venue.id},include:{history:true,operatingHours:true,rechecks:true}})
+  const internal={'x-internal-api-key':'change-me-dev-internal-key'}
+  assert.equal((await api.http('/internal/venues/'+venue.id,{method:'DELETE',headers:internal,body:{version:current.version}})).status,409)
+  assert.equal((await api.http('/internal/venues/'+venue.id,{method:'DELETE',headers:internal,body:{}})).status,422)
+  assert.deepEqual(await prisma.venue.findUnique({where:{id:venue.id},include:{history:true,operatingHours:true,rechecks:true}}),before)
+})
 
 test('TC-CS84-15 PostgreSQL recheck survives reconnect and cannot acknowledge an old Booking version',async()=>{
   const store=require('../../src/store'),worker=require('../../src/rechecks'),config=require('../../src/config');

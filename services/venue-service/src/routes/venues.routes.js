@@ -85,6 +85,7 @@ router.delete('/:id', auth, manage, async (req, res) => {
   try {
     result = await bookingClient.removeUnusedVenue(venue.id,req.actor);
   } catch (error) {
+    if(error.status===409 && error.code==='STALE_VENUE')return res.status(409).json({error:{code:'STALE_VENUE',message:'Venue settings changed during deletion. Refresh and retry.'}});
     console.error(error);
     return res.status(503).json({ error: { code: 'BOOKING_SERVICE_UNAVAILABLE', message: 'Unable to verify linked bookings' } });
   }

@@ -67,7 +67,7 @@ function toApiActivity(activity) {
     id: activity.id,
     source: 'BOOKING',
     bookingId: activity.bookingId,
-    venueId: activity.booking?.venueId || activity.venueId,
+    venueId: activity.venueId || activity.changes?.after?.venueId || activity.changes?.before?.venueId || activity.booking?.venueId,
     actorId: activity.actorId,
     actorRole: activity.actorRole,
     action: activity.action,
@@ -289,17 +289,40 @@ function addOutbox(booking,kind,payload,transaction) {
 
 function listHistory(venueId) {
   if (isMemory) {
+    const initialVenues=new Map();
+    for(const entry of [...state.activities].sort((a,b)=>a.occurredAt.localeCompare(b.occurredAt))) {
+      const initial=entry.changes?.before?.venueId || entry.changes?.after?.venueId;
+      if(initial && !initialVenues.has(entry.bookingId))initialVenues.set(entry.bookingId,initial);
+    }
     return state.activities
       .map((entry, index) => ({ entry, index }))
-      .filter(({ entry }) => entry.venueId === venueId)
+      .filter(({ entry }) => {
+        const before=entry.changes?.before?.venueId,after=entry.changes?.after?.venueId;
+        return before===venueId || after===venueId || !before && !after && (initialVenues.get(entry.bookingId) || entry.venueId)===venueId;
+      })
       .sort((a, b) => b.entry.occurredAt.localeCompare(a.entry.occurredAt) || b.index - a.index)
-      .map(({ entry }) => entry);
+      .map(({ entry }) => ({...entry,venueId}));
   }
-  return prisma.venueBookingActivity.findMany({
-    where: { booking: { venueId } },
-    include: { booking: { select: { venueId: true } } },
-    orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
-  }).then((items) => items.map(toApiActivity));
+  // Movement belongs to both venues. Creation remains at its immutable origin.
+  // Snapshotless seed activity is anchored to the earliest known snapshot;
+  // bookings with no snapshot at all retain their existing venue fallback.
+  return prisma.$queryRaw`
+    SELECT activity.*, ${venueId}::text AS "venueId"
+    FROM venue_booking_activity activity
+    JOIN venue_booking_requests booking ON booking.id=activity."bookingId"
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(first.changes #>> '{before,venueId}', first.changes #>> '{after,venueId}') AS venue
+      FROM venue_booking_activity first
+      WHERE first."bookingId"=activity."bookingId"
+        AND COALESCE(first.changes #>> '{before,venueId}', first.changes #>> '{after,venueId}') IS NOT NULL
+      ORDER BY first."occurredAt",first.id LIMIT 1
+    ) origin ON true
+    WHERE activity.changes #>> '{before,venueId}'=${venueId}
+      OR activity.changes #>> '{after,venueId}'=${venueId}
+      OR (activity.changes #>> '{before,venueId}' IS NULL AND activity.changes #>> '{after,venueId}' IS NULL
+        AND COALESCE(origin.venue,booking."venueId")=${venueId})
+    ORDER BY activity."occurredAt" DESC,activity.id DESC
+  `.then(items=>items.map(toApiActivity));
 }
 
 function countBlockingBookings(venueId, at = clock.now()) {

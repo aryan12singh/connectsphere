@@ -12,7 +12,12 @@ async function blockingBookingCount(venueId) {
 
 async function removeUnusedVenue(venueId,actor) {
   const response=await fetch(`${config.bookingServiceUrl}/internal/venue-removals/${encodeURIComponent(venueId)}`,{method:'POST',headers:{'content-type':'application/json','x-internal-api-key':config.internalApiKey},body:JSON.stringify({actor:{id:actor.id,role:actor.role}}),signal:AbortSignal.timeout(10000)});
-  if (response.status===409) return {blockingCount:(await response.json()).blockingCount,deleted:false};
+  if (response.status===409) {
+    const result=await response.json();
+    if(Number.isInteger(result.blockingCount) && result.blockingCount>0)return {blockingCount:result.blockingCount,deleted:false};
+    if(result.error?.code==='STALE_VENUE')throw Object.assign(new Error('Venue settings changed during deletion. Refresh and retry.'),{status:409,code:'STALE_VENUE'});
+    throw new Error('Invalid venue removal conflict');
+  }
   if (response.status===404) return {blockingCount:0,deleted:false};
   if (!response.ok) throw new Error(`Booking removal returned ${response.status}`);
   const result=await response.json();

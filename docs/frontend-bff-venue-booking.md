@@ -20,11 +20,14 @@ opaque bearer token held in the sealed session cookie.
 | `GET /api/bookings?...` | `GET /venue-bookings?...` | Booking queue/list |
 | `POST /api/bookings` | `POST /venue-bookings` | Create booking; forwards `Idempotency-Key` |
 | `GET /api/bookings/:bookingId` | `GET /venue-bookings/:bookingId` | Booking detail |
+| `DELETE /api/bookings/:bookingId` | `DELETE /venue-bookings/:bookingId` | Protected-method denial405 after authentication/current access; bookings and history retained |
 | `PUT /api/bookings/:bookingId` | `PUT /venue-bookings/:bookingId` | Booking/status change |
 | `PUT /api/bookings/:bookingId/decision` | `PUT /venue-bookings/:bookingId/decision` | Versioned Venue Staff approve/reject with reason |
 | `PUT /api/bookings/:bookingId/hold-extension` | `PUT /venue-bookings/:bookingId/hold-extension` | Versioned active-hold extension with future deadline/reason |
 | `GET /api/bookings/events/:eventId/summary` | `GET /venue-bookings/events/:eventId/summary` | Independent rooms, current assignment, expiry, flags and venue readiness |
 | `GET /api/bookings/events/:eventId/venue-search` | `GET /venue-bookings/events/:eventId/venue-search` | Current Coordinator's requirement-aware room search |
+| `GET /api/bookings/conflicts?venueId=` | `GET /venue-bookings/conflicts?venueId=` | Venue Staff current conflict review, both occupied windows and assignment |
+| `POST /api/bookings/rechecks` | `POST /venue-bookings/rechecks` | Initial buffer rollout recheck, authenticated Staff actor, current venue version and reason |
 | `GET /api/bookings/availability?venueId=` | `GET /venue-bookings/availability?venueId=` | Server-derived occupied intervals; client preflight uses the returned timing policy |
 
 The BFF does not rename or normalize service fields. Venue form values remain
@@ -68,6 +71,37 @@ All remaining required rooms must be approved for current needs for venue
 readiness. That projection is not full Event readiness, technical approval or a
 Safety decision. [Policy register](venue-policy-decisions.md) and
 [phase delivery](devlogs/2026-10-12-venue-workflows.md) identify the pending gates.
+
+## Sprint 3 continuation — 13 October 2026
+
+The Staff Buffer conflicts tab compares preserved commitments side by side using
+current Venue settings and occupied-window ends. Staff can run an explicit initial
+rollout recheck with a reason and the Venue version they read. It cannot delete,
+force-confirm or cancel an approved arrangement. Stale configuration returns409;
+repeated successful rechecks do not duplicate booking history or notice intent.
+
+Find alternatives prefills the selected room's attendance, times, layout and needs
+and sends `bookingId` plus `bookingVersion`. The search excludes the original venue
+and remains read-only. An assigned Coordinator can move an unapproved room with a
+versioned PUT; siblings and the booking ID/history remain unchanged. Approved-room
+alternative assessment has no direct replacement mutation within this phase.
+Changing criteria, source identity or Event invalidates pending search results.
+A stale move refreshes the selected booking version while preserving edited criteria;
+arranging actions require the displayed Event to match the route. A new
+request after an acknowledged request was released uses a new action key; an
+ambiguous failed retry retains its key.
+
+The Staff queue disables decisions/extensions at the deadline while open. An
+imported hold whose Event is missing remains visible with `EVENT_NOT_FOUND` and no
+action controls; one orphan does not block healthy requests. Real Event dependency
+outages still fail closed. The calendar recognizes an authorized secondary Staff
+role, offers only operational-window transitions, and keeps approved arrangements
+read-only. Historical removed venues do not break future availability. Movement
+appears in both involved venue timelines while creation stays at its origin;
+current-assignment filtering protects both timelines.
+
+See [dated delivery and evidence](devlogs/2026-10-13-venue-workflows.md). The
+independent audit and automation do not replace team review or PO acceptance.
 
 ## Authentication and errors
 

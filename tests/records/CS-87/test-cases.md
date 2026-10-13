@@ -28,3 +28,31 @@ Contract alignment: requests use the distinct Planning Event ID; pending venue s
 | Test Case ID | Derived regression | Pre-conditions | Steps | Expected result | Layer | Date of Creation |
 | --- | --- | --- | --- | --- | --- | --- |
 | TC-CS87-12 | Room-action hydration safety | Assigned Planning Event in production/server-rendered HTML | Read without JavaScript; then mount normally and add another room | SSR Add/Refresh disabled; mounted click opens prefilled form without a lost click | Vue SSR/component; CS-87 also actual production browser | 2026-10-12T14:37:16+00:00 |
+
+## 13 October 2026 continuation cases
+
+Date of Creation: 2026-10-13T17:31:06+08:00. Original source IDs and assertions above are preserved. Results below require their named layer; component/intent proof does not establish inbox delivery or human acceptance.
+
+| Test Case ID | Scenario / AC | Pre-conditions | Test steps / data | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS87-13 | AC2/5/7 and CS-37 AC5: unapproved room change | Current Coordinator, independent breakout and sibling room, matching alternative | Find alternatives, verify per-room prefill, enter reason, change only breakout; Staff extends active hold in live browser | Same booking ID and guarded version; sibling unchanged; no extra booking; return to Event defaults for new rooms | Nuxt component plus live desktop/mobile | 2026-10-13T17:31:06+08:00 |
+| TC-CS87-14 | AC3/7 and CS-36 AC6: approved-room alternative assessment | Approved flagged room; suitable candidate | Find alternatives from the approved room | Read-only assessment retains approval; no unreviewed direct move/replacement action | Nuxt component | 2026-10-13T17:31:06+08:00 |
+| TC-CS87-15 | AC7 and CS-37 AC7: new logical request after release | Acknowledged hold; latest read reflects explicit release | Request the same available room with the same needs again | Fresh action key after completed success; ambiguous failures retain retry key | Nuxt request boundary | 2026-10-13T17:31:06+08:00 |
+
+## 13 October independent-audit regression cases
+
+The cases below preserve current scope and original source assertions. Date of Creation: 2026-10-13T18:49:21+08:00.
+
+| Test Case ID | Scenario / AC | Pre-conditions | Test steps / data | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS87-16 | AC3/4/6: retired rejected origin | Rejected independent booking and legitimately removed original venue | Search and move to eligible alternative using current version | Same booking ID, new venue and active hold; original audit records retained | Real HTTP boundary | 2026-10-13T18:49:21+08:00 |
+| TC-CS87-17 | AC3/6: async search freshness | Coordinator search pending | Change attendance before deferred result returns | No stale actionable matches restored | Nuxt component with deferred dependency | 2026-10-13T18:49:21+08:00 |
+| TC-CS87-18 | AC2/3/6: persistent origin history | Real booking_test, room moves A to B, snapshotless imported activity | Read both timelines and revoke/restore current assignment | A retains creation/import/move-out; B has movement only; immutable data unchanged; revoked caller sees no private history | PostgreSQL HTTP integration | 2026-10-13T18:49:21+08:00 |
+| TC-CS87-19 | AC2/3/6: current-assignment history | Memory HTTP room moves A to B | Read both timelines and reassign Event | Correct immutable venue membership; original requester loses history access, new Coordinator gains it | Real HTTP boundary | 2026-10-13T18:49:21+08:00 |
+
+## 13 October final recovery and concurrency cases
+
+| Test Case ID | Scenario / AC | Pre-conditions | Steps | Expected result | Date of Creation |
+| --- | --- | --- | --- | --- | --- |
+| TC-CS87-20 | AC3/6: stale-move recovery | Selected room version1; failed PUT followed by refreshed version2 | Search/edit criteria, attempt move, retry search | Current selected bookingVersion2 sent; edited criteria preserved; stale matches invalidated | 2026-10-13T19:02:26+08:00 |
+| TC-CS87-21 | AC3/6: route identity freshness | Old Event summary while props switches to another Event | Change Event ID before its projection arrives | No arranging actions/mutations against the previous Event | 2026-10-13T19:02:26+08:00 |

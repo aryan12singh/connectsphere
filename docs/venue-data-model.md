@@ -1,6 +1,6 @@
 # Venue and booking model
 
-Updated 12 October 2026 on `feat/aryan-sprint3-venue-safety`, after integrating main `52687d2`. Schemas and additive migrations below are the implementation source of truth. The files under `docs/erd` remain historical logical drafts. CS-74 still requires another developer's review; CS-77 owns the reviewed cross-service contract.
+Updated 13 October 2026 on `feat/aryan-sprint3-venue-safety`, after integrating main `52687d2`. Schemas and additive migrations below are the implementation source of truth. The files under `docs/erd` remain historical logical drafts. CS-74 still requires another developer's review; CS-77 owns the reviewed cross-service contract.
 
 ## Authoritative schemas
 
@@ -19,10 +19,27 @@ UUID text identifiers for Venue, Event, manager and actors are cross-service ref
 - Booking migration preserves IDs/statuses/history and records legacy advertised intervals as zero-buffer windows. Legacy tentative rows receive `min(createdAt + 72h, requestedStart)`; already elapsed deadlines are immediately ineffective. This migration uses the provisional 72-hour treatment; later new holds use configurable policy.
 - Booking writes acquire ordered transaction-scoped PostgreSQL advisory locks for the Event and affected venues. They reread current records and use `clock_timestamp()` after waits and slow upstream checks. Successful changes save the booking, activity and unique outbox intent atomically. A failed intent insert rolls all three back.
 - New ordinary requests are tentative holds. Staff decisions and extensions require the read version and a reason; stale or expired attempts have no effect. Ordinary creation cannot directly confirm a booking, including for a caller with both Coordinator and Venue Staff roles.
-- Venue deletion is serialized through Booking's venue lock. It checks effective current/future tentative and confirmed occupied windows, then invokes Venue's private deletion endpoint while retaining the lock. Dependency failure fails closed. Historical rejected/cancelled bookings remain readable even after catalogue removal.
+- Venue deletion is serialized through Booking's venue lock. It checks effective current/future tentative and confirmed occupied windows, then invokes Venue's private deletion endpoint with the checked configuration version while retaining the lock. Venue checks that version under its configuration row lock; concurrent buffer changes return409 for refresh/retry. Dependency failure fails closed. Historical rejected/cancelled and fully ended confirmed bookings remain readable after catalogue removal. Only an authorized unapproved move may tolerate a missing retired origin; destination checks remain strict.
 - Venue configuration changes retain existing commitments. A durable private recheck retries unavailable Booking service and updates current timing/flags/history without cancelling an Event or another booking. Acknowledgement requires at least the source Venue version. This is eventual synchronization across databases; search, request, decision and readiness also check current Venue configuration.
 
 No database exclusion constraint is claimed. Guarded writes supply conflict protection while permitting required operational closures and inherited conflict flags. Recheck/removal control routes under `/internal` are not routed through Kong. Catalogue/record proof routes also require the shared internal key; their `/venues` prefix does not itself confer public access.
+
+## Current conflict and history projections
+
+Venue Staff can read `/venue-bookings/conflicts` and explicitly recheck current
+settings through `/venue-bookings/rechecks` with the read Venue version and a reason.
+The authenticated actor owns the immutable activity; clients cannot supply another
+actor. Current setup/turnaround windows determine both conflict panes and recheck
+inclusion, including the period after advertised end but before turnaround ends.
+Slow upstream reads finish before the final deadline projection. No read mutates
+booking, history or outbox. Missing legacy Events are flagged without inventing an
+Event or Coordinator; ordinary decisions still require authoritative Event proof.
+
+Venue-specific history uses immutable before/after venue IDs. A move appears in
+both involved timelines; creation remains at its origin. Snapshotless imported
+activity is anchored to the earliest available immutable snapshot, with the current
+venue retained only when no snapshot exists. The original activity payload is never
+rewritten. The existing current-assignment booking-ID filter still protects history.
 
 ## Time, suitability and readiness
 
@@ -38,4 +55,4 @@ Customer answers are still pending in [CS-76](https://spmg8.atlassian.net/browse
 
 Safety roles and technical/support readiness proof are not present on main. CS-10/42/77 and CS-93/94/95 must agree and deliver those boundaries before a full Safety queue or preparation transition. No empty equipment list is treated as proof of technical approval.
 
-See [BFF routes](frontend-bff-venue-booking.md), [phase delivery and validation](devlogs/2026-10-12-venue-workflows.md), and the existing [Sprint 2 evidence](sprint2/evidence-log.md). This model update does not establish independent review, PO acceptance or story closure.
+See [BFF routes](frontend-bff-venue-booking.md), [phase delivery and validation](devlogs/2026-10-13-venue-workflows.md), and the existing [Sprint 2 evidence](sprint2/evidence-log.md). This model update does not establish independent review, PO acceptance or story closure.

@@ -80,6 +80,26 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 2026-10-13 — Aryan — Current venue conflicts, room alternatives and audit fixes
+
+CS-36/37/38/39/84/85/86/87 continue on `feat/aryan-sprint3-venue-safety`:
+current two-pane Staff conflict review and audited rollout recheck, independent
+unapproved room moves, live queue deadlines, stale-search/move recovery, secondary
+Staff calendar permissions, version-fenced deletion and private immutable venue
+movement history. Full frontend292/292; Booking PostgreSQL15/15 and Venue6/6;
+unit/HTTP, type/build and full live publication evidence are in the
+[dated phase report](2026-10-13-venue-workflows.md). Independent audit findings
+were reproduced and corrected, with a clean focused re-review. Failed and final
+execution records retain source IDs and layer limits; raw JSON/coverage stay
+outside Git. No new PR or story Done claim.
+
+CS-93/94/95 remain blocked by Marc CS-10, Alan CS-42 and Javier CS-77.
+Inbox delivery still needs Marc CS-50/51; customer policies, CS-79 coverage,
+manual/PO acceptance, model review and actual team evidence routine adoption
+remain open. Next: review the published branch and agreed contracts, then
+integrate Safety when those prerequisites exist.
+
+
 ### 2026-10-12 — Independent venue holds, decisions and buffered availability
 
 On `feat/aryan-sprint3-venue-safety`, integrate main `52687d2` and implement the

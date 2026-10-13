@@ -11,7 +11,7 @@ router.post('/venue-removals/:venueId',internalOnly,async(req,res)=>{
     const venue=await venueContext(req.params.venueId),at=await store.transactionNow(tx);
     const count=(await store.listBookings(tx,{venueId:venue.id})).filter(row=>workflows.effective(row,at) && Date.parse(workflows.windowFor(row,venue).endAt)>=at.getTime()).length;
     if(count) return {venueId:venue.id,blockingCount:count,deleted:false};
-    return {venueId:venue.id,blockingCount:0,deleted:await removeVenue(venue.id)};
+    return {venueId:venue.id,blockingCount:0,deleted:await removeVenue(venue.id,venue.version)};
   });
   return res.status(result.blockingCount?409:result.deleted?200:404).json(result);
 });

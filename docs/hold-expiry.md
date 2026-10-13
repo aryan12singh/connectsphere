@@ -1,7 +1,7 @@
 # Hold expiry and occupied-window foundations
 
 CS-78 technical spike and CS-85 domain foundation, initially 9 October 2026;
-integration update 12 October. The research worker below still uses disposable
+integration updates 12–13 October. The research worker below still uses disposable
 PostgreSQL tables. Production requests, decisions, extensions, search, calendar
 and readiness now persist/use buffers, versions and deadlines. The production
 expiry/reminder scheduler (CS-90) and actual notification delivery remain pending;
@@ -37,8 +37,9 @@ separate buffer shading without changing the advertised Event time.
 The technical model occupies a slot when approved, or when active with
 `expiresAt > checkedAt`. Effective availability excludes expired active rows even
 before a job updates them. This is a read projection, not an audit mutation.
-The prototype returns qualifying hold IDs; interval selection and advertised
-end-time release belong to the eventual booking availability integration.
+The prototype returns qualifying hold IDs. Production availability and conflict
+rechecks now retain occupancy through the current occupied-window end, including
+turnaround; advertised end alone does not release an occupied room.
 Approval rechecks that same inequality under the row lock. Expiry takes priority
 over a warning during catch-up; no stale warning is queued after expiry.
 

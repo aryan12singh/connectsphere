@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { bookingDraftForCalendarSlot, bookingDraftForExisting, bookingDraftForSlot, bookingDraftState, bookingMutation, bookingPopoverOffset, bookingSelectionStatuses, calendarIsoToWallTime, calendarSelectionFromDrag, calendarWallTimeToIso, coordinatorBookingEditState, venueStaffCreationState, type BookingDraft } from './booking-state'
 import { advanceCalendarDate, bufferSegmentsForRange, calendarDaysForRange, calendarRange, calendarSlotState, fullDayCalendarHours, intervalSegmentsForRange, type CalendarBooking, type CalendarMode, type CalendarOperatingHour } from './calendar-state'
 
-const props = defineProps<{ venueId: string, venueName: string, timeZone: string, operatingHours?: CalendarOperatingHour[], setupMinutes?:number, turnaroundMinutes?:number, canCreate: boolean, canDecide: boolean, canSetAllStatuses?: boolean, actorId?: string | null, actorRole?: string | null, showPendingRequests?: boolean, pendingRequestCount?: number }>()
+const props = defineProps<{ venueId: string, venueName: string, timeZone: string, operatingHours?: CalendarOperatingHour[], setupMinutes?:number, turnaroundMinutes?:number, canCreate: boolean, canDecide: boolean, canSetAllStatuses?: boolean, actorId?: string | null, actorRole?: string | null, actorRoles?:string[], showPendingRequests?: boolean, pendingRequestCount?: number }>()
 const emit = defineEmits<{ openRequests: [] }>()
 const ready = ref(false)
 const clockNow=ref(Date.now());let expiryTimer:ReturnType<typeof setInterval>|undefined
@@ -22,8 +22,8 @@ const { data: eventData, error: eventError } = await useFetch('/api/events', { q
 watch(eventError, value => { if (value) showError(value, 'Unable to load your events') }, { immediate: true })
 interface BookingEventOption { id: string, title: string, status: string }
 const bookingEvents = computed(() => ((eventData.value as { events?: BookingEventOption[] } | null)?.events ?? []).filter(event => event && typeof event.id === 'string' && typeof event.title === 'string'))
-const isCoordinator = computed(() => props.actorRole === 'EVENT_COORDINATOR')
-const isVenueStaff = computed(() => props.actorRole === 'VENUE_STAFF')
+const isVenueStaff = computed(() => (props.actorRoles ?? [props.actorRole]).includes('VENUE_STAFF') && props.canDecide)
+const isCoordinator = computed(() => !isVenueStaff.value && (props.actorRoles ?? [props.actorRole]).includes('EVENT_COORDINATOR') && props.canCreate)
 const bookings = computed(() => ((data.value as { items?: CalendarBooking[] } | null)?.items ?? []).filter(booking=>booking.status!=='TENTATIVELY_HELD' || !booking.expiresAt || Date.parse(booking.expiresAt)>clockNow.value))
 const segments = computed(() => intervalSegmentsForRange(bookings.value, range.value, props.timeZone || 'Asia/Singapore'))
 const bufferSegments = computed(() => bufferSegmentsForRange(bookings.value,range.value,props.timeZone || 'Asia/Singapore'))
@@ -102,11 +102,11 @@ const state = computed(() => {
 })
 const currentBooking = computed(() => editingBookingId.value ? bookings.value.find(booking => booking.id === editingBookingId.value) ?? null : null)
 const coordinatorEditState = computed(() => coordinatorBookingEditState(currentBooking.value, props.actorId))
-const coordinatorReadOnly = computed(() => props.actorRole === 'EVENT_COORDINATOR' && coordinatorEditState.value.readOnly)
-const statusDisabled = computed(() => props.actorRole === 'EVENT_COORDINATOR' && !coordinatorEditState.value.canEdit)
+const coordinatorReadOnly = computed(() => isCoordinator.value && coordinatorEditState.value.readOnly || isVenueStaff.value && Boolean(editingBookingId.value) && !['BLOCKED','UNAVAILABLE'].includes(currentBooking.value?.status ?? ''))
+const statusDisabled = computed(() => coordinatorReadOnly.value || isCoordinator.value && !coordinatorEditState.value.canEdit)
 const statuses = computed(() => {
-  if (props.actorRole === 'EVENT_COORDINATOR') return coordinatorEditState.value.statuses
-  if (isVenueStaff.value) return venueStaffCreationState(Boolean(editingBookingId.value)).statuses
+  if (isCoordinator.value) return coordinatorEditState.value.statuses
+  if (isVenueStaff.value) return !editingBookingId.value ? venueStaffCreationState(false).statuses : ['BLOCKED','UNAVAILABLE'].includes(currentBooking.value?.status ?? '') ? ['BLOCKED','UNAVAILABLE','CANCELLED'] : [currentBooking.value?.status ?? draft.value?.status ?? 'CONFIRMED']
   return bookingSelectionStatuses(props.canDecide, props.canSetAllStatuses)
 })
 async function save() { if (!draft.value || !state.value?.canSubmit || posting.value) return; posting.value = true; const mutation = bookingMutation(editingBookingId.value); try { await $fetch(mutation.path, { method: mutation.method, headers: { 'Idempotency-Key': globalThis.crypto?.randomUUID?.() ?? `${Date.now()}` }, body: { ...draft.value, startAt: toIso(draft.value.startAt, draft.value.timeZone), endAt: toIso(draft.value.endAt, draft.value.timeZone) } } as any); cancelSelection(); await refresh() } catch (caught: any) { showError(caught, 'Unable to save booking') } finally { posting.value = false } }

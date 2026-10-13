@@ -26,7 +26,8 @@ class FakeBookingLinkHandler(BaseHTTPRequestHandler):
         venue_id=self.path.rstrip('/').split('/')[-1]
         blocking=venue_id in self.blocking_ids
         if not blocking:
-            response=urlopen(Request(self.venue_base+'/internal/venues/'+venue_id,method='DELETE',headers={'x-internal-api-key':'change-me-dev-internal-key'}),timeout=3)
+            current=json.load(urlopen(Request(self.venue_base+'/venues/'+venue_id+'/internal',headers={'x-internal-api-key':'change-me-dev-internal-key'}),timeout=3))
+            response=urlopen(Request(self.venue_base+'/internal/venues/'+venue_id,method='DELETE',data=json.dumps({'version':current['version']}).encode(),headers={'x-internal-api-key':'change-me-dev-internal-key','content-type':'application/json'}),timeout=3)
             response.close()
         encoded=json.dumps({'venueId':venue_id,'blockingCount':1 if blocking else 0,'deleted':not blocking}).encode()
         self.send_response(409 if blocking else 200);self.send_header('content-type','application/json');self.end_headers();self.wfile.write(encoded)

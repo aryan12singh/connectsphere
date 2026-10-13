@@ -195,17 +195,25 @@ async function replace(req,id,input,body) {
     await store.addOutbox(saved,input.status==='CANCELLED'?'VenueCancelled':operational?'VenueBlocked':'VenueRequested',{bookingId:saved.id,eventId:saved.eventId,venueId:saved.venueId,coordinatorId:context?.currentCoordinatorId ?? null,actorId:req.actor.id,reason:value.reason,version:saved.version},tx);
     for(const venueId of [...new Set([current.venueId,saved.venueId])]) {
       let venue;
-      try{venue=await venueContext(venueId);}catch(error){if(error.status===404 && input.status==='CANCELLED')continue;throw error;}
+      try{venue=await venueContext(venueId);}catch(error){
+        const retiredOrigin=venueId===current.venueId && venueId!==saved.venueId && ['REJECTED','CANCELLED'].includes(current.status);
+        if(error.status===404 && (input.status==='CANCELLED' || retiredOrigin))continue;
+        throw error;
+      }
       await recheckInTransaction(venue,req.actor,'Venue commitment changed or released',tx,await store.transactionNow(tx));
     }
     return store.getBooking(saved.id,tx);
   });
 }
 
-async function summary(req,eventId) {
+async function summary(req,eventId,{allowMissingEvent=false}={}) {
   return store.withLocks([eventLock(eventId)],async(tx)=>{
-    const context=await contextFor(req,eventId);
-    const rows=await store.listBookings(tx,{eventId});
+    let context;
+    try{context=!eventId && allowMissingEvent && isStaff(req.actor)?null:await contextFor(req,eventId);}catch(error){
+      if(!allowMissingEvent || !isStaff(req.actor) || error.code!=='EVENT_NOT_FOUND')throw error;
+      context=null;
+    }
+    const rows=(await store.listBookings(tx,{eventId})).filter(row=>row.eventId===eventId);
     await store.lockMore(tx,rows.map(row=>venueLock(row.venueId)));
     const venues=new Map(),items=[],outstanding=[];
     for (const row of rows) {
@@ -225,11 +233,12 @@ async function summary(req,eventId) {
       if (venue.removed && row.status!=='CANCELLED') flags.add('VENUE_REMOVED');
       if (['CONFIRMED','TENTATIVELY_HELD'].includes(row.status) && effective(row,at)) {
         for (const gap of gaps(row,venue)) flags.add(gap);
-        if (!row.requirementsFingerprint || row.requirementsFingerprint!==store.fingerprint(venueRequirements(context))) flags.add('REQUIREMENTS_CHANGED');
+        if (!context) flags.add('EVENT_NOT_FOUND');
+        else if (!row.requirementsFingerprint || row.requirementsFingerprint!==store.fingerprint(venueRequirements(context))) flags.add('REQUIREMENTS_CHANGED');
         if ((await conflicts(row,venue,at,tx,row.id)).length) flags.add('BUFFER_CONFLICT');
       }
       const expired=row.status==='TENTATIVELY_HELD' && !effective(row,at);
-      const item={...row,venueName:venue.name,venueCapacity:venue.capacity,venueTimeZone:venue.timeZone,organiserId:context.organiserId,currentCoordinatorId:context.currentCoordinatorId,eventStatus:context.status,currentVenueNotes:context.venueRequirements,occupiedStart:occupied.startAt,occupiedEnd:occupied.endAt,setupMinutes:venue.setupMinutes,turnaroundMinutes:venue.turnaroundMinutes,flags:[...flags],effectiveStatus:expired?'EXPIRED':row.status};
+      const item={...row,venueName:venue.name,venueCapacity:venue.capacity,venueTimeZone:venue.timeZone,organiserId:context?.organiserId ?? null,currentCoordinatorId:context?.currentCoordinatorId ?? null,eventStatus:context?.status ?? null,currentVenueNotes:context?.venueRequirements ?? null,occupiedStart:occupied.startAt,occupiedEnd:occupied.endAt,setupMinutes:venue.setupMinutes,turnaroundMinutes:venue.turnaroundMinutes,flags:[...flags],effectiveStatus:expired?'EXPIRED':row.status};
       items.push(item);
       if (row.required && row.status!=='CANCELLED' && (row.status!=='CONFIRMED' || flags.size)) outstanding.push({bookingId:row.id,venueId:row.venueId,venueName:venue.name,reasons:[...(row.status!=='CONFIRMED'?[expired?'HOLD_EXPIRED':row.status]:[]),...flags]});
     }
@@ -238,19 +247,31 @@ async function summary(req,eventId) {
   });
 }
 
-function managedFlag(flag) { return ['BUFFER_CONFLICT','CAPACITY','LAYOUT','VENUE_TYPE','INACTIVE','OUTSIDE_OPERATING_HOURS'].includes(flag) || /^(FACILITY|ACCESSIBILITY):/.test(flag); }
+function managedFlag(flag) { return ['BUFFER_CONFLICT','CAPACITY','LAYOUT','VENUE_TYPE','INACTIVE','OUTSIDE_OPERATING_HOURS','EVENT_NOT_FOUND','REQUIREMENTS_CHANGED'].includes(flag) || /^(FACILITY|ACCESSIBILITY):/.test(flag); }
+async function recheckContext(eventId) {
+  if(!eventId) return null;
+  try{return await planningContext(eventId);}catch(error){if(error.status===404)return null;throw error;}
+}
 async function recheckInTransaction(venue,actor,reason,tx,at) {
-  const rows=(await store.listBookings(tx,{venueId:venue.id})).filter(row=>effective(row,at) && Date.parse(row.endAt)>at.getTime()),changed=[];
+  const candidates=(await store.listBookings(tx,{venueId:venue.id})).filter(row=>effective(row,at) && Date.parse(windowFor(row,venue).endAt)>at.getTime()),changed=[],contexts=new Map();
+  for(const row of candidates.filter(row=>['CONFIRMED','TENTATIVELY_HELD'].includes(row.status))) if(!contexts.has(row.eventId)) contexts.set(row.eventId,await recheckContext(row.eventId));
+  at=await store.transactionNow(tx);
+  const rows=candidates.filter(row=>effective(row,at) && Date.parse(windowFor(row,venue).endAt)>at.getTime());
   for (const current of rows) {
     const operational=['BLOCKED','UNAVAILABLE'].includes(current.status),occupied=windowFor(current,venue);
     const flags=new Set((current.flags || []).filter(flag=>!managedFlag(flag)));
-    if (!operational) for (const gap of gaps(current,venue)) flags.add(gap);
+    if (!operational) {
+      for (const gap of gaps(current,venue)) flags.add(gap);
+      const context=contexts.get(current.eventId);
+      if(!context) flags.add('EVENT_NOT_FOUND');
+      else if(!current.requirementsFingerprint || current.requirementsFingerprint!==store.fingerprint(venueRequirements(context))) flags.add('REQUIREMENTS_CHANGED');
+    }
     if (rows.some(other=>other.id!==current.id && occupiedWindowsOverlap(occupied,windowFor(other,venue),{allowTouching:config.allowTouching}))) flags.add('BUFFER_CONFLICT');
     const nextFlags=[...flags].sort(),flagChanged=JSON.stringify(nextFlags)!==JSON.stringify([...(current.flags || [])].sort());
     if (!flagChanged && current.venueVersion===venue.version && current.occupiedStart===occupied.startAt && current.occupiedEnd===occupied.endAt) continue;
     const saved=await store.replaceBooking(current,{...current,venueVersion:venue.version,setupMinutes:operational?0:venue.setupMinutes,turnaroundMinutes:operational?0:venue.turnaroundMinutes,occupiedStart:occupied.startAt,occupiedEnd:occupied.endAt,flags:nextFlags,activityAction:'VENUE_RECHECKED',activityReason:reason},actor,tx);
     if (flagChanged) {
-      const context=current.eventId?await planningContext(current.eventId):null;
+      const context=contexts.get(current.eventId);
       await store.addOutbox(saved,'VenueConflictChanged',{bookingId:saved.id,eventId:saved.eventId,venueId:saved.venueId,coordinatorId:context?.currentCoordinatorId ?? null,venueVersion:venue.version,flags:nextFlags,previousFlags:current.flags || [],actorId:actor.id,reason,version:saved.version},tx);
     }
     changed.push(saved.id);
@@ -262,6 +283,51 @@ async function recheck(body) {
     const venue=await venueContext(body.venueId);
     if (venue.version<body.version) fail(409,'VENUE_VERSION_PENDING','Venue configuration has not reached this version yet');
     return recheckInTransaction(venue,body.actor,body.reason,tx,at);
+  });
+}
+
+async function staffRecheck(req,body) {
+  return store.withLocks([venueLock(body.venueId)],async tx=>{
+    const venue=await venueContext(body.venueId);
+    if (venue.version!==body.version) fail(409,'STALE_VENUE','Venue settings changed. Refresh before rechecking.');
+    return recheckInTransaction(venue,req.actor,body.reason.trim(),tx,await store.transactionNow(tx));
+  });
+}
+
+async function conflictReport(req,query) {
+  const firstAt=clock.now();
+  const first=(await store.listBookings(null,query.venueId?{venueId:query.venueId}:{})).filter(row=>effective(row,firstAt));
+  const venueIds=[...new Set(query.venueId?[query.venueId]:first.map(row=>row.venueId))];
+  return store.withLocks(venueIds.map(venueLock),async tx=>{
+    const venues=new Map(),contexts=new Map();
+    const beforeReads=await store.transactionNow(tx);
+    const rows=(await store.listBookings(tx,query.venueId?{venueId:query.venueId}:{})).filter(row=>venueIds.includes(row.venueId) && effective(row,beforeReads));
+    for(const venueId of venueIds) {
+      try{venues.set(venueId,await venueContext(venueId));}catch(error){
+        const historic=rows.filter(row=>row.venueId===venueId);
+        if(error.status===404 && !query.venueId && !historic.length)continue;
+        // Serialized removal checks the current occupied end while retaining
+        // this same lock. A past advertised row cannot veto legitimate removal
+        // using an old, longer turnaround snapshot. Ongoing/future rows fail closed.
+        if(error.status!==404 || !historic.length || historic.some(row=>Date.parse(row.endAt)>beforeReads.getTime()))throw error;
+      }
+    }
+    const candidates=rows.filter(row=>venues.has(row.venueId) && Date.parse(windowFor(row,venues.get(row.venueId)).endAt)>beforeReads.getTime());
+    for(const row of candidates.filter(row=>['CONFIRMED','TENTATIVELY_HELD'].includes(row.status))) if(!contexts.has(row.eventId)) contexts.set(row.eventId,await recheckContext(row.eventId));
+    const at=await store.transactionNow(tx),future=candidates.filter(row=>effective(row,at) && Date.parse(windowFor(row,venues.get(row.venueId)).endAt)>at.getTime());
+    const items=[];
+    for(const row of future.filter(row=>['CONFIRMED','TENTATIVELY_HELD'].includes(row.status))) {
+      const venue=venues.get(row.venueId),context=contexts.get(row.eventId),occupied=windowFor(row,venue);
+      const competing=future.filter(other=>other.id!==row.id && other.venueId===row.venueId && occupiedWindowsOverlap(occupied,windowFor(other,venue),{allowTouching:config.allowTouching}));
+      const flags=new Set((row.flags || []).filter(flag=>!managedFlag(flag)));
+      for(const gap of gaps(row,venue)) flags.add(gap);
+      if(!context) flags.add('EVENT_NOT_FOUND');
+      else if (!row.requirementsFingerprint || row.requirementsFingerprint!==store.fingerprint(venueRequirements(context))) flags.add('REQUIREMENTS_CHANGED');
+      if(competing.length) flags.add('BUFFER_CONFLICT');
+      if(!flags.size) continue;
+      items.push({...row,venueName:venue.name,venueCapacity:venue.capacity,venueVersion:venue.version,currentCoordinatorId:context?.currentCoordinatorId ?? null,occupiedStart:occupied.startAt,occupiedEnd:occupied.endAt,setupMinutes:venue.setupMinutes,turnaroundMinutes:venue.turnaroundMinutes,flags:[...flags].sort(),conflicts:competing.map(other=>{const interval=windowFor(other,venue);return {id:other.id,eventId:other.eventId,title:other.title,status:other.status,currentCoordinatorId:contexts.get(other.eventId)?.currentCoordinatorId ?? null,occupiedStart:interval.startAt,occupiedEnd:interval.endAt};})});
+    }
+    return {items,total:items.length,venues:[...venues.values()].map(venue=>({id:venue.id,name:venue.name,version:venue.version,timeZone:venue.timeZone,setupMinutes:venue.setupMinutes,turnaroundMinutes:venue.turnaroundMinutes})),checkedAt:at.toISOString()};
   });
 }
 
@@ -278,9 +344,19 @@ function searchInput(query,context) {
 async function search(req,eventId,query) {
   const context=await contextFor(req,eventId);planning(context);
   if (context.currentCoordinatorId!==req.actor.id) fail(403,'FORBIDDEN','Only the current assigned Coordinator may search for this Event');
-  const criteria=searchInput(query,context),venues=await catalogue(),at=clock.now(),items=[];
+  let source=null;
+  if(query.bookingId!==undefined) {
+    if(typeof query.bookingId!=='string' || !query.bookingId.trim()) fail(422,'VALIDATION_ERROR','Use a booking ID',{bookingId:['Use one booking ID']});
+    source=await store.getBooking(query.bookingId);
+    if(!source || source.eventId!==eventId) fail(404,'BOOKING_NOT_FOUND','Booking not found for this Event');
+    if(typeof query.bookingVersion!=='string' || !/^[1-9]\d*$/.test(query.bookingVersion)) fail(422,'VALIDATION_ERROR','Refresh the source booking before searching',{bookingVersion:['Current booking version is required']});
+    version(source,Number(query.bookingVersion));
+  }
+  const defaults=source?{startAt:source.startAt,endAt:source.endAt,expectedAttendance:String(source.expectedAttendance ?? context.expectedAttendance),layout:source.layout ?? context.preferredLayout,facilities:(source.facilities || []).join(','),accessibilityNeeds:(source.accessibilityNeeds || []).join(',')}:{};
+  const criteria=searchInput({...defaults,...query},context),venues=await catalogue(),at=clock.now(),items=[];
   const location=String(query.location || '').trim().toLowerCase();
   for(const venue of venues) {
+    if(source && venue.id===source.venueId) continue;
     if (location && !`${venue.name} ${venue.address || ''}`.toLowerCase().includes(location)) continue;
     const missing=gaps(criteria,venue);
     if (missing.some(g=>['INACTIVE','CAPACITY','VENUE_TYPE','OUTSIDE_OPERATING_HOURS'].includes(g))) continue;
@@ -289,13 +365,20 @@ async function search(req,eventId,query) {
     items.push({...venue,expectedAttendance:criteria.expectedAttendance,layout:criteria.layout,occupiedStart:occupied.startAt,occupiedEnd:occupied.endAt,match:missing.length?'PARTIAL':'FULL',gaps:missing,canRequest:!missing.length});
   }
   items.sort((a,b)=>(a.match==='FULL'?0:1)-(b.match==='FULL'?0:1) || a.name.localeCompare(b.name));
-  return {eventId,criteria,items,total:items.length,checkedAt:at.toISOString()};
+  return {eventId,criteria,items,total:items.length,checkedAt:at.toISOString(),sourceBooking:source?{id:source.id,venueId:source.venueId,version:source.version,status:source.status}:null};
 }
 async function availability(req,query) {
   const at=clock.now(),rows=(await store.listBookings()).filter(row=>(!query.venueId || row.venueId===query.venueId) && effective(row,at));
   const venues=new Map(),access=new Map(),items=[];
   for(const row of rows) {
-    if (!venues.has(row.venueId)) venues.set(row.venueId,await venueContext(row.venueId));
+    if (!venues.has(row.venueId)) {
+      try{venues.set(row.venueId,await venueContext(row.venueId));}catch(error){
+        // A legitimately removed venue can retain immutable past confirmations.
+        // Missing venues with a current occupied window still fail closed.
+        if(error.status===404 && (!effective(row,clock.now()) || Date.parse(row.endAt)<=clock.now().getTime()))continue;
+        throw error;
+      }
+    }
     const venue=venues.get(row.venueId),occupied=windowFor(row,venue);
     if (query.startAt && Date.parse(occupied.endAt)<=Date.parse(query.startAt)) continue;
     if (query.endAt && Date.parse(occupied.startAt)>=Date.parse(query.endAt)) continue;
@@ -309,4 +392,4 @@ async function availability(req,query) {
   const checkedAt=clock.now();
   return {items:items.filter(row=>effective(row,checkedAt)),conflictDetection:'server',checkedAt:checkedAt.toISOString(),policy:{allowTouching:config.allowTouching}};
 }
-module.exports={create,decision,extend,replace,summary,search,availability,recheck,recheckInTransaction,version,activeHold,contextFor,planning,needs,gaps,checkedNeeds,conflicts,effective,windowFor,venueRequirements,venueLock,eventLock,fail};
+module.exports={create,decision,extend,replace,summary,search,availability,recheck,staffRecheck,conflictReport,recheckInTransaction,version,activeHold,contextFor,planning,needs,gaps,checkedNeeds,conflicts,effective,windowFor,venueRequirements,venueLock,eventLock,fail};

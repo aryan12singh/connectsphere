@@ -32,3 +32,9 @@ Source numeric placeholders (480 buffer minutes and 10,000 capacity) remain conf
 | TC-CS84-15 | Durable configuration recheck retry | Venue versioned edit; Booking initially unavailable | Let actual worker retry | Persist pending intent across failure, stable action ID, acknowledge matching/current version | Real HTTP running worker / memory | 2026-10-12T19:13:47+08:00 |
 | TC-CS84-16 | Deletion and in-flight commitment | Booking creation holds Venue commit lock | Attempt deletion while commitment finishes | Deletion waits, then409; committed booking retains its venue | Real HTTP / memory | 2026-10-12T19:13:47+08:00 |
 | TC-CS84-17 | Virtual form nullable capacity | Virtual venue with empty physical capacity field | Serialize form | capacity null under existing API contract; no false zero | Form-state unit | 2026-10-12T19:13:47+08:00 |
+
+## 13 October final recovery and concurrency cases
+
+| Test Case ID | Scenario / AC | Pre-conditions | Steps | Expected result | Date of Creation |
+| --- | --- | --- | --- | --- | --- |
+| TC-CS84-18 | AC1/3/6: persistent removal fence | Real venue_test with current higher configuration version | Private DELETE with old/missing version | 409/422; catalogue, operating hours, immutable history and durable rechecks unchanged | 2026-10-13T19:02:26+08:00 |

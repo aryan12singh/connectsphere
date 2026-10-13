@@ -71,17 +71,20 @@ function normalise(body, actor, forceTentative = false) {
 router.get('/', auth, bookingAccess, async (req, res) => {
   const visible = await visibleBookings(req, res);
   if (!visible) return;
-  let values = visible.filter((booking) => {
+  const matchesQuery = (booking) => {
     if (req.query.venueId && booking.venueId !== req.query.venueId) return false;
     if (req.query.eventId && booking.eventId !== req.query.eventId) return false;
     if (req.query.status && !String(req.query.status).split(',').includes(booking.status)) return false;
     return true;
-  });
+  };
+  let values = visible.filter(matchesQuery);
   if (isStaff(req.actor) && String(req.query.status || '').split(',').includes('TENTATIVELY_HELD')) {
     values=values.filter(row=>row.status!=='TENTATIVELY_HELD' || workflows.effective(row,require('../clock').now()));
     const summaries=new Map();
-    for(const booking of values.filter(row=>row.eventId)) if(!summaries.has(booking.eventId)) summaries.set(booking.eventId,await workflows.summary(req,booking.eventId));
+    for(const booking of values) if(!summaries.has(booking.eventId)) summaries.set(booking.eventId,await workflows.summary(req,booking.eventId,{allowMissingEvent:true}));
     values=values.map(row=>summaries.get(row.eventId)?.items.find(item=>item.id===row.id) || row);
+    const checkedAt=require('../clock').now();
+    values=values.filter(row=>matchesQuery(row) && (row.status!=='TENTATIVELY_HELD' || row.effectiveStatus!=='EXPIRED' && workflows.effective(row,checkedAt)));
   }
   return res.json({ items: values, total: values.length });
 });
@@ -102,6 +105,18 @@ router.get('/availability', auth, requireAnyPermission('venues.view'), async (re
 });
 router.get('/events/:eventId/summary',auth,bookingAccess,async(req,res)=>res.json(await workflows.summary(req,req.params.eventId)));
 router.get('/events/:eventId/venue-search',auth,ordinaryCreatePermission,async(req,res)=>res.json(await workflows.search(req,req.params.eventId,req.query)));
+router.get('/conflicts',auth,operationalBlockPermission,async(req,res)=>{
+  if(req.query.venueId!==undefined && !text(req.query.venueId)) return validationError(res,{venueId:['Use a venue ID']});
+  return res.json(await workflows.conflictReport(req,req.query));
+});
+router.post('/rechecks',auth,operationalBlockPermission,async(req,res)=>{
+  const body=req.body || {},errors={};
+  if(!text(body.venueId)) errors.venueId=['Venue is required'];
+  if(!Number.isSafeInteger(body.version) || body.version<1) errors.version=['Refresh to use the current venue version'];
+  if(!text(body.reason)) errors.reason=['Recheck reason is required'];
+  if(Object.keys(errors).length) return validationError(res,errors);
+  return res.json(await workflows.staffRecheck(req,body));
+});
 
 router.post('/', auth, createPermission, async (req, res) => {
   const key = req.get('idempotency-key');
@@ -144,6 +159,13 @@ router.get('/:id', auth, bookingAccess, async (req, res) => {
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
   if (!await assignmentAccess(req, res, booking.eventId)) return;
   return res.json(booking);
+});
+
+router.delete('/:id',auth,bookingAccess,async(req,res)=>{
+  const booking=await store.getBooking(req.params.id);
+  if(!booking) return res.status(404).json({error:'Booking not found'});
+  if(!await assignmentAccess(req,res,booking.eventId)) return;
+  return res.set('Allow','GET, PUT').status(405).json({error:{code:'METHOD_NOT_ALLOWED',message:'Bookings and their history are retained. Use the authorized arrangement-change workflow.'}});
 });
 
 router.put('/:id', auth, bookingAccess, async (req, res) => {
