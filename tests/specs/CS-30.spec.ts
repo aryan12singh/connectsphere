@@ -372,6 +372,7 @@ describe('CS-30 — TC-CS30-11 coordinator decision actions', () => {
     const wrapper = await mountIndexPage()
     const rejects = wrapper.findAll('button').filter(b => b.text() === 'Reject')
     expect(rejects.length).toBe(1)
+    await wrapper.find('#decision-notes').setValue('Not feasible') // a reason is required, so the failure comes from the service
     await rejects[0]!.trigger('click')
     await wrapper.vm.$nextTick()
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -406,6 +407,29 @@ describe('CS-30 — TC-CS30-11 coordinator decision actions', () => {
       await new Promise(resolve => setTimeout(resolve, 0))
       const post = detailMocks.useFetch.mock.calls.find(([url]) => url === '/api/events/req-1/decision')!
       expect((post[1] as { body?: Record<string, unknown> }).body).toMatchObject({ decision: 'approve', version: 1 })
+    }
+    finally {
+      reload.mockRestore()
+    }
+  })
+})
+describe('CS-30 — TC-CS30-13 rejection reason', () => {
+  it('blocks Reject without a reason and sends the typed reason when there is one', async () => {
+    showQueue()
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
+    detailMocks.decisionResponse.value = { id: 'req-1', status: 'REJECTED' }
+    const wrapper = await mountIndexPage()
+    try {
+      const reject = () => wrapper.findAll('button').find(b => b.text() === 'Reject')!
+      await reject().trigger('click')
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(wrapper.text()).toMatch(/reason is required to reject/i)
+      expect(detailMocks.useFetch.mock.calls.some(([url]) => url === '/api/events/req-1/decision')).toBe(false)
+      await wrapper.find('#decision-notes').setValue('Not feasible')
+      await reject().trigger('click')
+      await new Promise(resolve => setTimeout(resolve, 0))
+      const post = detailMocks.useFetch.mock.calls.find(([url]) => url === '/api/events/req-1/decision')!
+      expect((post[1] as { body?: Record<string, unknown> }).body).toMatchObject({ decision: 'reject', reason: 'Not feasible', version: 1 })
     }
     finally {
       reload.mockRestore()

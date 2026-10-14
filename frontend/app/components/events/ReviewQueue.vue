@@ -122,12 +122,19 @@ async function decide(decision: 'approve' | 'reject' | 'amendments', reason?: st
   const item = selected.value
   if (!item || deciding.value)
     return
+  // The text box under the details is the reason for a rejection (and an
+  // optional note for an approval). Amendments pass their own reason in.
+  const text = (reason ?? notes.value).trim()
+  if (decision === 'reject' && !text) {
+    decisionError.value = 'A reason is required to reject this request.'
+    return
+  }
   deciding.value = true
   decisionError.value = ''
   try {
     const { data, error } = await useFetch(`/api/events/${item.id}/decision`, {
       method: 'POST',
-      body: { decision, version: item.version, ...(reason ? { reason } : {}) },
+      body: { decision, version: item.version, ...(text ? { reason: text } : {}) },
     })
     if (error.value || !data.value) {
       decisionError.value = 'Could not record your decision. Please try again.'
