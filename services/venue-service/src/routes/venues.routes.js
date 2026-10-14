@@ -3,7 +3,7 @@ const { requireAuth, requireAnyPermission, internalOnly } = require('../auth');
 const store = require('../store');
 const bookingClient = require('../bookingClient');
 const config = require('../config');
-const { VENUE_TYPES, LAYOUTS, text, validateVenue, normaliseVenue, validateHours } = require('../validation');
+const { VENUE_TYPES, LAYOUTS, text, validateVenue, normaliseVenue, validateHours,validateLegacyBuffers } = require('../validation');
 
 const router = express.Router();
 const auth = requireAuth();
@@ -43,6 +43,27 @@ router.post('/', auth, manage, async (req, res) => {
   return res.status(201).json(venue);
 });
 
+router.get('/:id/legacy-buffer-context',auth,manage,async(req,res)=>res.json(await bookingClient.legacyBuffers(req.params.id)));
+router.get('/:id/buffer-status',auth,manage,async(req,res)=>{
+  const venue=await store.getVenue(req.params.id);
+  if(!venue)return res.status(404).json({error:'Venue not found'});
+  let canEdit=!venue.buffersLockedAt;
+  if(!canEdit && !venue.legacyBufferConfigurationPending){
+    const actions=(await store.listHistory(venue.id)).map(h=>h.action);
+    if(actions.includes('VENUE_BUFFERS_LOCKED') && !actions.includes('LEGACY_BUFFERS_CONFIGURED')){
+      const checked=await bookingClient.legacyBuffers(venue.id,undefined,'buffer-status');
+      if(checked.venueId!==venue.id || checked.version!==venue.version || typeof checked.everConfirmed!=='boolean')return res.status(409).json({error:{code:'STALE_VENUE',message:'Venue changed. Reload before editing'}});
+      canEdit=!checked.everConfirmed;
+    }
+  }
+  return res.json({venueId:venue.id,version:venue.version,canEdit});
+});
+router.put('/:id/legacy-buffers',auth,manage,async(req,res)=>{
+  const errors=validateLegacyBuffers(req.body);
+  if(Object.keys(errors).length)return validationError(res,errors);
+  return res.json(await bookingClient.legacyBuffers(req.params.id,{version:req.body.version,setupMinutes:req.body.setupMinutes,turnaroundMinutes:req.body.turnaroundMinutes,reason:text(req.body.reason),communications:req.body.communications,actor:{id:req.actor.id,role:req.actor.role}}));
+});
+
 router.get('/:id/history', auth, view, async (req, res) => res.json({ venueId: req.params.id, items: await store.listHistory(req.params.id) }));
 
 router.get('/:id/operating-hours', auth, view, async (req, res) => {
@@ -75,6 +96,10 @@ router.put('/:id', auth, manage, async (req, res) => {
   if (req.body.version!==undefined && (!Number.isSafeInteger(req.body.version)||req.body.version<1)) return validationError(res,{version:['Use the current venue version']});
   const input = {...normaliseVenue(req.body),version:req.body.version,
     setupMinutes:req.body.setupMinutes,turnaroundMinutes:req.body.turnaroundMinutes};
+  if(venue.buffersLockedAt && !venue.legacyBufferConfigurationPending && ((input.setupMinutes ?? venue.setupMinutes)!==venue.setupMinutes || (input.turnaroundMinutes ?? venue.turnaroundMinutes)!==venue.turnaroundMinutes)){
+    if(!Number.isSafeInteger(input.version)||input.version<1)return validationError(res,{version:['Current venue version is required']});
+    return res.json(await bookingClient.legacyBuffers(venue.id,{input,actor:{id:req.actor.id,role:req.actor.role}},'buffer-fence-recovery'));
+  }
   return res.json(await store.replaceVenue(venue.id, input, req.actor));
 });
 

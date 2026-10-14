@@ -89,4 +89,12 @@ function validateHours(body) {
   return errors;
 }
 
-module.exports = { VENUE_TYPES, LAYOUTS, WEEKDAYS, text, validateVenue, normaliseVenue, validateHours };
+function validateLegacyBuffers(body){
+  const errors={};
+  if(!Number.isSafeInteger(body?.version)||body.version<1)errors.version=['Current venue version is required'];
+  for(const key of ['setupMinutes','turnaroundMinutes'])if(!Number.isSafeInteger(body?.[key])||body[key]<0||body[key]>config.maxBufferMinutes)errors[key]=[`Use whole minutes from 0 to ${config.maxBufferMinutes}`];
+  if(!text(body?.reason)||text(body.reason).length>1000)errors.reason=['Use a configuration reason of 1–1000 characters'];
+  if(!Array.isArray(body?.communications))errors.communications=['Record communication for affected Events'];
+  return errors;
+}
+module.exports = { VENUE_TYPES, LAYOUTS, WEEKDAYS, text, validateVenue, normaliseVenue, validateHours,validateLegacyBuffers };

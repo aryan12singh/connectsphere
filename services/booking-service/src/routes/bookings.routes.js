@@ -123,6 +123,7 @@ router.post('/', auth, createPermission, async (req, res) => {
   const key = req.get('idempotency-key');
   const body = req.body || {};
   const errors = validateBooking(body);
+  if(body.expiresAt===null && (!body.status || body.status==='TENTATIVELY_HELD'))errors.expiresAt=['Omit the deadline to use the default; a supplied deadline must be valid'];
   for(const field of ['setupMinutes','turnaroundMinutes']) if (body[field]!==undefined) errors[field]=['Buffers are configured on the venue, not per booking'];
   if (!hasPermission(req.actor, 'venue_bookings.decide') && !text(body.eventId)) errors.eventId = ['Event is required for coordinator bookings'];
   if (!key) errors.idempotencyKey = ['Idempotency-Key header is required'];

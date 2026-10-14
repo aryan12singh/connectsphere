@@ -17,7 +17,7 @@ module.exports = {
   // tests opt into DATA_MODE=memory explicitly so they remain deterministic.
   dataMode,
   databaseUrl,
-  // Team-agreed defaults; questions on confirmation action and initial buffer locking remain separate.
+  // Team-agreed defaults; the Coordinator confirmation action remains pending.
   holdHours,
   allowTouching: process.env.VENUE_ALLOW_TOUCHING !== 'false',
   allowExpiryAtSetup: process.env.VENUE_ALLOW_EXPIRY_AT_SETUP !== 'false',

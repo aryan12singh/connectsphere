@@ -95,12 +95,15 @@ describe('CS-37 — persisted, checked venue holds',()=>{
     expect(f.bookings.listBookings()).toEqual([])
     expect(f.bookings.state.activities).toEqual([])
   })
-  it('TC-CS37-14 refuses an expired supplied deadline without any writes',async()=>{
+  it('TC-CS37-14 derives an omitted deadline but refuses null, malformed or past supplied deadlines without writes',async()=>{
     const x=await setup()
-    const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'invalid-expiry'},body:{...x.body,expiresAt:'2026-01-01T00:00:00.000Z'}})
-    expect(r.status).toBe(422)
-    expect(r.body.error.fields.expiresAt).toEqual(expect.any(Array))
-    expect(f.bookings.listBookings()).toEqual([])
+    for(const expiresAt of [null,'not-a-deadline','2026-01-01T00:00:00.000Z']){
+      const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'invalid-expiry-'+String(expiresAt)},body:{...x.body,expiresAt}})
+      expect(r.status).toBe(422);expect(r.body.error.fields.expiresAt).toEqual(expect.any(Array));expect(f.bookings.listBookings()).toEqual([])
+    }
+    vi.spyOn(require('../../services/booking-service/src/clock'),'now').mockReturnValue(new Date('2026-12-20T13:30:00.000Z'))
+    const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'derived-expiry'},body:x.body})
+    expect(r.status).toBe(201);expect(r.body.expiresAt).toBe('2026-12-21T01:30:00.000Z')
   })
   it('TC-CS37-11 lets Venue Staff extend an active hold once with deadline history and a version guard',async()=>{
     const x=await setup()

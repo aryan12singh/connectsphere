@@ -4,7 +4,7 @@ export default defineEventHandler(async (event) => {
   const segments = pathSegments(event)
   if (segments.length < 1)
     throw createError({ statusCode: 404, statusMessage: 'Venue endpoint not found' })
-  if (segments.length > 2 || (segments.length === 2 && segments[1] !== 'operating-hours'))
+  if (segments.length > 2 || (segments.length === 2 && !['operating-hours','legacy-buffers'].includes(segments[1]!)))
     throw createError({ statusCode: 404, statusMessage: 'Venue endpoint not found' })
 
   return await kongBffFetch(event, `/venues/${segmentPath(segments)}`, {

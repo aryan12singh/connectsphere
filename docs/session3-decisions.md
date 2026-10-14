@@ -4,11 +4,14 @@ Received and reconciled 14 October 2026. Source: `Session 3 - Clarification Answ
 
 These answers supersede contradictory Week 7 working assumptions, not dated evidence of previous behaviour. Jira CS-76 owns remaining decisions and CS-77 the shared API/lifecycle design.
 
-## Remaining decisions
+## Subsequent PO direction and remaining decision
 
-- Rows 4/6: buffers cannot be changed once set versus once venue confirmed. Confirm the exact lock point and initial configuration of existing venues. Unrestricted edits are not accepted Session 3 behaviour.
-- Row 10: confirm whether requesting a venue is the Coordinator confirmation action or whether an additional action is required before Staff approval.
+- Buffer question 1 is resolved by the PO's reply relayed by Aryan on 14 October 2026: buffers lock after the first venue booking is confirmed, allowing Venue Staff to edit them beforehand. For existing bookings, Staff may perform initial configuration after communicating with the current Event Coordinator, who in turn communicates with the Event Organiser. The implementation records Staff attestation of that chain per affected Event; it does not independently verify external communication. The guarded legacy opportunity is one use, and configuration retains approvals and triggers occupied-window/conflict rechecks. See the [policy register](venue-policy-decisions.md).
+- Coordinator question 2 remains pending: row 10 still requires confirmation of whether requesting a venue is the Coordinator confirmation action or whether an additional action is required before Staff approval. The PO said they would confirm this subsequently; no answer is inferred here.
 - Policies 3–6 were agreed by Aryan on 14 October 2026: 72-hour holds with one Staff-approved extension of at most 24 hours following a Coordinator request; 24-hour/expiry notices; explicit Event attendance with per-session room allocations; scoped Leads and recorded cross-scope handover; configurable 0–480 whole-minute buffers. See the [policy register](venue-policy-decisions.md) for exact rules and ownership. These team decisions do not amend the customer transcript below.
+- Internal test reconciliation authorized by Aryan on 14 October: capacity is a hard search filter, including partial matches; an omitted hold deadline derives the agreed default of 72 hours capped at setup start. Explicitly invalid/past deadlines are rejected. These implementation/test decisions do not amend the transcript or resolve question 2.
+
+The authoritative answer transcript below remains byte-for-byte as transcribed from the spreadsheet. The later PO direction supersedes the conflicting buffer lock wording for prospective implementation; dated execution records remain historical.
 
 ## Authoritative answer transcript
 

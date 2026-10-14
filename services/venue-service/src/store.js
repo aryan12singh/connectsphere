@@ -40,6 +40,7 @@ function toApiVenue(venue) {
     turnaroundMinutes: venue.turnaroundMinutes ?? 0,
     version: venue.version ?? 1,
     buffersLockedAt: iso(venue.buffersLockedAt) ?? null,
+    legacyBufferConfigurationPending:venue.legacyBufferConfigurationPending===true,
     operatingHours: toApiHours(venue.operatingHours),
     createdAt: iso(venue.createdAt),
     updatedAt: iso(venue.updatedAt),
@@ -154,12 +155,32 @@ async function lockBuffers(idValue,version,actor) {
   return prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM venues WHERE id=${idValue} FOR UPDATE`;return locked(await tx.venue.findUnique({where:{id:idValue},include:{operatingHours:true}}),tx);});
 }
 
-function replaceVenue(idValue, input, actor) {
+async function configureLegacyBuffers(idValue,input,actor){
+  async function save(current,tx){
+    if(!current)return null;
+    checkVersion(current,input.version);
+    if(!current.legacyBufferConfigurationPending)throw Object.assign(new Error('Initial coordinated configuration is no longer available'),{status:409,code:'LEGACY_CONFIGURATION_CLOSED'});
+    const stamp=new Date(),data={setupMinutes:input.setupMinutes,turnaroundMinutes:input.turnaroundMinutes,legacyBufferConfigurationPending:false,buffersLockedAt:current.buffersLockedAt || stamp};
+    const changes={before:{setupMinutes:current.setupMinutes,turnaroundMinutes:current.turnaroundMinutes},after:{setupMinutes:input.setupMinutes,turnaroundMinutes:input.turnaroundMinutes},communications:input.communications};
+    if(!tx){const saved={...current,...data,buffersLockedAt:iso(data.buffersLockedAt),version:current.version+1,updatedAt:stamp.toISOString()};state.venues.set(idValue,saved);recordHistory(idValue,actor,'LEGACY_BUFFERS_CONFIGURED',input.reason,changes);enqueueRecheck(saved,actor,input.reason);return saved;}
+    const saved=await tx.venue.update({where:{id:idValue},data:{...data,version:{increment:1}},include:{operatingHours:true}});
+    await tx.venueHistory.create({data:{venueId:idValue,actorId:actor.id,actorRole:actor.role,action:'LEGACY_BUFFERS_CONFIGURED',reason:input.reason,changes:safeJson(changes)}});
+    await enqueueRecheck(toApiVenue(saved),actor,input.reason,tx);
+    return toApiVenue(saved);
+  }
+  if(isMemory)return save(state.venues.get(idValue),null);
+  return prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM venues WHERE id=${idValue} FOR UPDATE`;return save(await tx.venue.findUnique({where:{id:idValue},include:{operatingHours:true}}),tx);});
+}
+
+function recoverableFence(current,actions){return Boolean(current.buffersLockedAt && !current.legacyBufferConfigurationPending && actions.includes('VENUE_BUFFERS_LOCKED') && !actions.includes('LEGACY_BUFFERS_CONFIGURED'));}
+function replaceVenue(idValue, input, actor,options={}) {
   if (isMemory) {
     const current = state.venues.get(idValue);
     if (!current) return null;
     checkVersion(current,input.version);
-    checkBufferLock(current,input);
+    const recover=options.recoverFence && recoverableFence(current,state.history.filter(row=>row.venueId===idValue).map(row=>row.action));
+    if(options.recoverFence && !recover)throw Object.assign(new Error('This venue does not have an uncommitted confirmation fence'),{status:409,code:'VENUE_BUFFERS_LOCKED'});
+    if(!recover)checkBufferLock(current,input);
     const updated = {
       ...current, name: input.name, address: input.address, capacity: input.capacity,
       venueType: input.venueType, supportedLayouts: [...input.supportedLayouts],
@@ -168,10 +189,11 @@ function replaceVenue(idValue, input, actor) {
       setupMinutes: input.setupMinutes ?? current.setupMinutes ?? 0,
       turnaroundMinutes: input.turnaroundMinutes ?? current.turnaroundMinutes ?? 0,
       version: (current.version ?? 1) + 1,
+      ...(recover?{buffersLockedAt:null}:{}),
       operatingHours: input.operatingHours.map((hour) => ({ ...hour, id: hour.id || id(), venueId: idValue })),
     };
     state.venues.set(idValue, updated);
-    recordHistory(idValue, actor, 'VENUE_UPDATED', input.reason || 'Venue updated', { before: current, after: updated });
+    recordHistory(idValue, actor, recover?'BUFFER_FENCE_RECOVERED':'VENUE_UPDATED', input.reason || 'Venue updated', { before: current, after: updated });
     enqueueRecheck(updated,actor,input.reason || 'Venue updated');
     return updated;
   }
@@ -180,7 +202,9 @@ function replaceVenue(idValue, input, actor) {
     const current = await tx.venue.findUnique({ where: { id: idValue }, include: { operatingHours: true } });
     if (!current) return null;
     checkVersion(current,input.version);
-    checkBufferLock(current,input);
+    const recover=options.recoverFence && recoverableFence(current,(await tx.venueHistory.findMany({where:{venueId:idValue},select:{action:true}})).map(row=>row.action));
+    if(options.recoverFence && !recover)throw Object.assign(new Error('This venue does not have an uncommitted confirmation fence'),{status:409,code:'VENUE_BUFFERS_LOCKED'});
+    if(!recover)checkBufferLock(current,input);
     await tx.venue.update({
       where: { id: idValue },
       data: {
@@ -191,6 +215,7 @@ function replaceVenue(idValue, input, actor) {
         setupMinutes: input.setupMinutes ?? current.setupMinutes ?? 0,
         turnaroundMinutes: input.turnaroundMinutes ?? current.turnaroundMinutes ?? 0,
         version: { increment: 1 },
+        ...(recover?{buffersLockedAt:null}:{}),
       },
     });
     await tx.venueOperatingHour.deleteMany({ where: { venueId: idValue } });
@@ -210,7 +235,7 @@ function replaceVenue(idValue, input, actor) {
     await tx.venueHistory.create({
       data: {
         venueId: idValue, actorId: actor.id, actorRole: actor.role,
-        action: 'VENUE_UPDATED', reason: input.reason || 'Venue updated',
+        action: recover?'BUFFER_FENCE_RECOVERED':'VENUE_UPDATED', reason: input.reason || 'Venue updated',
         changes: safeJson({ before, after }),
       },
     });
@@ -348,7 +373,7 @@ function deleteVenue(idValue,version) {
 }
 
 module.exports = {
-  state, reset, createVenue, replaceVenue, lockBuffers, setOperatingHours, listHistory,
+  state, reset, createVenue, replaceVenue, lockBuffers, configureLegacyBuffers, setOperatingHours, listHistory,
   getVenue, listVenues, deleteVenue, isMemory,
   enqueueInitialBufferRechecks,pendingRechecks,finishRecheck,
 };

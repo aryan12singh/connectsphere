@@ -18,6 +18,83 @@ beforeEach(() => store.reset())
 afterAll(async () => { await api.close(); store.reset() })
 
 describe('CS-84 — venue buffer HTTP contract', () => {
+  it('TC-CS84-36 an uncommitted confirmation fence can be recovered before the first successful booking',async()=>{
+    const f=require('../helpers/venue-workflow.cjs'),stack=await f.stack(),native=globalThis.fetch
+    let intercept:any
+    try {
+      const {event}=await f.eventFixture(),v=await stack.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
+      const held=await stack.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'recover-fence'},body:{eventId:event.id,venueId:v.body.id,title:'Conference',reason:'Recovery fixture',startAt:event.startAt,endAt:event.endAt,timeZone:event.timeZone}})
+      let lose=true
+      intercept=vi.spyOn(globalThis,'fetch').mockImplementation(async(url:any,options:any)=>{const result=await native(url,options);if(String(url).endsWith('/buffer-lock') && lose){lose=false;throw new Error('Lost acknowledgement')}return result})
+      expect((await stack.booking.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Approval interrupted'}})).status).toBe(503)
+      const current=(await stack.venue.http('/venues/'+v.body.id,{headers:f.staff})).body
+      const edited=await stack.venue.http('/venues/'+v.body.id,{method:'PUT',headers:f.staff,body:{...current,setupMinutes:60,reason:'Adjust before first confirmed booking'}})
+      expect(edited.status).toBe(200);expect(edited.body.buffersLockedAt).toBeNull()
+      expect(f.bookings.getBooking(held.body.id).status).toBe('TENTATIVELY_HELD')
+      expect((await stack.booking.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Successful current approval'}})).status).toBe(200)
+      const locked=(await stack.venue.http('/venues/'+v.body.id,{headers:f.staff})).body
+      expect((await stack.venue.http('/venues/'+v.body.id,{method:'PUT',headers:f.staff,body:{...locked,setupMinutes:90,reason:'Forbidden after first confirmation'}})).status).toBe(409)
+    } finally {intercept?.mockRestore();await stack.close()}
+  })
+  it('TC-CS84-37 the legacy form collects both communication steps before emitting a versioned configuration',async()=>{
+    const context={venueId:'legacy',version:3,affectedEvents:[{eventId:'event',title:'Conference',coordinatorId:'coordinator',organiserId:'organiser',bookings:[{id:'booking',version:2}]}]}
+    const w=await mountSuspended(VenueForm,{props:{venue:{version:3,buffersLockedAt:'2026-10-14T00:00:00Z',legacyBufferConfigurationPending:true},legacyContext:context} as any})
+    expect(w.find('#legacy-setup-minutes').exists()).toBe(true)
+    await w.get('#legacy-setup-minutes').setValue('60');await w.get('#legacy-buffer-reason').setValue('Initial agreed configuration')
+    const save=w.findAll('button').find(b=>b.text()==='Save initial buffers')!
+    expect(save.attributes('disabled')).toBeDefined()
+    await w.get('#legacy-staff-event').trigger('click');await w.get('#legacy-organiser-event').trigger('click');await w.get('#legacy-note-event').setValue('Coordinator discussed the change with Organiser on 14 October')
+    await save.trigger('click')
+    expect(w.emitted('configureLegacy')?.[0]?.[0]).toMatchObject({version:3,setupMinutes:60,reason:'Initial agreed configuration',communications:[{eventId:'event',coordinatorId:'coordinator',organiserId:'organiser',staffInformedCoordinator:true,coordinatorInformedOrganiser:true}]})
+    await w.get('#legacy-setup-minutes').setValue('90')
+    expect(save.attributes('disabled')).toBeDefined()
+    expect(w.get('#legacy-note-event').element.value).toBe('')
+    await w.get('#legacy-staff-event').trigger('click');await w.get('#legacy-organiser-event').trigger('click');await w.get('#legacy-note-event').setValue('Current values communicated again')
+    expect(save.attributes('disabled')).toBeUndefined()
+    await w.get('#legacy-turnaround-minutes').setValue('60');expect(save.attributes('disabled')).toBeDefined();expect(w.get('#legacy-note-event').element.value).toBe('')
+    w.unmount()
+  })
+  it('TC-CS84-40 an active legacy commitment with no Event contact cannot silently bypass communication',async()=>{
+    const f=require('../helpers/venue-workflow.cjs'),stack=await f.stack()
+    try {
+      const v=await stack.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
+      const row=f.venues.state.venues.get(v.body.id);row.buffersLockedAt='2026-10-14T00:00:00Z';row.legacyBufferConfigurationPending=true
+      await f.bookings.createBooking({eventId:null,venueId:row.id,requestedById:'old-import',title:'Inherited booking',reason:'Import fixture',status:'CONFIRMED',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'},{id:'staff',role:'VENUE_STAFF'},'legacy-orphan')
+      const before=JSON.stringify(f.venues.state)
+      expect((await stack.venue.http(`/venues/${row.id}/legacy-buffer-context`,{headers:f.staff})).status).toBe(503)
+      expect((await stack.venue.http(`/venues/${row.id}/legacy-buffers`,{method:'PUT',headers:f.staff,body:{version:1,setupMinutes:60,turnaroundMinutes:60,reason:'Unverified contacts',communications:[]}})).status).toBe(503)
+      expect(JSON.stringify(f.venues.state)).toBe(before)
+    }finally{await stack.close()}
+  })
+  it('TC-CS84-35 legacy configuration requires current Event communication and consumes its allowance once',async()=>{
+    const f=require('../helpers/venue-workflow.cjs'),stack=await f.stack()
+    try {
+      const {event}=await f.eventFixture(),v=await stack.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({setupMinutes:0,turnaroundMinutes:0})})
+      const held=await stack.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'legacy-communication'},body:{eventId:event.id,venueId:v.body.id,title:'Conference',reason:'Existing commitment',startAt:event.startAt,endAt:event.endAt,timeZone:event.timeZone}})
+      expect((await stack.booking.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Approved before policy rollout'}})).status).toBe(200)
+      // A pre-policy migration fixture; public clients cannot grant this allowance.
+      f.venues.state.venues.get(v.body.id).legacyBufferConfigurationPending=true
+      const context=await stack.venue.http(`/venues/${v.body.id}/legacy-buffer-context`,{headers:f.staff})
+      expect(context.status).toBe(200)
+      expect(context.body.affectedEvents).toMatchObject([{eventId:event.id,coordinatorId:'coordinator',organiserId:'organiser',bookings:[{id:held.body.id,version:2}]}])
+      const before=JSON.stringify({venue:f.venues.getVenue(v.body.id),history:f.venues.state.history,outbox:f.venues.state.outbox})
+      const body={version:context.body.version,setupMinutes:30,turnaroundMinutes:45,reason:'Coordinated initial configuration',communications:context.body.affectedEvents.map((e:any)=>({...e,staffInformedCoordinator:true,coordinatorInformedOrganiser:true,note:'Discussed with assigned Coordinator; Coordinator confirmed Organiser informed.'}))}
+      for(const communications of [[],body.communications.map((e:any)=>({...e,coordinatorId:'former'})),body.communications.map((e:any)=>({...e,coordinatorInformedOrganiser:false})),body.communications.map((e:any)=>({...e,note:' '}))]) {
+        expect((await stack.venue.http(`/venues/${v.body.id}/legacy-buffers`,{method:'PUT',headers:f.staff,body:{...body,communications}})).status).toBeGreaterThanOrEqual(400)
+        expect(JSON.stringify({venue:f.venues.getVenue(v.body.id),history:f.venues.state.history,outbox:f.venues.state.outbox})).toBe(before)
+      }
+      expect((await stack.venue.http(`/venues/${v.body.id}/legacy-buffers`,{method:'PUT',headers:f.coordinator,body})).status).toBe(403)
+      const changed=await stack.venue.http(`/venues/${v.body.id}/legacy-buffers`,{method:'PUT',headers:f.staff,body})
+      expect(changed.status).toBe(200);expect(changed.body).toMatchObject({setupMinutes:30,turnaroundMinutes:45,legacyBufferConfigurationPending:false})
+      expect(changed.body.buffersLockedAt).toBeTruthy()
+      expect(f.bookings.getBooking(held.body.id)).toMatchObject({status:'CONFIRMED',version:2})
+      const audit=f.venues.state.history.find((h:any)=>h.action==='LEGACY_BUFFERS_CONFIGURED')
+      expect(audit).toMatchObject({actorId:'staff',changes:{communications:[{eventId:event.id,coordinatorId:'coordinator',organiserId:'organiser',staffInformedCoordinator:true,coordinatorInformedOrganiser:true}]}})
+      expect(f.venues.state.outbox).toHaveLength(1)
+      expect((await stack.venue.http(`/venues/${v.body.id}/legacy-buffers`,{method:'PUT',headers:f.staff,body:{...body,version:changed.body.version}})).status).toBe(409)
+      expect((await stack.venue.http(`/venues/${v.body.id}`,{method:'PUT',headers:f.staff,body:{...changed.body,setupMinutes:90,reason:'No later override'}})).status).toBe(409)
+    } finally {await stack.close()}
+  })
   it('TC-CS84-31 confirmation freezes buffers while unrelated venue maintenance remains available',async()=>{
     const f=require('../helpers/venue-workflow.cjs'),stack=await f.stack()
     try{

@@ -24,4 +24,12 @@ async function removeUnusedVenue(venueId,actor) {
   if(result.venueId!==venueId || result.deleted!==true)throw new Error('Invalid venue removal acknowledgement');
   return {blockingCount:0,deleted:true};
 }
-module.exports = { blockingBookingCount,removeUnusedVenue };
+async function legacyBuffers(venueId,body,endpoint=body?'legacy-buffers':'legacy-buffer-context'){
+  let response;
+  try {response=await fetch(`${config.bookingServiceUrl}/internal/${endpoint}/${encodeURIComponent(venueId)}`,{method:body?'PUT':'GET',headers:{'content-type':'application/json','x-internal-api-key':config.internalApiKey},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(15000)});}
+  catch {throw Object.assign(new Error('Unable to verify current bookings. Reload before retrying.'),{status:503,code:'BOOKING_SERVICE_UNAVAILABLE'});}
+  const result=await response.json();
+  if(!response.ok)throw Object.assign(new Error(result.error?.message || 'Unable to configure buffers'),{status:response.status,code:result.error?.code || 'BOOKING_SERVICE_UNAVAILABLE'});
+  return result;
+}
+module.exports = { blockingBookingCount,removeUnusedVenue,legacyBuffers };

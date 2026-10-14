@@ -7,6 +7,20 @@ beforeEach(()=>f.reset())
 afterEach(()=>vi.restoreAllMocks())
 afterAll(async()=>{await api.close()})
 describe('CS-36 — live venue search',()=>{
+  it('TC-CS36-03 returns an empty result when no room fits attendance, without under-capacity fallback',async()=>{
+    const {event}=await f.eventFixture({expectedAttendance:1000,minimumCapacity:1000})
+    await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({capacity:300,facilities:[]})})
+    const result=await api.booking.http(`/venue-bookings/events/${event.id}/venue-search`,{headers:f.coordinator})
+    expect(result.status).toBe(200);expect(result.body.items).toEqual([]);expect(f.bookings.listBookings()).toEqual([])
+  })
+  it('TC-CS36-10 includes the exact capacity boundary and excludes attendance one above it',async()=>{
+    const {event}=await f.eventFixture({expectedAttendance:300,minimumCapacity:300}),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({capacity:300})})
+    for(const attendance of [299,300,301]){
+      const result=await api.booking.http(`/venue-bookings/events/${event.id}/venue-search?expectedAttendance=${attendance}`,{headers:f.coordinator})
+      expect(result.status).toBe(200);expect(result.body.items.map((room:any)=>room.id)).toEqual(attendance<=300?[v.body.id]:[])
+    }
+    expect(f.bookings.listBookings()).toEqual([])
+  })
   it('TC-CS36-23 venue maintenance during checked deletion requires a fresh deletion check',async()=>{
     const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({turnaroundMinutes:0})})
     const held=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'delete-edit-race'},body:{eventId:event.id,venueId:v.body.id,title:'Retained approval',reason:'Checked removal race',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
