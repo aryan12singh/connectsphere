@@ -337,4 +337,3 @@ No auto assing or reset. Event coodinator will do the changes if necessary
 **Question:** Should Organisers see each venue separately, and see when one becomes unavailable?
 
 **Answer:** Yes. Organisers should see each venue in the event separately, including its status and any unavailability that affects their plans, together with the next action.
-
