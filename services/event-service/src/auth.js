@@ -1,5 +1,6 @@
 const config = require('./config');
 const path = require('node:path');
+const { authenticate } = require('./identity');
 const ROLE_PERMISSIONS = require(process.env.ROLE_PERMISSIONS_PATH || path.resolve(__dirname, '../../utils/role-permissions'));
 
 function testActor(req) {
@@ -10,32 +11,32 @@ function testActor(req) {
   return { id, role, permissions: ROLE_PERMISSIONS[role] || [] };
 }
 
-async function resolveActor(req) {
-  const local = testActor(req);
-  if (local) return local;
-  const authorization = req.get('authorization') || '';
-  if (!authorization.startsWith('Bearer ')) return null;
-  const response = await fetch(`${config.authServiceUrl}/internal/sessions/validate`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-internal-api-key': config.internalApiKey },
-    body: JSON.stringify({ token: authorization.slice(7) }),
-  });
-  if (!response.ok) return null;
-  const result = await response.json();
-  if (!result.valid || !result.user) return null;
-  return { ...result.user, permissions: Array.isArray(result.permissions) ? result.permissions : [] };
-}
-
+// Real path: ask auth-service to validate the bearer token. identity.js fails
+// closed (401 bad/expired session, 403 no recognised role, 503 if the
+// permission list is missing or malformed) and never falls back to roles.
 function requireAuth() {
   return async (req, res, next) => {
-    try {
-      req.actor = await resolveActor(req);
-      if (!req.actor) return res.status(401).json({ error: { code: 'UNAUTHENTICATED', message: 'Not logged in or session has expired' } });
-      return next();
-    } catch (error) {
-      console.error(error);
-      return res.status(503).json({ error: { code: 'AUTH_UNAVAILABLE', message: 'Authentication service unavailable' } });
+    const local = testActor(req);
+    if (local) { req.actor = local; return next(); }
+    // identity.authenticate reports problems through next(error); turn them
+    // into the standard JSON error body so every caller sees the same shape.
+    return authenticate(req, res, (error) => {
+      if (!error) return next();
+      const status = error.status || 500;
+      if (status >= 500 && status !== 503) console.error('event-service auth error', error.code || error.name);
+      return res.status(status).json({ error: { code: error.code || 'INTERNAL', message: status === 500 ? 'Unable to check access. Please retry.' : error.message } });
+    });
+  };
+}
+
+// Caller must hold EVERY listed permission (missing one => 403).
+function requirePermission(...permissions) {
+  return (req, res, next) => {
+    const held = req.actor?.permissions || [];
+    if (!permissions.every((permission) => held.includes(permission))) {
+      return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You do not have permission to do this' } });
     }
+    return next();
   };
 }
 
@@ -60,4 +61,4 @@ function internalOnly(req, res, next) {
   return next();
 }
 
-module.exports = { ROLE_PERMISSIONS, resolveActor, requireAuth, requireRole, requireAnyPermission, internalOnly };
+module.exports = { ROLE_PERMISSIONS, requireAuth, requireRole, requireAnyPermission, requirePermission, internalOnly };

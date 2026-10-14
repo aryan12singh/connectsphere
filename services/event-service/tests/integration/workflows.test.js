@@ -29,6 +29,8 @@ before(async()=>{
    const token=JSON.parse(text).token;const user=actors[token];res.writeHead(user?200:401,{'content-type':'application/json'});const permissions=permissionOverrides.has(token)?permissionOverrides.get(token):[...new Set((user?.roles||[user?.role]).flatMap(role=>defaultPermissions[role]||[]))];res.end(JSON.stringify({valid:!!user,user,permissions}));
   } else if(req.url==='/internal/coordinators'){
    res.writeHead(lookupFail?503:200,{'content-type':'application/json'});res.end(JSON.stringify({coordinators:noCoordinators?[]:directoryEntries??[{id:'test-coord',createdAt:'2020-01-01'},{id:'test-coord2',createdAt:'2021-01-01'}]}));
+  } else if(req.url.startsWith('/internal/users?')){
+   res.writeHead(200,{'content-type':'application/json'});const users=[actors.coord,actors.coord2].map(u=>({id:u.id,firstName:u.id,lastName:'Coordinator',email:u.id+'@example.test',roles:['EVENT_COORDINATOR'],isActive:true}));res.end(JSON.stringify({users,page:1,pageSize:25,total:users.length}));
   } else {res.writeHead(404);res.end('{}');}
  });await new Promise(r=>identity.listen(0,'127.0.0.1',r));
  process.env.AUTH_SERVICE_URL=process.env.USER_SERVICE_URL='http://127.0.0.1:'+identity.address().port;
@@ -233,4 +235,43 @@ test('TC-CS26-14 booking access authorises the currently assigned Coordinator an
   assert.equal((await call('GET',`/events/${event.id}/booking-access`,undefined,who)).status,403);
   assert.equal((await call('GET',`/events/${event.id}/booking-access`,undefined,next)).status,200);
  } finally {await prisma.eventRequest.update({where:{id:row.id},data:{currentCoordinatorId:actors[who].id}});}
+});
+
+test('CS30: reassign hands the request on atomically, with history, outbox and one current assignment',async()=>{
+ const r=await create();const current=r.body.currentCoordinatorId==='test-coord'?'coord':'coord2';const other=current==='coord'?'coord2':'coord';
+ const path=`/event-requests/${r.body.id}/reassign`;
+ const queue=await call('GET','/event-requests/review-queue',undefined,current);assert.ok(queue.body.items.find(x=>x.id===r.body.id).allowedActions.includes('reassign'));
+ // Only the current Coordinator may reassign; the Organiser and the other Coordinator may not.
+ assert.equal((await call('POST',path,{coordinatorId:actors[other].id,version:r.body.version},'owner')).status,403);
+ assert.equal((await call('POST',path,{coordinatorId:actors[other].id,version:r.body.version},other)).status,403);
+ // Bad targets change nothing.
+ for(const bad of ['',actors[current].id,actors.owner.id,'nobody'])assert.ok([422].includes((await call('POST',path,{coordinatorId:bad,version:r.body.version},current)).status),bad);
+ assert.equal((await call('POST',path,{coordinatorId:actors[other].id},current)).status,422);
+ assert.equal(await prisma.coordinatorAssignment.count({where:{eventRequestId:r.body.id,reason:'REASSIGNED'}}),0);
+ const moved=await call('POST',path,{coordinatorId:actors[other].id,version:r.body.version},current);
+ assert.equal(moved.status,200);assert.equal(moved.body.currentCoordinatorId,actors[other].id);assert.equal(moved.body.version,r.body.version+1);
+ const rows=await prisma.coordinatorAssignment.findMany({where:{eventRequestId:r.body.id,revokedAt:null}});assert.equal(rows.length,1);assert.equal(rows[0].coordinatorId,actors[other].id);assert.equal(rows[0].assignedById,actors[current].id);
+ assert.equal(await prisma.outbox.count({where:{aggregateId:r.body.id,eventType:'CoordinatorReassigned'}}),1);
+ const h=await call('GET',`/event-requests/${r.body.id}/activity`,undefined,other);assert.ok(h.body.items.some(a=>a.action==='COORDINATOR_REASSIGNED'&&a.actorId===actors[current].id));
+ // The former Coordinator loses decision access; the new one can decide.
+ assert.equal((await call('POST',`/event-requests/${r.body.id}/decision`,{action:'APPROVE',version:moved.body.version},current)).status,403);
+ assert.equal((await call('POST',`/event-requests/${r.body.id}/decision`,{action:'APPROVE',version:moved.body.version},other)).status,200);
+});
+test('CS30: parallel reassignments with one version cannot both win; replay with the same key is one effect',async()=>{
+ const r=await create();const current=r.body.currentCoordinatorId==='test-coord'?'coord':'coord2';const other=current==='coord'?'coord2':'coord';
+ const path=`/event-requests/${r.body.id}/reassign`;const key=randomUUID();
+ const same=await Promise.all([1,2,3].map(()=>call('POST',path,{coordinatorId:actors[other].id,version:r.body.version},current,key)));
+ assert.ok(same.every(x=>x.status===200));assert.equal(await prisma.outbox.count({where:{aggregateId:r.body.id,eventType:'CoordinatorReassigned'}}),1);
+ const r2=await create();const c2=r2.body.currentCoordinatorId==='test-coord'?'coord':'coord2';const o2=c2==='coord'?'coord2':'coord';
+ const p2=`/event-requests/${r2.body.id}/reassign`;
+ const rs=await Promise.all([1,2].map(()=>call('POST',p2,{coordinatorId:actors[o2].id,version:r2.body.version},c2)));
+ assert.equal(rs.filter(x=>x.status===200).length,1);assert.ok(rs.some(x=>[403,409].includes(x.status)));
+ assert.equal(await prisma.coordinatorAssignment.count({where:{eventRequestId:r2.body.id,revokedAt:null}}),1);
+});
+test('CS30: closed requests cannot be reassigned and the Coordinator list shows names',async()=>{
+ const r=await create();const current=r.body.currentCoordinatorId==='test-coord'?'coord':'coord2';const other=current==='coord'?'coord2':'coord';
+ const rejected=await call('POST',`/event-requests/${r.body.id}/decision`,{action:'REJECT',text:'No',version:r.body.version},current);assert.equal(rejected.status,200);
+ assert.equal((await call('POST',`/event-requests/${r.body.id}/reassign`,{coordinatorId:actors[other].id,version:rejected.body.version},current)).status,409);
+ const list=await call('GET','/event-requests/coordinators',undefined,current);assert.equal(list.status,200);assert.ok(list.body.items.every(c=>c.id&&c.name));assert.equal(list.body.items.length,2);
+ assert.equal((await call('GET','/event-requests/coordinators',undefined,'owner')).status,403);
 });

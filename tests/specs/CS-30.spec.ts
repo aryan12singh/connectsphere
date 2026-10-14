@@ -197,6 +197,7 @@ const QUEUE_ITEMS = [
     id: 'req-1',
     title: 'Autumn Product Summit',
     status: 'SUBMITTED',
+    allowedActions: ['approve', 'reject', 'amendments', 'reassign'],
     submittedAt: '2026-09-20T07:00:00.000Z',
     coordinatorId: null,
     organiser: { name: 'Priya Nair', company: 'TechCorp' },
@@ -378,16 +379,60 @@ describe('CS-30 — TC-CS30-11 coordinator decision actions', () => {
     expect(wrapper.text()).toContain('Autumn Product Summit')
   })
 
-  it('shows a disabled Change coordinator action left of Reject', async () => {
+  it('shows an enabled Change coordinator action left of Reject when the service allows reassignment', async () => {
     showQueue()
     const wrapper = await mountIndexPage()
     const actions = wrapper.findAll('button').filter(b =>
       ['Approve', 'Ask for amendments', 'Change coordinator', 'Reject'].includes(b.text()),
     )
     expect(actions.map(b => b.text())).toEqual(['Approve', 'Ask for amendments', 'Change coordinator', 'Reject'])
-    const change = actions[2]!
-    expect(change.attributes('disabled')).not.toBe(undefined)
-    expect(change.attributes('title')).toMatch(/not available yet/i)
+    expect(actions[2]!.attributes('disabled')).toBe(undefined)
+  })
+
+  it('hides Change coordinator when the service does not offer reassign', async () => {
+    showQueue()
+    detailMocks.queueResponse.value = { requests: [{ ...QUEUE_ITEMS[0]!, allowedActions: ['approve', 'reject', 'amendments'] }] }
+    const wrapper = await mountIndexPage()
+    expect(wrapper.findAll('button').some(b => b.text() === 'Change coordinator')).toBe(false)
+  })
+
+  it('sends the request version with a decision so a stale decision is rejected', async () => {
+    showQueue()
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
+    detailMocks.decisionResponse.value = { id: 'req-1', status: 'APPROVED' }
+    const wrapper = await mountIndexPage()
+    try {
+      await wrapper.findAll('button').find(b => b.text() === 'Approve')!.trigger('click')
+      await new Promise(resolve => setTimeout(resolve, 0))
+      const post = detailMocks.useFetch.mock.calls.find(([url]) => url === '/api/events/req-1/decision')!
+      expect((post[1] as { body?: Record<string, unknown> }).body).toMatchObject({ decision: 'approve', version: 1 })
+    }
+    finally {
+      reload.mockRestore()
+    }
+  })
+})
+describe('CS-30 — TC-CS30-12 reassignment through the real BFF, service and database', () => {
+  it('hands a request to another Coordinator, who then owns it; the old one is locked out', async () => {
+    api.directory.push(api.users.coord2.id)
+    try {
+      const r = await api.call('POST', '/api/events', valid)
+      const current = r.body.coordinatorId === api.users.coord.id ? 'coord' : 'coord2'
+      const other = current === 'coord' ? 'coord2' : 'coord'
+      const names = await api.call('GET', '/api/coordinators', undefined, current)
+      expect(names.status).toBe(200)
+      expect(names.body.items.map((c: { name: string }) => c.name)).toEqual(expect.arrayContaining(['coord Synthetic', 'coord2 Synthetic']))
+      const moved = await api.call('POST', `/api/events/${r.body.id}/reassign`, { coordinatorId: api.users[other].id, version: r.body.version }, current)
+      expect(moved.status).toBe(200)
+      expect(moved.body.coordinatorId).toBe(api.users[other].id)
+      expect((await api.call('GET', `/api/events/${r.body.id}`, undefined, current)).status).toBe(403)
+      expect((await api.call('GET', `/api/events/${r.body.id}`, undefined, other)).status).toBe(200)
+      expect((await api.call('POST', `/api/events/${r.body.id}/reassign`, { coordinatorId: api.users[current].id, version: r.body.version }, current)).status).toBe(403)
+      expect((await api.call('POST', `/api/events/${r.body.id}/reassign`, { version: 1 }, other)).status).toBe(422)
+    }
+    finally {
+      api.directory.splice(1)
+    }
   })
 })
 // Replaces the mock seed/API harness; retains owner/contact/queue/decision scope.

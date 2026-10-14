@@ -1,6 +1,6 @@
 <script setup lang="ts">
 const requestFetch=useRequestFetch()
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -23,6 +23,7 @@ export interface QueueItem {
   status: 'SUBMITTED' | 'RETURNED_FOR_AMENDMENT' | 'APPROVED' | 'REJECTED'
   submittedAt: string | null
   coordinatorId: string | null
+  organiserId?: string
   organiser: QueueOrganiser
   eventName: string
   purpose: string
@@ -126,7 +127,7 @@ async function decide(decision: 'approve' | 'reject' | 'amendments', reason?: st
   try {
     const { data, error } = await useFetch(`/api/events/${item.id}/decision`, {
       method: 'POST',
-      body: { decision, ...(reason ? { reason } : {}) },
+      body: { decision, version: item.version, ...(reason ? { reason } : {}) },
     })
     if (error.value || !data.value) {
       decisionError.value = 'Could not record your decision. Please try again.'
@@ -139,6 +140,75 @@ async function decide(decision: 'approve' | 'reject' | 'amendments', reason?: st
   }
   finally {
     deciding.value = false
+  }
+}
+
+// ── Change coordinator ────────────────────────────────────────────────
+// Names come from event-service (which gets them from user-service). The list
+// is only loaded when the Coordinator opens the popover.
+interface CoordinatorOption { id: string, name: string }
+const reassignPopoverOpen = ref(false)
+const coordinatorOptions = ref<CoordinatorOption[]>([])
+const coordinatorNames = ref<Record<string, string>>({})
+const newCoordinatorId = ref('')
+const reassigning = ref(false)
+
+const reassignChoices = computed(() => coordinatorOptions.value.filter(option =>
+  option.id !== selected.value?.coordinatorId && option.id !== selected.value?.organiserId))
+
+function canReassign(item: QueueItem) {
+  return item.allowedActions?.includes('reassign') ?? false
+}
+
+function coordinatorLabel(item: QueueItem) {
+  if (!item.coordinatorId)
+    return 'Unassigned'
+  return coordinatorNames.value[item.coordinatorId] ?? 'Assigned'
+}
+
+async function loadCoordinators(showError = false) {
+  try {
+    const result = await requestFetch<{ items?: CoordinatorOption[] }>('/api/coordinators')
+    coordinatorOptions.value = Array.isArray(result?.items) ? result.items : []
+    coordinatorNames.value = Object.fromEntries(coordinatorOptions.value.map(option => [option.id, option.name]))
+  }
+  catch {
+    coordinatorOptions.value = []
+    if (showError)
+      decisionError.value = 'Could not load the list of Coordinators. Please try again.'
+  }
+}
+
+// Names for the "Assigned coordinator" line; the page still works without them.
+onMounted(() => { void loadCoordinators() })
+
+async function openReassignPopover() {
+  newCoordinatorId.value = ''
+  decisionError.value = ''
+  reassignPopoverOpen.value = true
+  await loadCoordinators(true)
+}
+
+async function submitReassign() {
+  const item = selected.value
+  if (!item || !newCoordinatorId.value || reassigning.value)
+    return
+  reassigning.value = true
+  decisionError.value = ''
+  try {
+    await requestFetch(`/api/events/${item.id}/reassign`, {
+      method: 'POST',
+      body: { coordinatorId: newCoordinatorId.value, version: item.version },
+    })
+    reassignPopoverOpen.value = false
+    // The request now belongs to someone else, so it leaves this queue.
+    window.location.reload()
+  }
+  catch (e) {
+    decisionError.value = apiErrorMessage(e, 'Could not change the coordinator. Please retry.')
+  }
+  finally {
+    reassigning.value = false
   }
 }
 
@@ -231,7 +301,7 @@ async function submitAmendments() {
                 Assigned coordinator
               </dt>
               <dd class="mt-0.5 text-sm">
-                {{ selected.coordinatorId ? 'Assigned' : 'Unassigned' }}
+                {{ coordinatorLabel(selected) }}
               </dd>
             </div>
           </dl>
@@ -269,14 +339,33 @@ async function submitAmendments() {
                 </form>
               </PopoverContent>
             </Popover>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled
-              title="Coordinator reassignment is not available yet"
-            >
-              Change coordinator
-            </Button>
+            <Popover v-if="canReassign(selected)" v-model:open="reassignPopoverOpen">
+              <PopoverAnchor as-child>
+                <Button size="sm" variant="secondary" data-testid="change-coordinator" :disabled="deciding || reassigning" @click="openReassignPopover">
+                  Change coordinator
+                </Button>
+              </PopoverAnchor>
+              <PopoverContent side="bottom" align="start" class="w-80">
+                <div class="grid gap-1">
+                  <h3 class="text-sm font-semibold">Hand this request to another Coordinator</h3>
+                  <p class="text-xs text-muted-foreground">It will leave your queue and appear in theirs.</p>
+                </div>
+                <form class="grid gap-3" @submit.prevent="submitReassign">
+                  <Field class="gap-2">
+                    <FieldLabel for="new-coordinator">New coordinator <span aria-hidden="true">*</span></FieldLabel>
+                    <select id="new-coordinator" v-model="newCoordinatorId" data-testid="new-coordinator" required class="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      <option value="" disabled>Choose a Coordinator…</option>
+                      <option v-for="option in reassignChoices" :key="option.id" :value="option.id">{{ option.name }}</option>
+                    </select>
+                  </Field>
+                  <p v-if="hasDecisionError" role="alert" class="text-xs text-destructive">{{ decisionError }}</p>
+                  <div class="flex justify-end gap-2">
+                    <Button type="button" size="sm" variant="ghost" @click="reassignPopoverOpen = false">Cancel</Button>
+                    <Button type="submit" size="sm" data-testid="confirm-reassign" :disabled="reassigning || !newCoordinatorId">Change</Button>
+                  </div>
+                </form>
+              </PopoverContent>
+            </Popover>
             <Button v-if="canDecide(selected)" size="sm" variant="destructive" :disabled="deciding" @click="decide('reject')">
               Reject
             </Button>
