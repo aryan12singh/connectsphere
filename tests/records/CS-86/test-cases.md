@@ -73,3 +73,7 @@ Date of Creation: 2026-10-13T20:39:13+08:00. These cases exercise the production
 | TC-CS86-27 | AC1/6: failure isolation | 22 imported venues; one Booking response fails; drain bounded batches | All 21 healthy venues finish; failed intent remains retryable | PostgreSQL store/worker with explicit Booking failure fixture |
 
 Initial-rollout fixtures remove the atomic new-Venue empty-catalogue completion proof to represent a legacy/imported catalogue. A newly created API Venue is already configured and has no inherited commitments; its first configuration edit retains the existing single-action retry contract (TC-CS84-15). Rollout receipts use completion time/reason, distinct from actual configuration or inbox message delivery.
+
+## Session 3 fixture reconciliation — 14 October 2026
+
+Customer rows4/6 prohibit later buffer edits. Regression fixtures requiring old inconsistent buffer/booking snapshots now seed explicit isolated historical data; they do not exercise or endorse a public post-confirmation buffer edit. Recheck, conflict, immutability and deletion assertions remain. CS-36-23 now verifies deletion CAS using permitted name maintenance. The new buffer denial/fence cases are TC-CS84-31 through34. Dated earlier execution records are unchanged.

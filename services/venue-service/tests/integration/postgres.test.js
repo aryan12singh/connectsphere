@@ -141,3 +141,26 @@ test('TC-CS86-27 a failing rollout cannot starve later healthy venues across bou
     assert.equal(await prisma.venueBufferRollout.count({where:{venue:{name:{in:names}},completedAt:{not:null}}}),21)
   } finally {global.fetch=native}
 })
+
+test('TC-CS84-32 PostgreSQL buffer fence serializes edits, persists across reconnect and is idempotent',async()=>{
+  const created=await api.http('/venues',{method:'POST',headers:staff,body:{...values,name:'Fence race',setupMinutes:30,turnaroundMinutes:45}});
+  assert.equal(created.status,201);const id=created.body.id,internal={'x-internal-api-key':'change-me-dev-internal-key'};
+  const lockBody={version:1,actor:{id:'venue-staff',role:'VENUE_STAFF'}};
+  const pair=await Promise.all([
+    api.http('/internal/venues/'+id+'/buffer-lock',{method:'POST',headers:internal,body:lockBody}),
+    api.http('/venues/'+id,{method:'PUT',headers:staff,body:{...values,version:1,setupMinutes:60,turnaroundMinutes:45}}),
+  ]);
+  assert.deepEqual(pair.map(r=>r.status).sort(),[200,409]);
+  let current=await prisma.venue.findUnique({where:{id}});
+  if(!current.buffersLockedAt){assert.equal((await api.http('/internal/venues/'+id+'/buffer-lock',{method:'POST',headers:internal,body:{...lockBody,version:current.version}})).status,200);}
+  await prisma.$disconnect();current=await prisma.venue.findUnique({where:{id}});assert.ok(current.buffersLockedAt);
+  const before=await prisma.venueHistory.count({where:{venueId:id}});
+  const retry=await api.http('/internal/venues/'+id+'/buffer-lock',{method:'POST',headers:internal,body:{...lockBody,version:current.version}});
+  assert.equal(retry.status,200);assert.equal(retry.body.version,current.version);
+  assert.equal(await prisma.venueHistory.count({where:{venueId:id}}),before);
+  assert.equal((await api.http('/venues/'+id,{method:'PUT',headers:staff,body:{...values,version:current.version,setupMinutes:90,turnaroundMinutes:45}})).status,409);
+  assert.equal((await prisma.venue.findUnique({where:{id}})).setupMinutes,current.setupMinutes);
+  assert.equal(await prisma.venueHistory.count({where:{venueId:id}}),before);
+  assert.equal((await api.http('/venues/'+id,{method:'PUT',headers:staff,body:{...values,version:current.version,name:'Still maintainable',setupMinutes:current.setupMinutes,turnaroundMinutes:current.turnaroundMinutes}})).status,200);
+  assert.equal((await api.http('/internal/venues/'+id+'/buffer-lock',{method:'POST',headers:staff,body:lockBody})).status,403);
+});

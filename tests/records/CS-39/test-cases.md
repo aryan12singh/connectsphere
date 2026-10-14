@@ -28,3 +28,7 @@ Contract alignment: requests use the distinct Planning Event ID; pending venue s
 | TC-CS39-09 | Parallel occupied-window commitments | Two eligible requests for same Venue/time | Submit concurrently with distinct idempotency keys | One201/one409; one booking/activity/request intent | HTTP / memory and PostgreSQL | 2026-10-12T19:13:47+08:00 |
 | TC-CS39-10 | Combined-role direct-confirmation bypass | Caller has Coordinator and Venue Staff roles | Create ordinary booking with CONFIRMED or conflict override | 403; no direct-confirmed record or overridden commitment | Real HTTP / memory | 2026-10-12T19:13:47+08:00 |
 | TC-CS39-11 | Operational closure and explicit release | Existing independent holds | Staff closes an overlapping interval, then releases it | Flag affected records without cancelling them; release clears managed flags | Real HTTP / memory | 2026-10-12T19:13:47+08:00 |
+
+## Session 3 fixture reconciliation — 14 October 2026
+
+Customer rows4/6 prohibit later buffer edits. Regression fixtures requiring old inconsistent buffer/booking snapshots now seed explicit isolated historical data; they do not exercise or endorse a public post-confirmation buffer edit. Recheck, conflict, immutability and deletion assertions remain. CS-36-23 now verifies deletion CAS using permitted name maintenance. The new buffer denial/fence cases are TC-CS84-31 through34. Dated earlier execution records are unchanged.

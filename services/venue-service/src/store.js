@@ -39,6 +39,7 @@ function toApiVenue(venue) {
     setupMinutes: venue.setupMinutes ?? 0,
     turnaroundMinutes: venue.turnaroundMinutes ?? 0,
     version: venue.version ?? 1,
+    buffersLockedAt: iso(venue.buffersLockedAt) ?? null,
     operatingHours: toApiHours(venue.operatingHours),
     createdAt: iso(venue.createdAt),
     updatedAt: iso(venue.updatedAt),
@@ -132,11 +133,33 @@ function createVenue(input, actor) {
   });
 }
 
+function checkBufferLock(current,input) {
+  if(current.buffersLockedAt && ((input.setupMinutes ?? current.setupMinutes)!==current.setupMinutes || (input.turnaroundMinutes ?? current.turnaroundMinutes)!==current.turnaroundMinutes))throw Object.assign(new Error('Setup and turnaround are locked for this venue. Other venue details can still be maintained.'),{status:409,code:'VENUE_BUFFERS_LOCKED'});
+}
+
+// This monotonic fence is established before Booking can persist CONFIRMED.
+// An uncertain cross-service failure must never automatically unlock buffers.
+async function lockBuffers(idValue,version,actor) {
+  async function locked(current,tx) {
+    if(!current)return null;
+    checkVersion(current,version);
+    if(current.buffersLockedAt)return toApiVenue(current);
+    const stamp=new Date(),changes={buffersLockedAt:stamp.toISOString()};
+    if(!tx){const saved={...current,buffersLockedAt:stamp.toISOString(),version:current.version+1,updatedAt:stamp.toISOString()};state.venues.set(idValue,saved);recordHistory(idValue,actor,'VENUE_BUFFERS_LOCKED','Fence venue buffers before booking confirmation',changes);return saved;}
+    const saved=await tx.venue.update({where:{id:idValue},data:{buffersLockedAt:stamp,version:{increment:1}},include:{operatingHours:true}});
+    await tx.venueHistory.create({data:{venueId:idValue,actorId:actor.id,actorRole:actor.role,action:'VENUE_BUFFERS_LOCKED',reason:'Fence venue buffers before booking confirmation',changes}});
+    return toApiVenue(saved);
+  }
+  if(isMemory)return locked(state.venues.get(idValue),null);
+  return prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM venues WHERE id=${idValue} FOR UPDATE`;return locked(await tx.venue.findUnique({where:{id:idValue},include:{operatingHours:true}}),tx);});
+}
+
 function replaceVenue(idValue, input, actor) {
   if (isMemory) {
     const current = state.venues.get(idValue);
     if (!current) return null;
     checkVersion(current,input.version);
+    checkBufferLock(current,input);
     const updated = {
       ...current, name: input.name, address: input.address, capacity: input.capacity,
       venueType: input.venueType, supportedLayouts: [...input.supportedLayouts],
@@ -157,6 +180,7 @@ function replaceVenue(idValue, input, actor) {
     const current = await tx.venue.findUnique({ where: { id: idValue }, include: { operatingHours: true } });
     if (!current) return null;
     checkVersion(current,input.version);
+    checkBufferLock(current,input);
     await tx.venue.update({
       where: { id: idValue },
       data: {
@@ -324,7 +348,7 @@ function deleteVenue(idValue,version) {
 }
 
 module.exports = {
-  state, reset, createVenue, replaceVenue, setOperatingHours, listHistory,
+  state, reset, createVenue, replaceVenue, lockBuffers, setOperatingHours, listHistory,
   getVenue, listVenues, deleteVenue, isMemory,
   enqueueInitialBufferRechecks,pendingRechecks,finishRecheck,
 };

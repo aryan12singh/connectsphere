@@ -13,12 +13,13 @@ global.fetch = async (url, options) => {
   if (String(url).includes('/booking-access') && assignmentUnavailable) throw new Error('Isolated upstream outage');
   if (String(url).includes('/booking-access')) return { ok: assigned && String(url).includes('/assigned-event/'), status: assigned && String(url).includes('/assigned-event/') ? 200 : 403, json: async () => ({ id: 'assigned-event' }) };
   if (String(url).includes('/planning-context')) return {ok:true,status:200,json:async()=>({id:'assigned-event',eventRequestId:'request-fixture',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',organiserId:'organiser',startAt:'2026-10-01T00:00:00.000Z',endAt:'2026-12-31T23:59:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',venueType:'PHYSICAL',accessibilityNeeds:[],venueRequirements:'',equipmentNeeds:[]})};
+  if (String(url).endsWith('/buffer-lock')) {const id=decodeURIComponent(new URL(url).pathname.split('/')[3]),before=await (await global.fetch(new URL('/venues/'+id+'/internal',url))).json(),saved={...before,version:before.buffersLockedAt?before.version:before.version+1,buffersLockedAt:before.buffersLockedAt || new Date().toISOString()};venueOverrides.set(id,saved);return {ok:true,status:200,json:async()=>saved};}
   if (String(url).includes('/venues/') && String(url).endsWith('/internal')) {const id=decodeURIComponent(new URL(url).pathname.split('/')[2]);return {ok:true,status:200,json:async()=>({id,name:'Isolated venue',version:1,capacity:100,venueType:'PHYSICAL',isActive:true,setupMinutes:0,turnaroundMinutes:0,supportedLayouts:['THEATRE'],facilities:[],accessibilityTags:[],timeZone:'Asia/Singapore',operatingHours:['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].map(weekday=>({weekday,isClosed:false,opensAt:'00:00',closesAt:'23:59'})),...(venueOverrides.get(id) || {})})};}
   return nativeFetch(url, options);
 };
 const headers = { authorization: 'Bearer isolated-fixture', 'idempotency-key': randomUUID() };
 const values = { eventId: 'assigned-event', venueId: 'pg-venue', title: 'Early local Monday', reason: 'PG calendar verification', startAt: '2026-12-20T16:30:00Z', endAt: '2026-12-20T17:30:00Z', timeZone: 'Asia/Singapore', status: 'TENTATIVELY_HELD' };
-before(async () => { await prisma.venueBookingRequest.deleteMany(); api = await start(require('../../src/app')); });
+before(async () => { await prisma.eventPrimaryVenue.deleteMany(); await prisma.venueBookingRequest.deleteMany(); api = await start(require('../../src/app')); });
 after(async () => { global.fetch = nativeFetch; await api?.close(); await prisma.$disconnect(); });
 test('TC-CS34-07 UTC query for the complete local day returns its early Monday booking', async () => {
   actor = { id: 'coordinator', role: 'EVENT_COORDINATOR', roles: ['EVENT_COORDINATOR'], permissions: [...defaults.EVENT_COORDINATOR] };
@@ -221,4 +222,34 @@ test('TC-CS86-15 PostgreSQL failed conflict intent rolls back the entire inherit
   try{const r=await api.http('/venue-bookings/rechecks',{method:'POST',headers,body});assert.equal(r.status,500);assert.deepEqual(await prisma.venueBookingRequest.findMany({where:{venueId},orderBy:{id:'asc'}}),before);assert.deepEqual(await Promise.all([prisma.venueBookingActivity.count({where:{bookingId:{in:ids}}}),prisma.bookingOutbox.count({where:{aggregateId:{in:ids}}})]),counts);}
   finally{await prisma.$executeRawUnsafe('DROP TRIGGER cs_phase3_reject_conflict ON booking_outbox');await prisma.$executeRawUnsafe('DROP FUNCTION cs_phase3_reject_conflict()');}
   const retry=await api.http('/venue-bookings/rechecks',{method:'POST',headers,body});assert.equal(retry.status,200);assert.equal(retry.body.changed.length,2);
+});
+
+
+test('TC-CS87-24 PostgreSQL primary selection is atomic, durable and does not alter room approvals',async()=>{
+  coordinatorActor();
+  const rooms=[];
+  for(let i=0;i<2;i++){
+    const venueId='pg-primary-'+randomUUID();
+    const r=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId},body:independentValues(venueId)});
+    assert.equal(r.status,201);rooms.push(r.body);
+  }
+  const path='/venue-bookings/events/assigned-event/primary-venue';
+  const results=await Promise.all(rooms.map(room=>api.http(path,{method:'PUT',headers,body:{bookingId:room.id,bookingVersion:room.version,version:0}})));
+  assert.deepEqual(results.map(r=>r.status).sort(),[200,409]);
+  const saved=await prisma.eventPrimaryVenue.findUnique({where:{eventId:'assigned-event'}});
+  assert.equal(saved.version,1);assert.equal(saved.actorId,'coordinator');
+  assert.equal(await prisma.venueBookingActivity.count({where:{action:'PRIMARY_VENUE_SELECTED'}}),1);
+  const other=rooms.find(room=>room.id!==saved.bookingId);
+  const before=await prisma.venueBookingRequest.findMany({where:{id:{in:rooms.map(room=>room.id)}}});
+  const stale=await api.http(path,{method:'PUT',headers,body:{bookingId:other.id,bookingVersion:other.version+1,version:1}});
+  assert.equal(stale.status,409);
+  const changed=await api.http(path,{method:'PUT',headers,body:{bookingId:other.id,bookingVersion:other.version,version:1}});
+  assert.equal(changed.status,200);assert.equal(changed.body.version,2);
+  await prisma.$disconnect();
+  assert.equal((await prisma.eventPrimaryVenue.findUnique({where:{eventId:'assigned-event'}})).bookingId,other.id);
+  assert.deepEqual(await prisma.venueBookingRequest.findMany({where:{id:{in:rooms.map(room=>room.id)}}}),before);
+  assert.equal(await prisma.venueBookingActivity.count({where:{action:'PRIMARY_VENUE_SELECTED'}}),2);
+  actor={...actor,id:'replacement-outsider'};
+  try{assert.equal((await api.http(path,{method:'PUT',headers,body:{bookingId:saved.bookingId,bookingVersion:1,version:2}})).status,403);}finally{coordinatorActor();}
+  assert.equal((await prisma.eventPrimaryVenue.findUnique({where:{eventId:'assigned-event'}})).version,2);
 });

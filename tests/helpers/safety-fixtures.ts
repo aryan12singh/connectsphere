@@ -15,6 +15,7 @@ export function reworkProps() {
     feedback:{roundId:'round-1',round:1,decision:'REQUEST_CHANGES',reason:'The exit is obstructed',affectedAreas:['VENUE']},
     arrangements:[{area:'VENUE',label:'Main hall',ready:false},{area:'TECHNICAL',label:'Projector support',ready:true},{area:'EVENT_DETAILS',label:'Event details',ready:true}],
     currentRequirementsRevision:'requirements-5',readinessRequirementsRevision:'requirements-5',
+    coordinatorReviewRevision:'requirements-5',coordinatorReviewRoundId:'round-1',
     canViewFeedback:true,canResubmit:false,
   }
 }

@@ -7,7 +7,7 @@ import CoordinatorSafetyPreparation from '../safety/CoordinatorSafetyPreparation
 
 interface Room {id:string;eventId:string;venueId:string;venueName?:string;venueType?:string|null;venueCapacity?:number|null;title:string;reason:string;timeZone:string;status:string;effectiveStatus?:string;version:number;startAt:string;endAt:string;occupiedStart:string;occupiedEnd:string;expiresAt:string|null;expectedAttendance:number;layout:string;facilities?:string[];accessibilityNeeds?:string[];flags:string[]}
 interface Event {id:string;title:string;status:string;venueType?:string;currentCoordinatorId:string;startAt:string;endAt:string;timeZone:string;expectedAttendance:number;preferredLayout:string;accessibilityNeeds:string[];venueRequirements?:string}
-interface Summary {event:Event;items:Room[];venueReady:boolean;outstanding:Array<{bookingId:string|null;venueName?:string;reasons:string[]}>}
+interface Summary {primaryVenue?:{bookingId:string|null;version:number;available:boolean};event:Event;items:Room[];venueReady:boolean;outstanding:Array<{bookingId:string|null;venueName?:string;reasons:string[]}>}
 interface Match {id:string;name:string;address?:string;capacity:number|null;setupMinutes:number;turnaroundMinutes:number;match:'FULL'|'PARTIAL';gaps:string[];canRequest:boolean;occupiedStart:string;occupiedEnd:string}
 interface Option {value:string;label:string}
 const props=defineProps<{eventId:string}>()
@@ -62,6 +62,16 @@ async function search(){
   finally{loading.value=false}
 }
 async function request(venue:Match){if(!ready.value || !canArrange.value || posting.value || loading.value || !matches.value?.some(match=>match.id===venue.id) || !venue.canRequest || !form.reason.trim() || sourceRoom.value && !canChangeSource.value)return;posting.value=venue.id;try{const body={...(sourceRoom.value || {}),...criteria(),eventId:props.eventId,venueId:venue.id,title:sourceRoom.value?.title || data.value?.event.title || 'Event room',reason:form.reason.trim(),timeZone:data.value?.event.timeZone || 'Asia/Singapore',status:'TENTATIVELY_HELD'};if(sourceRoom.value){await requestFetch(`/api/bookings/${encodeURIComponent(sourceRoom.value.id)}`,{method:'PUT',body:{...body,version:sourceRoom.value.version}});await refresh();open.value=false;sourceRoom.value=null;matches.value=null}else{const signature=JSON.stringify(body);if(!requestKeys.has(signature))requestKeys.set(signature,crypto.randomUUID());await requestFetch('/api/bookings',{method:'POST',body,headers:{'Idempotency-Key':requestKeys.get(signature)!}});await refresh();requestKeys.delete(signature);await search()}}catch(caught){showError(caught,'Unable to save this venue arrangement');await refresh()}finally{posting.value=null}}
+async function selectPrimary(room:Room){
+  if(!ready.value || !canArrange.value || posting.value || room.eventId!==props.eventId)return
+  const eventId=props.eventId
+  posting.value=room.id
+  try{
+    await requestFetch(`/api/bookings/events/${encodeURIComponent(eventId)}/primary-venue`,{method:'PUT',body:{bookingId:room.id,bookingVersion:room.version,version:data.value?.primaryVenue?.version ?? 0}})
+    if(eventId===props.eventId)await refresh()
+  }catch(caught){showError(caught,'Unable to select the primary location');if(eventId===props.eventId)await refresh()}
+  finally{posting.value=null}
+}
 async function release(room:Room){if(!ready.value || !canArrange.value || posting.value || !releaseReasons[room.id]?.trim())return;posting.value=room.id;try{const path:string=`/api/bookings/${encodeURIComponent(room.id)}`;await $fetch(path,{method:'PUT',body:{...room,status:'CANCELLED',reason:releaseReasons[room.id]!.trim(),version:room.version}});releaseReasons[room.id]='';await refresh()}catch(caught){showError(caught,'Unable to release this booking');await refresh()}finally{posting.value=null}}
 </script>
 
@@ -74,9 +84,13 @@ async function release(room:Room){if(!ready.value || !canArrange.value || postin
       <ul v-if="data.outstanding.length" id="venue-outstanding" class="list-disc pl-5 text-sm text-muted-foreground"><li v-for="item in data.outstanding" :key="item.bookingId ?? 'none'">{{ item.venueName || item.bookingId || 'Venue booking' }}: {{ item.reasons.map(r => r.replaceAll('_',' ').toLowerCase()).join(', ') }}</li></ul>
       <p class="text-sm text-muted-foreground">Technical/support approval and a current Safety Officer review are also required before preparation.</p>
       <CoordinatorSafetyPreparation v-if="data.event.id === props.eventId && data.event.currentCoordinatorId === user?.id" :event-id="props.eventId" :event-title="data.event.title" :rooms="data.items" :venue-ready="data.venueReady" :outstanding="data.outstanding" />
+      <p v-if="!data.primaryVenue?.bookingId" class="text-sm text-muted-foreground">Choose a primary attendee location. Other rooms remain part of the Event.</p>
+      <p v-else-if="!data.primaryVenue.available" role="alert" class="text-sm">The selected primary location needs review before publication.</p>
       <p v-if="!data.items.length" class="text-sm text-muted-foreground">No venues requested yet.</p>
       <Card v-for="room in data.items" :key="room.id" class="existing-booking grid gap-3 p-5" :data-booking-id="room.id">
         <div class="flex flex-wrap items-start justify-between gap-2"><div><h3 class="font-semibold">{{ room.venueName || room.venueId }}</h3><p class="mt-1 break-all text-xs text-muted-foreground">Booking {{ room.id }}</p></div><span class="rounded-xl bg-muted px-3 py-1 text-sm">{{ status(room) }}</span></div>
+        <p v-if="data.primaryVenue?.bookingId === room.id" class="text-sm font-medium">Primary attendee location</p>
+        <Button v-else-if="canArrange && ['TENTATIVELY_HELD','CONFIRMED'].includes(room.effectiveStatus || room.status) && !room.flags.length" size="sm" variant="outline" :disabled="!ready || Boolean(posting) || loading || room.status === 'TENTATIVELY_HELD' && (!room.expiresAt || Date.parse(room.expiresAt) <= now)" @click="selectPrimary(room)">Make primary location</Button>
         <p class="text-sm">{{ room.expectedAttendance }} attendees · {{ room.layout }} layout</p><p class="text-sm">Event time: {{ format(room.startAt) }}–{{ format(room.endAt) }}</p><p class="text-sm text-muted-foreground">Occupied, including setup and turnaround: {{ format(room.occupiedStart) }}–{{ format(room.occupiedEnd) }} ({{ data.event.timeZone }})</p>
         <p v-if="room.expiresAt" class="text-sm">Hold expires {{ format(room.expiresAt) }} · {{ countdown(room) }}</p><p v-if="room.flags.length" role="alert" class="text-sm text-destructive">Needs attention: {{ room.flags.map(f => f.replaceAll('_',' ').toLowerCase()).join(', ') }}</p>
         <Button v-if="canArrange && room.status !== 'CANCELLED'" size="sm" variant="outline" :disabled="!ready || Boolean(posting) || loading" @click="findAlternatives(room)">Find alternatives</Button>

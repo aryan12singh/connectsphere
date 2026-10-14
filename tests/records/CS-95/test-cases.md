@@ -48,3 +48,12 @@ These added component cases deliberately cover only the available UI/validation 
 | TC-CS95-25 | AC3/4: missing feedback or malformed round | No review projection, or invalid review identifier | No private content for absent feedback; malformed proof never enables resubmission |
 | TC-CS95-26 | AC4/6: stale readiness wording | Affected Venue ready flag with older proof revision | Readiness not verified, never rework approved; resubmit disabled |
 | TC-CS95-27 | AC4: repeated same-error failure | Two identical failed resubmissions then a successful parent cycle | Each failure allows retry; success/duplicate clicks guarded; no false saved success |
+
+## Session 3 requirements — 14 October 2026
+
+Source: `docs/session3-decisions.md`, rows26/17/46/47/49/51. Earlier expected automatic reapproval wording is superseded by Coordinator-directed review; existing historical runs are preserved. Decision cases now require the complete reviewed checklist, and rejection identifies an affected venue arrangement. Execution results live in dated test-runs, not this specification.
+
+| Test ID | Scenario | Preconditions | Steps | Expected result | Layer |
+| --- | --- | --- | --- | --- | --- |
+| TC-CS95-28 | Coordinator-directed rework | Current readiness without recorded Coordinator review | Try resubmit; provide matching review round/revision | Blocked without review; enabled only with current proof; no automatic approval-reset claim | Nuxt component |
+| TC-CS95-29 | Organiser feedback privacy | Feedback includes internal notes and arrangements | Render Organiser audience | Only outcome and actionable reason; no private notes/internal arrangements/actions | Nuxt component |

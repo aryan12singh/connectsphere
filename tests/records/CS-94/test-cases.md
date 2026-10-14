@@ -50,3 +50,11 @@ These added component cases deliberately cover only the available UI/validation 
 | TC-CS94-27 | AC3/5: malformed decision data | Validate a non-string value whose conversion resembles Approve | Refused, never emitted as a valid decision |
 | TC-CS94-28 | AC5: unavailable current round | Null/loading round or invalid round identifier | UI remains usable and disabled; no crash or decision intent |
 | TC-CS94-29 | AC3/5: repeated same-error failure | Emit valid intent; two pending→failed cycles with identical error; then a successful parent cycle | Retry works after each failure; duplicate clicks/success remain guarded; reason retained |
+
+## Session 3 requirements — 14 October 2026
+
+Source: `docs/session3-decisions.md`, rows26/17/46/47/49/51. Earlier expected automatic reapproval wording is superseded by Coordinator-directed review; existing historical runs are preserved. Decision cases now require the complete reviewed checklist, and rejection identifies an affected venue arrangement. Execution results live in dated test-runs, not this specification.
+
+| Test ID | Scenario | Preconditions | Steps | Expected result | Layer |
+| --- | --- | --- | --- | --- | --- |
+| TC-CS94-30 | Structured Safety decision | Permitted current round and known rooms | Try approval without checklist; review seven factors; add public and private comments | No intent until all factors reviewed; separate trimmed comments and current round | Nuxt component |

@@ -24,8 +24,10 @@ async function inheritedPair(gapMinutes=15){
     const approved=await api.booking.http(`/venue-bookings/${r.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Room verified'}})
     expect(approved.status).toBe(200);rooms.push(approved.body)
   }
-  const edited=await api.venue.http(`/venues/${v.body.id}`,{method:'PUT',headers:f.staff,body:f.venueInput({setupMinutes:0,turnaroundMinutes:45,version:1})})
-  expect(edited.status).toBe(200)
+  // Session 3 forbids post-confirmation edits. Seed an inherited pre-rollout
+  // snapshot directly; this fixture is not a supported production mutation.
+  const edited={body:{...f.venues.getVenue(v.body.id),turnaroundMinutes:45,version:2}}
+  f.venues.state.venues.set(v.body.id,edited.body)
   return {event,venue:edited.body,rooms}
 }
 describe('CS-86 — preserve and recheck inherited commitments',()=>{
@@ -210,7 +212,7 @@ describe('CS-86 — preserve and recheck inherited commitments',()=>{
     const remote=await start(remoteApp),old=config.eventServiceUrl;config.eventServiceUrl=remote.base
     try{const r=await api.booking.http('/venue-bookings/rechecks',{method:'POST',headers:f.staff,body:{venueId:v.body.id,version:1,reason:'Delayed recheck'}});expect(r.status).toBe(200);expect(r.body.changed).not.toContain(held.body.id);expect(f.bookings.getBooking(held.body.id)).toEqual(held.body);expect(f.bookings.state.outbox.filter((row:any)=>row.aggregateId===held.body.id && row.kind==='VenueConflictChanged')).toEqual([])}finally{config.eventServiceUrl=old;await remote.close()}
   })
-  it('TC-CS86-01 flags both approved bookings after a buffer increase and clears them idempotently on resolution',async()=>{
+  it('TC-CS86-01 flags inherited approvals and clears them idempotently against a corrected historical snapshot',async()=>{
     const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({setupMinutes:0,turnaroundMinutes:0})}),rooms=[]
     for(let i=0;i<2;i++){
       const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':`recheck-${i}`},body:{eventId:event.id,venueId:v.body.id,title:`Room ${i}`,reason:'Conference',startAt:i?'2026-12-21T04:15:00.000Z':'2026-12-21T02:00:00.000Z',endAt:i?'2026-12-21T06:00:00.000Z':'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
@@ -218,8 +220,8 @@ describe('CS-86 — preserve and recheck inherited commitments',()=>{
       const approval=await api.booking.http(`/venue-bookings/${r.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Room verified'}})
       expect(approval.status).toBe(200);rooms.push(approval.body)
     }
-    const edited=await api.venue.http(`/venues/${v.body.id}`,{method:'PUT',headers:f.staff,body:f.venueInput({setupMinutes:0,turnaroundMinutes:45,version:1})})
-    expect(edited.status).toBe(200)
+    // Historical snapshot fixture, not a permitted post-confirmation edit.
+    f.venues.state.venues.set(v.body.id,{...f.venues.getVenue(v.body.id),turnaroundMinutes:45,version:2})
     const path='/internal/venue-rechecks',headers={'x-internal-api-key':'change-me-dev-internal-key'},body={venueId:v.body.id,version:2,actor:{id:'staff',role:'VENUE_STAFF'},reason:'Longer reset required'}
     const checked=await api.booking.http(path,{method:'POST',headers,body})
     expect(checked.status).toBe(200)
@@ -229,7 +231,8 @@ describe('CS-86 — preserve and recheck inherited commitments',()=>{
     expect((await api.booking.http(path,{method:'POST',headers,body})).status).toBe(200)
     expect(f.bookings.state.activities).toHaveLength(count)
     expect((await api.booking.http(path,{method:'POST',headers:f.coordinator,body})).status).toBe(403)
-    expect((await api.venue.http(`/venues/${v.body.id}`,{method:'PUT',headers:f.staff,body:f.venueInput({setupMinutes:0,turnaroundMinutes:15,version:2})})).status).toBe(200)
+    // A separately reviewed historical snapshot verifies idempotent flag clearing.
+    f.venues.state.venues.set(v.body.id,{...f.venues.getVenue(v.body.id),turnaroundMinutes:15,version:3})
     expect((await api.booking.http(path,{method:'POST',headers,body:{...body,version:3}})).status).toBe(200)
     for(const room of rooms)expect(f.bookings.getBooking(room.id)).toMatchObject({status:'CONFIRMED',flags:[],turnaroundMinutes:15,venueVersion:3})
     expect((await api.booking.http(`/venue-bookings/events/${event.id}/summary`,{headers:f.coordinator})).body.venueReady).toBe(true)

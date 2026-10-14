@@ -42,3 +42,14 @@ Source numeric placeholders (480 buffer minutes and 10,000 capacity) remain conf
 | Test Case ID | Scenario / AC | Pre-conditions | Steps | Expected result | Date of Creation |
 | --- | --- | --- | --- | --- | --- |
 | TC-CS84-18 | AC1/3/6: persistent removal fence | Real venue_test with current higher configuration version | Private DELETE with old/missing version | 409/422; catalogue, operating hours, immutable history and durable rechecks unchanged | 2026-10-13T19:02:26+08:00 |
+
+## Session 3 audit regressions — 14 October 2026
+
+Source: `docs/session3-decisions.md`, rows4/6/25/26. Old buffer-edit expectations after confirmation are superseded. These specifications do not imply execution or PO acceptance.
+
+| Test ID | Scenario and expected behavior | Layer |
+| --- | --- | --- |
+| TC-CS84-31 | Real HTTP confirmation fences buffers; late buffer write409; unrelated maintenance succeeds | Memory service stack and live desktop/mobile |
+| TC-CS84-32 | Concurrent PostgreSQL freeze/edit has one winner; retry is idempotent; reconnect retains fence; invalid late edit has no history write | Venue PostgreSQL HTTP |
+| TC-CS84-33 | Lost freeze acknowledgement leaves booking held and venue frozen; refreshed retry confirms with one fence history | Fault-injected HTTP |
+| TC-CS84-34 | Frozen controls disabled; unrelated fields remain available | Nuxt component |

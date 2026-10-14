@@ -56,3 +56,23 @@ The cases below preserve current scope and original source assertions. Date of C
 | --- | --- | --- | --- | --- | --- |
 | TC-CS87-20 | AC3/6: stale-move recovery | Selected room version1; failed PUT followed by refreshed version2 | Search/edit criteria, attempt move, retry search | Current selected bookingVersion2 sent; edited criteria preserved; stale matches invalidated | 2026-10-13T19:02:26+08:00 |
 | TC-CS87-21 | AC3/6: route identity freshness | Old Event summary while props switches to another Event | Change Event ID before its projection arrives | No arranging actions/mutations against the previous Event | 2026-10-13T19:02:26+08:00 |
+
+## Session 3 requirements — 14 October 2026
+
+Source: `docs/session3-decisions.md`, rows26/17/46/47/49/51. Earlier expected automatic reapproval wording is superseded by Coordinator-directed review; existing historical runs are preserved. Decision cases now require the complete reviewed checklist, and rejection identifies an affected venue arrangement. Execution results live in dated test-runs, not this specification.
+
+| Test ID | Scenario | Preconditions | Steps | Expected result | Layer |
+| --- | --- | --- | --- | --- | --- |
+| TC-CS87-22 | Versioned primary selection | Assigned Planning Event with two active rooms | Select, send stale selection, attempt unauthorized selection, switch room | Selection CAS enforced; Staff/other Coordinator denied; room approvals unchanged | HTTP memory |
+| TC-CS87-23 | Primary location UI | Current assigned Event and confirmed room | Choose primary and refresh | Versioned BFF payload; primary badge after authoritative read | Nuxt component |
+| TC-CS87-24 | Durable concurrent primary choice | Two rooms in isolated booking_test | Compete version0 selections; stale booking write; switch; reconnect DB; revoke assignment | One winner/history per successful selection; durable current choice; room versions unchanged; revoked writer denied | PostgreSQL HTTP |
+| TC-CS87-25 | Real primary selection | Live production Nuxt/BFF/auth/PostgreSQL with approved required room | Choose primary; reload; read summary; capture screenshot | Choice survives reload with correct bookingId/version; siblings retain status | Live desktop/mobile within CS-87 workflow |
+
+## Session 3 audit regressions — 14 October 2026
+
+Source: `docs/session3-decisions.md`, rows4/6/25/26. Old buffer-edit expectations after confirmation are superseded. These specifications do not imply execution or PO acceptance.
+
+| Test ID | Scenario and expected behavior | Layer |
+| --- | --- | --- |
+| TC-CS87-26 | Reduced current capacity makes primary selection fail409 with no stored selection | Real service HTTP |
+| TC-CS87-27 | Hold expires during asynchronous conflict scan; primary selection fails409 without writes | HTTP with controlled clock |

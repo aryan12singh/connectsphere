@@ -1,7 +1,7 @@
 const store = require('./store');
 const config = require('./config');
 const { planningContext,canBookEvent } = require('./eventClient');
-const { venueContext,catalogue } = require('./venueClient');
+const { venueContext,catalogue,lockVenueBuffers } = require('./venueClient');
 const { withinHours } = require('./hours');
 const { instant } = require('./time');
 const clock = require('./clock');
@@ -91,7 +91,7 @@ async function decision(req,id,body) {
     activeHold(current,at);
     const context=await contextFor(req,current.eventId);
     planning(context);
-    const venue=await venueContext(current.venueId);
+    let venue=await venueContext(current.venueId);
     at=await store.transactionNow(tx);activeHold(current,at);
     let input={...current,status:body.status,reason:body.reason.trim(),expiresAt:null,flags:[]};
     if (body.status==='CONFIRMED') {
@@ -99,6 +99,8 @@ async function decision(req,id,body) {
       input=checkedNeeds(input,context,venue);
       const competing=await conflicts(input,venue,at,tx,current.id);
       if (competing.length || current.flags?.some(flag=>!managedFlag(flag))) fail(409,'VENUE_CONFLICT','Resolve current venue conflicts before approval',undefined,{conflicts:competing.map(row=>({id:row.id,status:row.status,occupiedWindow:windowFor(row,venue)}))});
+      venue=await lockVenueBuffers(venue,req.actor);
+      activeHold(current,await store.transactionNow(tx));
       const occupied=windowFor(input,venue);
       input={...input,setupMinutes:venue.setupMinutes,turnaroundMinutes:venue.turnaroundMinutes,venueVersion:venue.version,occupiedStart:occupied.startAt,occupiedEnd:occupied.endAt};
     }
@@ -206,6 +208,32 @@ async function replace(req,id,input,body) {
   });
 }
 
+async function selectPrimaryVenue(req,eventId,body) {
+  if(!hasPermission(req.actor,'venue_bookings.create'))fail(403,'FORBIDDEN','Only the assigned Coordinator may choose the primary venue');
+  if(typeof body.bookingId!=='string' || !body.bookingId.trim() || !Number.isSafeInteger(body.version) || body.version<0)fail(422,'VALIDATION_ERROR','Use a booking and the current primary-selection version');
+  return store.withLocks([eventLock(eventId)],async tx=>{
+    const context=await contextFor(req,eventId);
+    if(context.currentCoordinatorId!==req.actor.id)fail(403,'FORBIDDEN','Event is not assigned to you');
+    planning(context);
+    const booking=await store.getBooking(body.bookingId,tx);
+    if(!booking || booking.eventId!==eventId)fail(404,'NOT_FOUND','Event booking not found');
+    await store.lockMore(tx,[venueLock(booking.venueId)]);
+    const currentBooking=await store.getBooking(booking.id,tx);
+    version(currentBooking,body.bookingVersion);
+    const selection=await store.primaryVenue(eventId,tx);
+    if(selection.version!==body.version)fail(409,'STALE_PRIMARY_VENUE','Primary venue changed. Refresh before selecting.');
+    if(!['TENTATIVELY_HELD','CONFIRMED'].includes(currentBooking.status) || !effective(currentBooking,await store.transactionNow(tx)))fail(409,'INACTIVE_BOOKING','Select an active venue arrangement');
+    const venue=await venueContext(currentBooking.venueId);
+    if(!venue.isActive)fail(409,'INACTIVE_VENUE','Select an active venue');
+    const at=await store.transactionNow(tx);
+    if(!effective(currentBooking,at))fail(409,'INACTIVE_BOOKING','The hold has expired');
+    if(gaps(currentBooking,venue).length || (currentBooking.flags || []).some(flag=>!managedFlag(flag)) || currentBooking.requirementsFingerprint!==store.fingerprint(venueRequirements(context)) || (await conflicts(currentBooking,venue,at,tx,currentBooking.id)).length)fail(409,'VENUE_NOT_READY','Refresh and resolve the room requirements or conflicts before choosing it as primary');
+    if(!effective(currentBooking,await store.transactionNow(tx)))fail(409,'INACTIVE_BOOKING','The hold has expired');
+    if(selection.bookingId===currentBooking.id)return selection;
+    return store.setPrimaryVenue(eventId,currentBooking,req.actor,selection,tx);
+  });
+}
+
 async function summary(req,eventId,{allowMissingEvent=false}={}) {
   return store.withLocks([eventLock(eventId)],async(tx)=>{
     let context;
@@ -243,7 +271,9 @@ async function summary(req,eventId,{allowMissingEvent=false}={}) {
       if (row.required && row.status!=='CANCELLED' && (row.status!=='CONFIRMED' || flags.size)) outstanding.push({bookingId:row.id,venueId:row.venueId,venueName:venue.name,reasons:[...(row.status!=='CONFIRMED'?[expired?'HOLD_EXPIRED':row.status]:[]),...flags]});
     }
     if (!rows.some(row=>row.required && row.status!=='CANCELLED')) outstanding.push({bookingId:null,reasons:['NO_VENUE_BOOKING']});
-    return {event:context,items,venueReady:outstanding.length===0,outstanding,checkedAt:at.toISOString(),policy:{allowTouching:config.allowTouching,holdHours:config.holdHours,allowExpiryAtSetup:config.allowExpiryAtSetup,status:'WORKING_ASSUMPTION'}};
+    const primaryVenue=await store.primaryVenue(eventId,tx);
+    const primary=items.find(row=>row.id===primaryVenue.bookingId);
+    return {event:context,items,primaryVenue:{...primaryVenue,available:Boolean(primary && ['TENTATIVELY_HELD','CONFIRMED'].includes(primary.effectiveStatus) && !primary.flags.length)},venueReady:outstanding.length===0,outstanding,checkedAt:at.toISOString(),policy:{allowTouching:config.allowTouching,holdHours:config.holdHours,allowExpiryAtSetup:config.allowExpiryAtSetup,status:'WORKING_ASSUMPTION'}};
   });
 }
 
@@ -392,4 +422,4 @@ async function availability(req,query) {
   const checkedAt=clock.now();
   return {items:items.filter(row=>effective(row,checkedAt)),conflictDetection:'server',checkedAt:checkedAt.toISOString(),policy:{allowTouching:config.allowTouching}};
 }
-module.exports={create,decision,extend,replace,summary,search,availability,recheck,staffRecheck,conflictReport,recheckInTransaction,version,activeHold,contextFor,planning,needs,gaps,checkedNeeds,conflicts,effective,windowFor,venueRequirements,venueLock,eventLock,fail};
+module.exports={selectPrimaryVenue,create,decision,extend,replace,summary,search,availability,recheck,staffRecheck,conflictReport,recheckInTransaction,version,activeHold,contextFor,planning,needs,gaps,checkedNeeds,conflicts,effective,windowFor,venueRequirements,venueLock,eventLock,fail};

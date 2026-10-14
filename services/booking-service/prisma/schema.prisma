@@ -53,6 +53,7 @@ model VenueBookingRequest {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   activity          VenueBookingActivity[]
+  primarySelections EventPrimaryVenue[]
 
   @@unique([requestedById, idempotencyKey])
   @@index([venueId, requestedStart, requestedEnd])
@@ -89,4 +90,16 @@ model VenueBookingActivity {
   @@index([bookingId, occurredAt])
   @@index([actorId, occurredAt])
   @@map("venue_booking_activity")
+}
+
+// Cross-service Event identity is retained as an ID; Booking owns this selection.
+model EventPrimaryVenue {
+  eventId   String   @id
+  bookingId String
+  booking   VenueBookingRequest @relation(fields: [bookingId], references: [id], onDelete: Restrict, map: "event_primary_venues_booking_fkey")
+  version   Int      @default(1)
+  actorId   String
+  updatedAt DateTime @updatedAt
+
+  @@map("event_primary_venues")
 }

@@ -27,6 +27,22 @@ class BookingServiceContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         class EventFixture(BaseHTTPRequestHandler):
+            def do_POST(self):
+                payload = json.loads(self.rfile.read(int(self.headers.get('content-length', '0'))))
+                allowed = self.path.endswith('/buffer-lock') and self.headers.get('x-internal-api-key') == 'change-me-dev-internal-key'
+                venue_id = self.path.split('/')[3]
+                with urlopen(Request(f"http://127.0.0.1:{self.server.server_port}/venues/{venue_id}/internal", headers={"x-internal-api-key":"change-me-dev-internal-key"})) as response:
+                    body = json.load(response)
+                if not body.get('buffersLockedAt'):
+                    body.update(version=body['version']+1,buffersLockedAt="2026-10-14T00:00:00.000Z")
+                if not hasattr(self.server, 'locked_venues'):
+                    self.server.locked_venues = {}
+                self.server.locked_venues[venue_id] = body
+                self.send_response(200 if allowed else 403)
+                self.send_header("content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(body).encode())
+
             def do_GET(self):
                 if self.path == "/internal/events/event-1/planning-context":
                     body = {"id":"event-1","eventRequestId":"request-fixture","status":"ARRANGEMENT_PENDING","currentCoordinatorId":"coordinator-1","startAt":"2026-11-01T00:00:00.000Z","endAt":"2026-12-31T23:59:00.000Z","expectedAttendance":80,"preferredLayout":"THEATRE","venueType":"PHYSICAL","accessibilityNeeds":[],"venueRequirements":"","equipmentNeeds":[]}
@@ -37,6 +53,8 @@ class BookingServiceContractTest(unittest.TestCase):
                 else:
                     body = {"id":"event-1"}
                     allowed = self.path == "/events/event-1/booking-access" and self.headers.get('x-test-user-id') == 'coordinator-1' and self.headers.get('x-test-role') == 'EVENT_COORDINATOR'
+                if self.path.startswith('/venues/') and self.path.endswith('/internal'):
+                    body.update(getattr(self.server, 'locked_venues', {}).get(body['id'], {}))
                 self.send_response(200 if allowed else 403)
                 self.send_header("content-type", "application/json")
                 self.end_headers()

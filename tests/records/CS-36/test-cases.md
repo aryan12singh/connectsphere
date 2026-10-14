@@ -66,3 +66,7 @@ The cases below preserve current scope and original source assertions. Date of C
 | Test Case ID | Scenario / AC | Pre-conditions | Steps | Expected result | Date of Creation |
 | --- | --- | --- | --- | --- | --- |
 | TC-CS36-23 | AC3/6: deletion/configuration race | Room advertised end passed, zero turnaround; deletion paused before private DELETE | Increase turnaround while deletion is in flight | Stale proof409; Venue and confirmed booking retained; retry blocks current occupancy | 2026-10-13T19:02:26+08:00 |
+
+## Session 3 fixture reconciliation — 14 October 2026
+
+Customer rows4/6 prohibit later buffer edits. Regression fixtures requiring old inconsistent buffer/booking snapshots now seed explicit isolated historical data; they do not exercise or endorse a public post-confirmation buffer edit. Recheck, conflict, immutability and deletion assertions remain. CS-36-23 now verifies deletion CAS using permitted name maintenance. The new buffer denial/fence cases are TC-CS84-31 through34. Dated earlier execution records are unchanged.

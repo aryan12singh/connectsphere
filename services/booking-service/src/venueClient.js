@@ -26,4 +26,14 @@ async function removeVenue(venueId,version) {
   if (response.status!==204) throw Object.assign(new Error('Unable to remove venue. Please retry.'),{status:503,code:'VENUE_UNAVAILABLE'});
   return true;
 }
-module.exports = { venueContext,catalogue,removeVenue };
+async function lockVenueBuffers(venue,actor) {
+  let response;
+  try {response=await fetch(`${config.venueServiceUrl}/internal/venues/${encodeURIComponent(venue.id)}/buffer-lock`,{method:'POST',headers:{'content-type':'application/json','x-internal-api-key':config.internalApiKey},body:JSON.stringify({version:venue.version,actor:{id:actor.id,role:actor.role}}),signal:AbortSignal.timeout(5000)});}
+  catch {throw Object.assign(new Error('Unable to establish the venue buffer lock. Refresh and retry approval.'),{status:503,code:'VENUE_UNAVAILABLE'});}
+  if(response.status===409)throw Object.assign(new Error('Venue changed before confirmation. Refresh and retry.'),{status:409,code:'STALE_VENUE'});
+  if(!response.ok)throw Object.assign(new Error('Unable to establish the venue buffer lock.'),{status:503,code:'VENUE_UNAVAILABLE'});
+  const saved=await response.json();
+  if(saved.id!==venue.id || !saved.buffersLockedAt || !Number.isFinite(Date.parse(saved.buffersLockedAt)) || !Number.isSafeInteger(saved.version) || saved.version<venue.version || saved.setupMinutes!==venue.setupMinutes || saved.turnaroundMinutes!==venue.turnaroundMinutes)throw Object.assign(new Error('Invalid venue buffer-lock acknowledgement'),{status:503,code:'VENUE_UNAVAILABLE'});
+  return saved;
+}
+module.exports = { venueContext,catalogue,removeVenue,lockVenueBuffers };

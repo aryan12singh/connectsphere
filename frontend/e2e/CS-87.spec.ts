@@ -41,7 +41,7 @@ test('TC-CS87-13 LIVE Coordinator changes only the selected breakout and Staff c
   }finally{await coordinator.dispose();await staff.dispose();await staffPage.close()}
 })
 
-test('TC-CS87-03 LIVE Coordinator requests independent rooms and Staff decisions update the real Event page',async({page,browser,playwright,owner},testInfo)=>{
+test('TC-CS87-25 TC-CS87-03 TC-CS84-31 LIVE Coordinator requests independent rooms and Staff decisions update the real Event page',async({page,browser,playwright,owner},testInfo)=>{
   const submitted=await created(owner,'submit',validRequest({expectedAttendance:80,minimumCapacity:80,accessibilityNeeds:['Wheelchair accessible entrance & seating']}))
   const coordinator=await assignedSession(playwright.request,owner,submitted.id)
   const contact=await (await owner.get(`/api/events/${submitted.id}/coordinator`)).json()
@@ -103,6 +103,20 @@ test('TC-CS87-03 LIVE Coordinator requests independent rooms and Staff decisions
     summary=await (await coordinator.get(`/api/bookings/events/${event.eventId}/summary`)).json()
     expect(summary.venueReady).toBe(true);expect(summary.items.map((r:any)=>r.status).sort()).toEqual(['CANCELLED','CONFIRMED'])
     await page.screenshot({path:testInfo.outputPath('CS-87-07-required-room-ready.png'),fullPage:true})
+    const primaryCard=page.locator(`[data-booking-id="${first.id}"]`)
+    await primaryCard.getByRole('button',{name:'Make primary location',exact:true}).click()
+    await expect(primaryCard).toContainText('Primary attendee location')
+    await page.reload()
+    await expect(page.locator(`[data-booking-id="${first.id}"]`)).toContainText('Primary attendee location')
+    const selected=await (await coordinator.get(`/api/bookings/events/${event.eventId}/summary`)).json()
+    expect(selected.primaryVenue).toMatchObject({bookingId:first.id,version:1,available:true})
+    expect(selected.items.map((r:any)=>r.status).sort()).toEqual(['CANCELLED','CONFIRMED'])
+    await page.screenshot({path:testInfo.outputPath('CS-87-primary-location.png'),fullPage:true})
+    const frozen=await (await staff.get(`/api/venues/${first.venueId}`)).json()
+    expect(frozen.buffersLockedAt).toBeTruthy()
+    const forbiddenBuffer=await mutation(staff,'PUT',`/api/venues/${first.venueId}`,{...frozen,setupMinutes:60,reason:'Must preserve confirmed buffers'})
+    expect(forbiddenBuffer.status()).toBe(409)
+    expect((await (await staff.get(`/api/venues/${first.venueId}`)).json()).setupMinutes).toBe(30)
     const replay=await mutation(staff,'PUT',`/api/bookings/${first.id}/decision`,{version:1,status:'CONFIRMED',reason:'Stale duplicate'})
     expect(replay.status()).toBe(409)
   }finally{await coordinator.dispose();await staff.dispose();await staffPage.close()}

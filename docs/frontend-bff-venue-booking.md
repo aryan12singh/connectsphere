@@ -24,6 +24,7 @@ opaque bearer token held in the sealed session cookie.
 | `PUT /api/bookings/:bookingId` | `PUT /venue-bookings/:bookingId` | Booking/status change |
 | `PUT /api/bookings/:bookingId/decision` | `PUT /venue-bookings/:bookingId/decision` | Versioned Venue Staff approve/reject with reason |
 | `PUT /api/bookings/:bookingId/hold-extension` | `PUT /venue-bookings/:bookingId/hold-extension` | Versioned active-hold extension with future deadline/reason |
+| `PUT /api/bookings/events/:eventId/primary-venue` | `PUT /venue-bookings/events/:eventId/primary-venue` | Assigned Coordinator selects primary location with bookingId, bookingVersion and selection version; no publication or approval change |
 | `GET /api/bookings/events/:eventId/summary` | `GET /venue-bookings/events/:eventId/summary` | Independent rooms, current assignment, authoritative Venue type/capacity, expiry, flags and venue readiness |
 | `GET /api/bookings/events/:eventId/venue-search` | `GET /venue-bookings/events/:eventId/venue-search` | Current Coordinator's requirement-aware room search |
 | `GET /api/bookings/conflicts?venueId=` | `GET /venue-bookings/conflicts?venueId=` | Venue Staff current conflict review, both occupied windows and assignment |

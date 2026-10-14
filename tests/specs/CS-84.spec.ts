@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, afterAll, describe, expect, it } from 'vitest'
+import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import { spawn, spawnSync } from 'node:child_process'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
@@ -18,6 +18,41 @@ beforeEach(() => store.reset())
 afterAll(async () => { await api.close(); store.reset() })
 
 describe('CS-84 — venue buffer HTTP contract', () => {
+  it('TC-CS84-31 confirmation freezes buffers while unrelated venue maintenance remains available',async()=>{
+    const f=require('../helpers/venue-workflow.cjs'),stack=await f.stack()
+    try{
+      const {event}=await f.eventFixture(),v=await stack.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
+      const held=await stack.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'freeze'},body:{eventId:event.id,venueId:v.body.id,title:'Conference',reason:'Freeze test',startAt:event.startAt,endAt:event.endAt,timeZone:event.timeZone}})
+      const decision=await stack.booking.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Reviewed'}})
+      expect(decision.status).toBe(200)
+      const current=(await stack.venue.http('/venues/'+v.body.id,{headers:f.staff})).body
+      const changed=await stack.venue.http('/venues/'+v.body.id,{method:'PUT',headers:f.staff,body:{...current,setupMinutes:90,reason:'Forbidden late buffer edit'}})
+      expect(changed.status).toBe(409);expect(changed.body.error.code).toBe('VENUE_BUFFERS_LOCKED')
+      expect((await stack.venue.http('/venues/'+v.body.id,{method:'PUT',headers:f.staff,body:{...current,name:'Renamed hall',reason:'Unrelated maintenance'}})).status).toBe(200)
+      expect(f.venues.getVenue(v.body.id).setupMinutes).toBe(30)
+    }finally{await stack.close()}
+  })
+  it('TC-CS84-33 lost lock acknowledgement preserves the hold and a retry safely confirms it',async()=>{
+    const f=require('../helpers/venue-workflow.cjs'),stack=await f.stack(),native=globalThis.fetch
+    let intercept:any
+    try{
+      const {event}=await f.eventFixture(),v=await stack.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
+      const held=await stack.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'uncertain-freeze'},body:{eventId:event.id,venueId:v.body.id,title:'Conference',reason:'Uncertain response test',startAt:event.startAt,endAt:event.endAt,timeZone:event.timeZone}})
+      let lose=true
+      intercept=vi.spyOn(globalThis,'fetch').mockImplementation(async(url:any,options:any)=>{const result=await native(url,options);if(String(url).endsWith('/buffer-lock') && lose){lose=false;throw new Error('Lost acknowledgement')}return result})
+      const path=`/venue-bookings/${held.body.id}/decision`,body={version:1,status:'CONFIRMED',reason:'Reviewed'}
+      expect((await stack.booking.http(path,{method:'PUT',headers:f.staff,body})).status).toBe(503)
+      expect(f.bookings.getBooking(held.body.id)).toMatchObject({status:'TENTATIVELY_HELD',version:1})
+      expect(f.venues.getVenue(v.body.id).buffersLockedAt).toBeTruthy()
+      expect((await stack.booking.http(path,{method:'PUT',headers:f.staff,body})).status).toBe(200)
+      expect(f.venues.state.history.filter((h:any)=>h.action==='VENUE_BUFFERS_LOCKED')).toHaveLength(1)
+    }finally{intercept?.mockRestore();await stack.close()}
+  })
+  it('TC-CS84-34 locked buffers are disabled while other form fields remain editable',async()=>{
+    const w=await mountSuspended(VenueForm,{props:{venue:{name:'Locked hall',setupMinutes:30,turnaroundMinutes:45,buffersLockedAt:'2026-10-14T00:00:00Z'}}})
+    expect(w.get('#venue-setup-minutes').attributes('disabled')).toBeDefined();expect(w.get('#venue-turnaround-minutes').attributes('disabled')).toBeDefined()
+    expect(w.text()).toContain('Other details remain editable');w.unmount()
+  })
   it('TC-CS84-17 a virtual form with no physical capacity sends the existing nullable contract',()=>{
     expect(venuePayload(createVenueForm({venueType:'VIRTUAL',capacity:''}),'staff').capacity).toBeNull()
     expect(venuePayload(createVenueForm({venueType:'PHYSICAL',capacity:''}),'staff').capacity).toBe('')

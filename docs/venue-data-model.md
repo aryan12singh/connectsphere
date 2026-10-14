@@ -89,8 +89,22 @@ All non-cancelled required room arrangements must be approved for the current re
 
 ## Remaining release boundaries
 
-Customer answers are still pending in [CS-76](https://spmg8.atlassian.net/browse/CS-76); configurable defaults are [working proposals](venue-policy-decisions.md). CS-50/51 must relay/consume booking intent and deliver actual notifications. CS-90 must integrate the expiry/reminder scheduler; the [PostgreSQL spike](hold-expiry.md) remains test-only.
+[Session 3 customer answers](session3-decisions.md) now resolve most policy. Exact buffer locking, Coordinator hold confirmation wording and numerical team choices remain in the [policy register](venue-policy-decisions.md). CS-50/51 must relay/consume booking intent and deliver actual notifications. CS-90 must integrate the expiry/reminder scheduler; the [PostgreSQL spike](hold-expiry.md) remains test-only.
 
 Safety roles and technical/support readiness proof are not present on main. CS-10/42/77 and CS-93/94/95 must agree and deliver those boundaries before a full Safety queue or preparation transition. No empty equipment list is treated as proof of technical approval.
 
 See [BFF routes](frontend-bff-venue-booking.md), [phase delivery and validation](devlogs/2026-10-13-venue-workflows.md), and the existing [Sprint 2 evidence](sprint2/evidence-log.md). This model update does not establish independent review, PO acceptance or story closure.
+
+## Primary attendee location — Session 3 row26
+
+`event_primary_venues` is owned by Booking: one row per Event, a restrictive foreign key to its booking, independent selection version, server actor and update time. The current assigned Coordinator selects an active room in Planning. Event/venue locks serialize selection with booking changes; selection and immutable `PRIMARY_VENUE_SELECTED` history commit atomically. Selection CAS and the read booking version reject stale actions. Other room status/version/approval records are unchanged.
+
+The authenticated Event summary returns `primaryVenue` with booking ID, selection version and derived availability. Missing selection is version0. Release/expiry/flags retain the explicit choice for history but make it unavailable; there is no automatic fallback or cascade. The Attendee-facing Event projection is still a peer integration boundary and must require current confirmed/public lifecycle and an eligible primary room before publication.
+
+## Confirmation buffer fence — Session 3 rows4/6
+
+Venue owns nullable `buffersLockedAt`. Before a confirmed booking is committed, Booking requests an authenticated internal freeze with the Venue version it validated. The freeze and every buffer edit serialize on the Venue row; the fence increments the Venue version, records the Staff actor in immutable history, and returns the version used by Booking. An edit that wins first makes the freeze stale; a freeze that wins prevents later buffer edits. Unchanged buffers and unrelated venue maintenance remain permitted.
+
+The additive migration conservatively freezes **existing venues**, because their confirmation history is owned by another service. This is temporary legacy protection, not an agreed customer policy for initial configuration. New venues freeze at a confirmation attempt; whether they must freeze at first setting instead remains the row4/row6 question in CS-76. No migration deletes bookings or history.
+
+If acknowledgement is lost or the Booking transaction later fails, the Venue remains frozen. Retry approval after refreshing: the lock is idempotent at the current version and cannot silently unlock an uncertain commitment. The UI and error say only that buffers are locked, without claiming the Event/booking was confirmed. Administrative reconciliation of an abandoned attempt or legacy first configuration requires an agreed policy; no automatic unlock endpoint exists. The internal route is not exposed through Kong. Deploy both additive schemas and service versions together; old Booking versions cannot establish this fence for newly created venues.

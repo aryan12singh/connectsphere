@@ -73,8 +73,24 @@ test('TC-CS86-03 LIVE Staff compare retained approvals and recheck inherited buf
       expect(decision.status()).toBe(200)
       rooms.push(await decision.json())
     }
-    const changed = await mutation(staff, 'PUT', `/api/venues/${venue.id}`, { ...input, version: venue.version, turnaroundMinutes: 45, reason: 'Longer reset is operationally required' })
-    expect(changed.status()).toBe(200)
+    // Session 3 disallows this as a user edit. Model the inherited rollout
+    // explicitly in this isolated fixture, retaining both confirmed bookings.
+    venueService('stop')
+    try {
+      await reviewDatabase('venue',async db=>{
+        await db.query('BEGIN')
+        try {
+          await db.query('UPDATE venues SET "turnaroundMinutes"=45,version=version+1 WHERE id=$1',[venue.id])
+          await db.query('DELETE FROM venue_buffer_rollouts WHERE "venueId"=$1',[venue.id])
+          await db.query('COMMIT')
+        }catch(error){await db.query('ROLLBACK');throw error}
+      })
+    }finally{venueService('start')}
+    await expect.poll(async()=> (await staff.get(`/api/venues/${venue.id}`)).status(),{timeout:45_000}).toBe(200)
+    await expect.poll(async()=>{
+      const r=await reviewDatabase('booking',async db=>db.query('SELECT flags FROM venue_booking_requests WHERE "venueId"=$1',[venue.id]))
+      return r.rows.filter((row:any)=>row.flags.includes('BUFFER_CONFLICT')).length
+    },{timeout:45_000}).toBe(2)
     await signIn(page, emails.staff)
     await page.getByRole('button', { name: 'Buffer conflicts', exact: true }).click()
     await page.getByRole('navigation', { name: 'Flagged venue bookings' }).getByRole('button').filter({ hasText: rooms[0].title }).click()

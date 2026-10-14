@@ -4,7 +4,7 @@ const config = require('./config');
 const isMemory = config.dataMode !== 'prisma';
 const prisma = isMemory ? null : require('./db');
 
-const state = { bookings: new Map(), activities: [], idempotency: new Map(), outbox: [] };
+const state = { bookings: new Map(), activities: [], idempotency: new Map(), outbox: [], primaryVenues:new Map() };
 const clock = require('./clock');
 let memoryTail = Promise.resolve();
 
@@ -82,6 +82,7 @@ function toApiActivity(activity) {
 function reset() {
   if (isMemory) {
     state.bookings.clear();
+    state.primaryVenues.clear();
     state.activities.length = 0;
     state.idempotency.clear();
     state.outbox.length = 0;
@@ -262,9 +263,9 @@ async function withLocks(keys, work) {
   const preceding = memoryTail;
   memoryTail = new Promise(resolve=>{release=resolve;});
   await preceding;
-  const saved = safeJson({bookings:[...state.bookings],activities:state.activities,idempotency:[...state.idempotency],outbox:state.outbox});
+  const saved = safeJson({bookings:[...state.bookings],activities:state.activities,idempotency:[...state.idempotency],outbox:state.outbox,primaryVenues:[...state.primaryVenues]});
   try { return await work(null,clock.now()); }
-  catch (error) { state.bookings=new Map(saved.bookings);state.activities=saved.activities;state.idempotency=new Map(saved.idempotency);state.outbox=saved.outbox;throw error; }
+  catch (error) { state.bookings=new Map(saved.bookings);state.activities=saved.activities;state.idempotency=new Map(saved.idempotency);state.outbox=saved.outbox;state.primaryVenues=new Map(saved.primaryVenues);throw error; }
   finally {release();}
 }
 
@@ -343,7 +344,23 @@ function countBlockingBookings(venueId, at = clock.now()) {
   });
 }
 
+function primaryVenue(eventId,transaction) {
+  if(isMemory)return state.primaryVenues.get(eventId) || {eventId,bookingId:null,version:0};
+  return (transaction || prisma).eventPrimaryVenue.findUnique({where:{eventId}}).then(row=>row?{...row,updatedAt:iso(row.updatedAt)}:{eventId,bookingId:null,version:0});
+}
+async function setPrimaryVenue(eventId,booking,actor,current,transaction) {
+  const next={eventId,bookingId:booking.id,version:current.version+1,actorId:actor.id,updatedAt:now()};
+  const changes={primaryVenue:{before:current,after:next},before:{venueId:booking.venueId},after:{venueId:booking.venueId}};
+  if(isMemory){state.primaryVenues.set(eventId,next);appendActivity(booking,actor,'PRIMARY_VENUE_SELECTED','Designate the primary attendee location',changes,booking.status,booking.status);}
+  else {
+    await transaction.eventPrimaryVenue.upsert({where:{eventId},create:next,update:next});
+    await transaction.venueBookingActivity.create({data:{bookingId:booking.id,actorId:actor.id,actorRole:actor.role,action:'PRIMARY_VENUE_SELECTED',reason:'Designate the primary attendee location',fromStatus:booking.status,toStatus:booking.status,changes:safeJson(changes)}});
+  }
+  return next;
+}
+
 module.exports = {
+  primaryVenue,setPrimaryVenue,
   state, reset, fingerprint, createBooking, replaceBooking, appendActivity,
   findIdempotency, getBooking, listBookings, listHistory, countBlockingBookings, isMemory,
   withLocks,lockMore,transactionNow,addOutbox,toApiBooking,

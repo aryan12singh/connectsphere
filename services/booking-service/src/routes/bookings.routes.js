@@ -103,6 +103,7 @@ router.get('/availability', auth, requireAnyPermission('venues.view'), async (re
   if (Object.keys(errors).length) return validationError(res, errors);
   return res.json(await workflows.availability(req,req.query));
 });
+router.put('/events/:eventId/primary-venue',auth,ordinaryCreatePermission,async(req,res)=>res.json(await workflows.selectPrimaryVenue(req,req.params.eventId,req.body || {})));
 router.get('/events/:eventId/summary',auth,bookingAccess,async(req,res)=>res.json(await workflows.summary(req,req.params.eventId)));
 router.get('/events/:eventId/venue-search',auth,ordinaryCreatePermission,async(req,res)=>res.json(await workflows.search(req,req.params.eventId,req.query)));
 router.get('/conflicts',auth,operationalBlockPermission,async(req,res)=>{

@@ -7,7 +7,7 @@ beforeEach(()=>f.reset())
 afterEach(()=>vi.restoreAllMocks())
 afterAll(async()=>{await api.close()})
 describe('CS-36 — live venue search',()=>{
-  it('TC-CS36-23 a buffer edit during checked deletion cannot remove newly occupied turnaround',async()=>{
+  it('TC-CS36-23 venue maintenance during checked deletion requires a fresh deletion check',async()=>{
     const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({turnaroundMinutes:0})})
     const held=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'delete-edit-race'},body:{eventId:event.id,venueId:v.body.id,title:'Retained approval',reason:'Checked removal race',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
     expect(held.status).toBe(201);expect((await api.booking.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Verified room'}})).status).toBe(200)
@@ -16,16 +16,17 @@ describe('CS-36 — live venue search',()=>{
     const paused=new Promise<void>(resolve=>{reached=resolve}),gate=new Promise<void>(resolve=>{release=resolve})
     vi.spyOn(globalThis,'fetch').mockImplementation(async(url:any,options:any)=>{if(String(url)===api.venue.base+'/internal/venues/'+v.body.id && options?.method==='DELETE'){reached();await gate}return native(url,options)})
     const removing=api.venue.http('/venues/'+v.body.id,{method:'DELETE',headers:f.staff})
-    try{await paused;const updated=await api.venue.http('/venues/'+v.body.id,{method:'PUT',headers:f.staff,body:f.venueInput({version:1,turnaroundMinutes:45})});expect(updated.status).toBe(200);release();const r=await removing;expect(r.status).toBe(409);expect(r.body.error.code).toBe('STALE_VENUE');expect((await api.venue.http('/venues/'+v.body.id,{headers:f.staff})).body).toMatchObject({version:2,turnaroundMinutes:45});expect((await api.venue.http('/venues/'+v.body.id,{method:'DELETE',headers:f.staff})).status).toBe(409);expect(f.bookings.getBooking(held.body.id).status).toBe('CONFIRMED')}finally{release();await removing}
+    try{await paused;const updated=await api.venue.http('/venues/'+v.body.id,{method:'PUT',headers:f.staff,body:f.venueInput({version:2,turnaroundMinutes:0,name:'Renamed venue'})});expect(updated.status).toBe(200);release();const r=await removing;expect(r.status).toBe(409);expect(r.body.error.code).toBe('STALE_VENUE');expect((await api.venue.http('/venues/'+v.body.id,{headers:f.staff})).body).toMatchObject({version:3,turnaroundMinutes:0});expect((await api.venue.http('/venues/'+v.body.id,{method:'DELETE',headers:f.staff})).status).toBe(204);expect(f.bookings.getBooking(held.body.id).status).toBe('CONFIRMED')}finally{release();await removing}
   })
-  it('TC-CS36-22 legitimate deletion after shortening turnaround cannot be vetoed by the old booking snapshot',async()=>{
+  it('TC-CS36-22 legitimate deletion against a historical shorter-turnaround snapshot ignores the old booking snapshot',async()=>{
     const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
     const held=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'shortened-deleted'},body:{eventId:event.id,venueId:v.body.id,title:'Ended conference',reason:'Retain old snapshot',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
     expect(held.status).toBe(201)
     expect((await api.booking.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Room verified'}})).status).toBe(200)
     vi.spyOn(clock,'now').mockReturnValue(new Date('2026-12-21T04:10:00.000Z'))
     expect((await api.venue.http('/venues/'+v.body.id,{method:'DELETE',headers:f.staff})).status).toBe(409)
-    expect((await api.venue.http('/venues/'+v.body.id,{method:'PUT',headers:f.staff,body:f.venueInput({version:1,turnaroundMinutes:0})})).status).toBe(200)
+    // Explicit inherited snapshot fixture; post-confirmation buffer edits are now forbidden.
+    f.venues.state.venues.set(v.body.id,{...f.venues.getVenue(v.body.id),turnaroundMinutes:0})
     expect((await api.booking.http('/venue-bookings/rechecks',{method:'POST',headers:f.staff,body:{venueId:v.body.id,version:2,reason:'Shorter turnaround is current'}})).status).toBe(200)
     expect(f.bookings.getBooking(held.body.id).occupiedEnd).toBe('2026-12-21T04:30:00.000Z')
     expect((await api.venue.http('/venues/'+v.body.id,{method:'DELETE',headers:f.staff})).status).toBe(204)

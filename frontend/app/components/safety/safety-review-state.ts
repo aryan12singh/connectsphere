@@ -6,11 +6,14 @@ export const safetyAreas = {
   EVENT_DETAILS: 'Event details',
 } as const
 export type SafetyArea = keyof typeof safetyAreas
+export const safetyFactors = { attendance:'Attendance and capacity', layout:'Layout', emergencyAccess:'Emergency access', accessibility:'Accessibility requirements', equipmentPlacement:'Equipment placement', crowdMovement:'Crowd movement', restrictions:'Venue restrictions' } as const
+export type SafetyChecklist = Record<keyof typeof safetyFactors,boolean>
 export type SafetyDecision = 'APPROVE' | 'REJECT' | 'REQUEST_CHANGES'
 export interface SafetyRound { id:string; number:number; requirementsRevision:string }
 export interface SafetyDecisionIntent {
   roundId:string; round:number; requirementsRevision:string
   decision:SafetyDecision; reason:string; areas:SafetyArea[]
+  checklist:SafetyChecklist; privateNotes:string; rejectedBookingIds:string[]
 }
 export interface SafetyVenue {
   bookingId:string; venueName:string; venueType?:string
@@ -38,12 +41,20 @@ export function currentSafetyRound(round:SafetyRound | null | undefined,revision
     && typeof revision==='string' && revision.trim()
     && round.requirementsRevision===revision)
 }
-export function validateSafetyDecision(input:{decision:unknown; reason:unknown; areas:unknown},round:SafetyRound | null,revision:string) {
+export function validateSafetyDecision(input:{decision:unknown; reason:unknown; areas:unknown; checklist?:unknown; privateNotes?:unknown; rejectedBookingIds?:unknown},round:SafetyRound | null,revision:string,bookingIds:string[]=[]) {
   const errors:Record<string,string>={}
   const validRound=currentSafetyRound(round,revision)
   if(!validRound)errors.round='Refresh the current Safety review before deciding.'
   const decision=typeof input.decision==='string'?input.decision:''
   if(!['APPROVE','REJECT','REQUEST_CHANGES'].includes(decision))errors.decision='Choose a Safety decision.'
+  const checklist=input.checklist as Record<string,unknown> | undefined
+  if(!checklist || typeof checklist!=='object' || !Object.keys(safetyFactors).every(key=>checklist[key]===true))errors.checklist='Review every Safety checklist factor before recording a decision.'
+  if(input.privateNotes!==undefined && typeof input.privateNotes!=='string')errors.privateNotes='Use text for private internal notes.'
+  let rejectedBookingIds:string[]=[]
+  if(decision==='REJECT'){
+    if(!Array.isArray(input.rejectedBookingIds) || !input.rejectedBookingIds.length || !input.rejectedBookingIds.every(id=>typeof id==='string' && bookingIds.includes(id)))errors.rejectedBookingIds='Select the venue arrangement rejected for safety.'
+    else rejectedBookingIds=[...new Set(input.rejectedBookingIds)]
+  }
   const reason=typeof input.reason==='string'?input.reason.trim():''
   if(['REJECT','REQUEST_CHANGES'].includes(decision) && !reason)errors.reason='Give a reason for this decision.'
   let areas:SafetyArea[]=[]
@@ -55,6 +66,8 @@ export function validateSafetyDecision(input:{decision:unknown; reason:unknown; 
   const value:SafetyDecisionIntent | null=!validRound || Object.keys(errors).length?null:{
     roundId:round.id,round:round.number,requirementsRevision:revision,
     decision:decision as SafetyDecision,reason,areas,
+    checklist:Object.fromEntries(Object.keys(safetyFactors).map(key=>[key,true])) as SafetyChecklist,
+    privateNotes:typeof input.privateNotes==='string'?input.privateNotes.trim():'',rejectedBookingIds,
   }
   return {errors,value}
 }

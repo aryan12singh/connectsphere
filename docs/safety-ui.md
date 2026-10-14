@@ -1,6 +1,6 @@
 # Operational Safety UI and validation
 
-Aryan's independent CS-93/94/95 slice, 13 October 2026. The current Coordinator
+Aryan's independent CS-93/94/95 slice, 14 October 2026. The current Coordinator
 Event page includes a real preparation panel using its existing authorized venue
 summary. It displays current room facts and outstanding venues, and opens the
 seven-factor details. Technical/support proof is unavailable, so submission stays
@@ -12,8 +12,8 @@ disabled. Empty equipment is never interpreted as approved or not required.
 | --- | --- | --- |
 | `CoordinatorSafetyPreparation` | Current Event/assignment only; venue blockers, per-room attendance/capacity/layout/accessibility, unknown operational factors and disabled submission | Existing Booking summary; no Safety submission request |
 | `SafetyReviewDetails` | Seven factors per room, over-capacity warning, explicit unknown data and equipment state | A permitted, current server projection must provide emergency access, placement, crowd movement and restrictions |
-| `SafetyDecisionForm` | Approve/Reject/Request Changes; trimmed required reasons; affected-area validation; current round/revision and explicit permission; duplicate intent guard; clears superseded drafts | Emits a validated local intent; no API, Officer role grant, persistence, success notification or Event transition |
-| `SafetyReworkPanel` | Explicit feedback visibility; affected areas only; unaffected approvals retained; current proof for every affected arrangement; one versioned resubmit intent | Standalone component awaiting the reviewed rework/readiness API; default actions disabled |
+| `SafetyDecisionForm` | Approve/Reject venue arrangement/Request Changes; seven-factor reviewed checklist; shared actionable comments and separate private notes; rejection targets validated room IDs; trimmed required reasons; affected-area validation; current round/revision and explicit permission; duplicate intent guard; clears superseded drafts | Emits a validated local intent; no API, Officer role grant, persistence, success notification or Event transition |
+| `SafetyReworkPanel` | Organiser sees only outcome/actionable feedback; Coordinator reviews current round/revision before resubmission; no automatic approval reset; current readiness proof and one versioned resubmit intent | Standalone component awaiting the reviewed rework/readiness API; default actions disabled |
 
 The seven factors are attendance/capacity, layout, emergency access,
 accessibility requirements, equipment placement, crowd movement and venue
@@ -35,7 +35,7 @@ entry point until the actual authorization and data interfaces are integrated.
 - Alan CS-42: complete current technical/support approval and reservation proof,
   or reviewed explicit NOT_REQUIRED. Bind proof to the requirements revision.
 - Javier CS-77: reviewed queue/read/write projection, round/version fencing,
-  preparation/confirmation ordering, controlled edits, selective rework and
+  preparation/confirmation ordering, controlled edits, Coordinator-directed rework and
   permitted feedback/history visibility. Parent Event and EventRequest IDs remain
   distinct. Each service accesses only its own database.
 - Marc CS-50/51: actual queue/decision/rework notice delivery and deduplication.
@@ -51,8 +51,9 @@ no component reports persistence from a local event. Fetch the authoritative nex
 round after success. Current Venue type/capacity override stored arrangement
 requirements for capacity presentation. Stale affected-area readiness is labelled
 unverified rather than approved. Do not connect a guessed transition or treat a stale form
-as an approved review. Significant changes invalidate older evidence under the
-agreed contract while preserving unaffected approvals and immutable history.
+as an approved review. Session 3 rows46/51 prohibit automatic venue/equipment signoff resets. The Coordinator reviews significant changes and decides the required action. Stale evidence cannot be represented as current readiness. The parent must bind `coordinatorReviewRevision` and `coordinatorReviewRoundId` to a real recorded review, and `canResubmit` to complete current required-venue/technical readiness; client props are not authority. Rejection targets an unsuitable venue arrangement and leaves the Event in Planning. Safety precedes Confirmed, then a separate Preparation stage; no parent transitions are implemented by these components.
+
+The checklist marks each factor as **reviewed**, not automatically safe: concerns belong in actionable comments and the chosen outcome. Server persistence must retain checklist, reviewer, round, scoped rejection and private notes, while redacting private notes before any Organiser response. See [Session 3 source](session3-decisions.md), rows2–3/17/45–51.
 
 ## Verification
 

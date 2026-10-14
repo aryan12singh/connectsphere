@@ -17,7 +17,7 @@ interface VenueOptions {
 }
 
 const props = withDefaults(defineProps<{
-  venue?: Partial<VenueFormState> | null
+  venue?: (Partial<VenueFormState> & {buffersLockedAt?:string | null}) | null
   options?: VenueOptions | null
   saving?: boolean
   submitLabel?: string
@@ -90,8 +90,9 @@ function updateOperatingTime(type: 'opensAt' | 'closesAt', value: string | numbe
       <h2 id="venue-preparation" class="text-xl font-semibold">Preparation and turnaround</h2>
       <p class="text-sm text-muted-foreground">These times apply to every booking at this venue. Changes also recheck existing commitments.</p>
       <div class="grid gap-5 sm:grid-cols-2">
-        <Field class="gap-2"><FieldLabel for="venue-setup-minutes">Setup time (minutes)</FieldLabel><Input id="venue-setup-minutes" v-model="form.setupMinutes" type="number" min="0" :max="options?.maxBufferMinutes" step="1" required :aria-invalid="Boolean(errorFor('setupMinutes'))" /><p v-if="errorFor('setupMinutes')" role="alert" class="text-sm text-destructive">{{ errorFor('setupMinutes') }}</p></Field>
-        <Field class="gap-2"><FieldLabel for="venue-turnaround-minutes">Turnaround time (minutes)</FieldLabel><Input id="venue-turnaround-minutes" v-model="form.turnaroundMinutes" type="number" min="0" :max="options?.maxBufferMinutes" step="1" required :aria-invalid="Boolean(errorFor('turnaroundMinutes'))" /><p v-if="errorFor('turnaroundMinutes')" role="alert" class="text-sm text-destructive">{{ errorFor('turnaroundMinutes') }}</p></Field>
+        <p v-if="props.venue?.buffersLockedAt" class="text-sm text-muted-foreground">Setup and turnaround are locked for this venue. Other details remain editable.</p>
+        <Field class="gap-2"><FieldLabel for="venue-setup-minutes">Setup time (minutes)</FieldLabel><Input id="venue-setup-minutes" :disabled="Boolean(props.venue?.buffersLockedAt)" v-model="form.setupMinutes" type="number" min="0" :max="options?.maxBufferMinutes" step="1" required :aria-invalid="Boolean(errorFor('setupMinutes'))" /><p v-if="errorFor('setupMinutes')" role="alert" class="text-sm text-destructive">{{ errorFor('setupMinutes') }}</p></Field>
+        <Field class="gap-2"><FieldLabel for="venue-turnaround-minutes">Turnaround time (minutes)</FieldLabel><Input id="venue-turnaround-minutes" :disabled="Boolean(props.venue?.buffersLockedAt)" v-model="form.turnaroundMinutes" type="number" min="0" :max="options?.maxBufferMinutes" step="1" required :aria-invalid="Boolean(errorFor('turnaroundMinutes'))" /><p v-if="errorFor('turnaroundMinutes')" role="alert" class="text-sm text-destructive">{{ errorFor('turnaroundMinutes') }}</p></Field>
       </div>
     </section>
 

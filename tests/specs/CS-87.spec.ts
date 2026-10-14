@@ -4,23 +4,73 @@ import { mockNuxtImport,mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import { bookingDraftForExisting,coordinatorBookingEditState } from '../../frontend/app/components/venue/booking-state'
 mockNuxtImport('useUserSession',()=>()=>({loggedIn:{value:true},fetch:vi.fn(),user:{value:{id:'coordinator',role:'EVENT_COORDINATOR',permissions:['venue_bookings.create','venues.view','events.view']}}}))
-const roomUi=vi.hoisted(()=>({items:[] as any[],send:vi.fn()}))
+const roomUi=vi.hoisted(()=>({items:[] as any[],primaryVenue:{bookingId:null as string|null,version:0,available:false},send:vi.fn()}))
 mockNuxtImport('useRequestFetch',()=>()=>roomUi.send)
 mockNuxtImport('useFetch',()=>async(path:any)=>{
   const {ref}=await import('vue')
   const url=typeof path==='function'?path():String(path)
-  const value=url.includes('/summary')?{event:{id:'event-ui',title:'Conference',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',startAt:'2026-12-21T01:00:00.000Z',endAt:'2026-12-21T10:00:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',accessibilityNeeds:[]},items:roomUi.items,venueReady:false,outstanding:[{bookingId:null,reasons:['NO_VENUE_BOOKING']}]}:url.includes('/options')?{supportedLayouts:[{value:'THEATRE',label:'Theatre'},{value:'CLASSROOM',label:'Classroom'}],facilities:[{value:'PROJECTOR',label:'Projector'}],accessibilityTags:[]}:{items:[],total:0}
+  const value=url.includes('/summary')?{event:{id:'event-ui',title:'Conference',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',startAt:'2026-12-21T01:00:00.000Z',endAt:'2026-12-21T10:00:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',accessibilityNeeds:[]},items:roomUi.items,primaryVenue:roomUi.primaryVenue,venueReady:false,outstanding:[{bookingId:null,reasons:['NO_VENUE_BOOKING']}]}:url.includes('/options')?{supportedLayouts:[{value:'THEATRE',label:'Theatre'},{value:'CLASSROOM',label:'Classroom'}],facilities:[{value:'PROJECTOR',label:'Projector'}],accessibilityTags:[]}:{items:[],total:0}
   const data=ref(value)
-  return {data,error:ref(null),refresh:vi.fn(async()=>{if(url.includes('/summary'))data.value={...value,items:roomUi.items}})}
+  return {data,error:ref(null),refresh:vi.fn(async()=>{if(url.includes('/summary'))data.value={...value,items:roomUi.items,primaryVenue:roomUi.primaryVenue}})}
 })
 const require = createRequire(import.meta.url)
 const fixture = require('../helpers/venue-workflow.cjs')
 let api: any
 beforeAll(async () => { api = await fixture.stack() })
-beforeEach(() => {fixture.reset();roomUi.items=[];roomUi.send.mockReset().mockResolvedValue({items:[],nextCursor:null})})
+beforeEach(() => {fixture.reset();roomUi.items=[];roomUi.primaryVenue={bookingId:null,version:0,available:false};roomUi.send.mockReset().mockResolvedValue({items:[],nextCursor:null})})
 afterAll(async () => { await api.close() })
 
 describe('CS-87 — independent venue bookings', () => {
+  it('TC-CS87-23 Coordinator selects the attendee-facing primary room through the versioned API',async()=>{
+    roomUi.items=[{id:'primary-room',eventId:'event-ui',venueId:'venue',venueName:'Auditorium',title:'Main room',status:'CONFIRMED',effectiveStatus:'CONFIRMED',version:2,startAt:'2026-12-21T02:00:00Z',endAt:'2026-12-21T04:00:00Z',occupiedStart:'2026-12-21T02:00:00Z',occupiedEnd:'2026-12-21T04:00:00Z',flags:[],expectedAttendance:80,layout:'THEATRE'}]
+    roomUi.send.mockImplementation(async()=>{roomUi.primaryVenue={bookingId:'primary-room',version:1,available:true};return roomUi.primaryVenue})
+    const component=(await import('../../frontend/app/components/venue/EventVenueArrangements.vue')).default,w=await mountSuspended(component,{props:{eventId:'event-ui'}})
+    const button=w.findAll('button').find(b=>b.text()==='Make primary location')
+    expect(Boolean(button)).toBe(true);await button!.trigger('click');await flushPromises()
+    expect(roomUi.send).toHaveBeenCalledWith('/api/bookings/events/event-ui/primary-venue',expect.objectContaining({method:'PUT',body:{bookingId:'primary-room',bookingVersion:2,version:0}}))
+    expect(w.get('[data-booking-id="primary-room"]').text()).toContain('Primary attendee location');w.unmount()
+  })
+  it('TC-CS87-22 current Coordinator selects one primary venue with stale-write protection and retained sibling approvals',async()=>{
+    const {event}=await fixture.eventFixture(),rooms=[]
+    for(const name of ['Auditorium','Breakout']){
+      const venue=await api.venue.http('/venues',{method:'POST',headers:fixture.staff,body:fixture.venueInput({name})})
+      rooms.push((await api.booking.http('/venue-bookings',{method:'POST',headers:{...fixture.coordinator,'idempotency-key':name},body:{eventId:event.id,venueId:venue.body.id,title:name,reason:'Conference',startAt:event.startAt,endAt:event.endAt,timeZone:event.timeZone}})).body)
+    }
+    const path=`/venue-bookings/events/${event.id}/primary-venue`
+    const body={bookingId:rooms[0].id,bookingVersion:1,version:0}
+    const selected=await api.booking.http(path,{method:'PUT',headers:fixture.coordinator,body})
+    expect(selected.status).toBe(200);expect(selected.body).toMatchObject({bookingId:rooms[0].id,version:1})
+    const stale=await api.booking.http(path,{method:'PUT',headers:fixture.coordinator,body:{...body,bookingId:rooms[1].id}})
+    expect(stale.status).toBe(409)
+    for(const headers of [fixture.staff,{'x-test-user-id':'other','x-test-role':'EVENT_COORDINATOR'}])expect((await api.booking.http(path,{method:'PUT',headers,body:{...body,version:1}})).status).toBe(403)
+    const changed=await api.booking.http(path,{method:'PUT',headers:fixture.coordinator,body:{...body,bookingId:rooms[1].id,version:1}})
+    expect(changed.status).toBe(200)
+    const summary=await api.booking.http(`/venue-bookings/events/${event.id}/summary`,{headers:fixture.coordinator})
+    expect(summary.body.primaryVenue).toMatchObject({bookingId:rooms[1].id,version:2})
+    expect(summary.body.items.map((r:any)=>r.status)).toEqual(['TENTATIVELY_HELD','TENTATIVELY_HELD'])
+    expect(summary.body.items.map((r:any)=>r.version)).toEqual([1,1])
+  })
+  it('TC-CS87-26 rejects a primary room that no longer meets current venue requirements',async()=>{
+    const {event}=await fixture.eventFixture()
+    const v=await api.venue.http('/venues',{method:'POST',headers:fixture.staff,body:fixture.venueInput()})
+    const held=await api.booking.http('/venue-bookings',{method:'POST',headers:{...fixture.coordinator,'idempotency-key':'primary-invalid'},body:{eventId:event.id,venueId:v.body.id,title:'Main room',reason:'Conference',startAt:event.startAt,endAt:event.endAt,timeZone:event.timeZone}})
+    const changed=await api.venue.http('/venues/'+v.body.id,{method:'PUT',headers:fixture.staff,body:{...v.body,capacity:50,reason:'Reduced usable area'}})
+    expect(changed.status).toBe(200)
+    const r=await api.booking.http(`/venue-bookings/events/${event.id}/primary-venue`,{method:'PUT',headers:fixture.coordinator,body:{bookingId:held.body.id,bookingVersion:1,version:0}})
+    expect(r.status).toBe(409);expect(r.body.error.code).toBe('VENUE_NOT_READY')
+    expect(fixture.bookings.state.primaryVenues.size).toBe(0)
+  })
+  it('TC-CS87-27 rejects a hold expiring during the primary-selection conflict read',async()=>{
+    const {event}=await fixture.eventFixture(),clock=require('../../services/booking-service/src/clock')
+    const v=await api.venue.http('/venues',{method:'POST',headers:fixture.staff,body:fixture.venueInput()})
+    const held=await api.booking.http('/venue-bookings',{method:'POST',headers:{...fixture.coordinator,'idempotency-key':'primary-expiry'},body:{eventId:event.id,venueId:v.body.id,title:'Room',reason:'Conference',startAt:event.startAt,endAt:event.endAt,timeZone:event.timeZone}})
+    const original=fixture.bookings.listBookings,now=vi.spyOn(clock,'now')
+    const scan=vi.spyOn(fixture.bookings,'listBookings').mockImplementation(async(...args:any[])=>{const rows=await original(...args);now.mockReturnValue(new Date(held.body.expiresAt));return rows})
+    try{
+      const r=await api.booking.http(`/venue-bookings/events/${event.id}/primary-venue`,{method:'PUT',headers:fixture.coordinator,body:{bookingId:held.body.id,bookingVersion:1,version:0}})
+      expect(r.status).toBe(409);expect(r.body.error.code).toBe('INACTIVE_BOOKING');expect(fixture.bookings.state.primaryVenues.size).toBe(0)
+    }finally{scan.mockRestore();now.mockRestore()}
+  })
   it('TC-CS87-20 a failed move refreshes the selected booking version while preserving the edited search criteria',async()=>{
     const source={id:'retry-room',eventId:'event-ui',venueId:'origin',venueName:'Original room',title:'Breakout',reason:'Original room request',timeZone:'Asia/Singapore',status:'TENTATIVELY_HELD',version:1,startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:30:00.000Z',expiresAt:'2027-01-01T00:00:00.000Z',expectedAttendance:40,layout:'THEATRE',facilities:[],accessibilityNeeds:[],flags:[]}
     roomUi.items=[source]

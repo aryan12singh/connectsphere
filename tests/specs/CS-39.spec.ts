@@ -14,7 +14,8 @@ describe('CS-39 — server-side atomic commitment checks',()=>{
       const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'expired-partner-'+i},body:{eventId:event.id,venueId:v.body.id,title:'Room '+i,reason:'Conference',startAt:i?'2026-12-21T04:15:00.000Z':'2026-12-21T02:00:00.000Z',endAt:i?'2026-12-21T06:00:00.000Z':'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore',expiresAt:new Date(at+(i+1)*3600000).toISOString()}})
       expect(r.status).toBe(201);holds.push(r.body)
     }
-    expect((await api.venue.http(`/venues/${v.body.id}`,{method:'PUT',headers:f.staff,body:f.venueInput({version:1,setupMinutes:0,turnaroundMinutes:45})})).status).toBe(200)
+    // Explicit pre-rollout legacy snapshot, not a permitted user buffer edit.
+    f.venues.state.venues.set(v.body.id,{...f.venues.getVenue(v.body.id),turnaroundMinutes:45,version:2})
     expect((await api.booking.http('/internal/venue-rechecks',{method:'POST',headers:{'x-internal-api-key':'change-me-dev-internal-key'},body:{venueId:v.body.id,version:2,actor:{id:'staff',role:'VENUE_STAFF'},reason:'Reset changed'}})).status).toBe(200)
     const current=f.bookings.getBooking(holds[1].id);expect(current.flags).toEqual(['BUFFER_CONFLICT'])
     vi.spyOn(require('../../services/booking-service/src/clock'),'now').mockReturnValue(new Date(holds[0].expiresAt))
@@ -37,9 +38,10 @@ describe('CS-39 — server-side atomic commitment checks',()=>{
       expect(r.status).toBe(201);holds.push(r.body)
     }
     expect((await api.booking.http(`/venue-bookings/${holds[0].id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Verified first room'}})).status).toBe(200)
-    expect((await api.venue.http(`/venues/${v.body.id}`,{method:'PUT',headers:f.staff,body:f.venueInput({version:1,setupMinutes:0,turnaroundMinutes:45})})).status).toBe(200)
+    // Explicit pre-rollout legacy snapshot, not a permitted user buffer edit.
+    f.venues.state.venues.set(v.body.id,{...f.venues.getVenue(v.body.id),turnaroundMinutes:45,version:2})
     const counts=[f.bookings.state.activities.length,f.bookings.state.outbox.length]
-    const r=await api.booking.http(`/venue-bookings/${holds[1].id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Acknowledged clash',override:true,acknowledge:true}})
+    const r=await api.booking.http(`/venue-bookings/${holds[1].id}/decision`,{method:'PUT',headers:f.staff,body:{version:f.bookings.getBooking(holds[1].id).version,status:'CONFIRMED',reason:'Acknowledged clash',override:true,acknowledge:true}})
     expect(r.status).toBe(409);expect(r.body.error.code).toBe('VENUE_CONFLICT');expect(f.bookings.getBooking(holds[1].id).status).toBe('TENTATIVELY_HELD');expect([f.bookings.state.activities.length,f.bookings.state.outbox.length]).toEqual(counts)
   })
   it('TC-CS39-10 a combined Coordinator/Staff role cannot directly create a confirmed booking or override a clash',async()=>{

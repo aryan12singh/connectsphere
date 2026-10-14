@@ -3,6 +3,19 @@ import {mountSuspended} from '@nuxt/test-utils/runtime'
 import SafetyReworkPanel from '../../frontend/app/components/safety/SafetyReworkPanel.vue'
 import {reworkProps} from '../helpers/safety-fixtures'
 describe('CS-95 independent rework presentation and validation',()=>{
+  it('TC-CS95-29 Organiser sees actionable feedback without private notes, internal arrangements or resubmit controls',async()=>{
+    const p=reworkProps(),w=await mountSuspended(SafetyReworkPanel,{props:{...p,audience:'ORGANISER',feedback:{...p.feedback,privateNotes:'Confidential staff discussion'},canResubmit:true} as any})
+    expect(w.text()).toContain('The exit is obstructed');expect(w.text()).not.toContain('Confidential staff discussion')
+    expect(w.find('[data-rework-area]').exists()).toBe(false);expect(w.find('button').exists()).toBe(false);w.unmount()
+  })
+  it('TC-CS95-28 Safety feedback requests Coordinator review without automatically declaring reapproval necessary',async()=>{
+    const p=reworkProps(),w=await mountSuspended(SafetyReworkPanel,{props:{...p,arrangements:p.arrangements.map(a=>({...a,ready:true})),canResubmit:true,coordinatorReviewRevision:undefined,coordinatorReviewRoundId:undefined} as any})
+    expect(w.text()).toContain('Coordinator review required')
+    expect(w.text()).not.toContain('Rework approved')
+    expect(w.get('button').attributes('disabled')).toBeDefined()
+    await w.setProps({coordinatorReviewRevision:p.currentRequirementsRevision,coordinatorReviewRoundId:p.feedback.roundId} as any)
+    expect(w.get('button').attributes('disabled')).toBeUndefined();w.unmount()
+  })
   it('TC-CS95-26 stale proof never labels an affected arrangement rework approved',async()=>{
     const p=reworkProps(),w=await mountSuspended(SafetyReworkPanel,{props:{...p,canResubmit:true,readinessRequirementsRevision:'old-revision',arrangements:p.arrangements.map(a=>({...a,ready:true}))} as any})
     const venue=w.get('[data-rework-area="VENUE"]')
@@ -29,7 +42,7 @@ describe('CS-95 independent rework presentation and validation',()=>{
   })
   it('TC-CS95-20 marks only the affected area and retains unaffected approvals',async()=>{
     const w=await mountSuspended(SafetyReworkPanel,{props:reworkProps() as any})
-    expect(w.text()).toContain('The exit is obstructed');expect(w.get('[data-rework-area="VENUE"]').text()).toContain('Needs rework')
+    expect(w.text()).toContain('The exit is obstructed');expect(w.get('[data-rework-area="VENUE"]').text()).toContain('Coordinator action outstanding')
     expect(w.get('[data-rework-area="TECHNICAL"]').text()).toContain('Approval retained');expect(w.get('[data-rework-area="EVENT_DETAILS"]').text()).toContain('Approval retained');w.unmount()
   })
   it('TC-CS95-21 does not render private Safety feedback without explicit visibility',async()=>{
