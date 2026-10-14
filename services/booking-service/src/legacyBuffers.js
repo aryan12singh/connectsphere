@@ -37,8 +37,9 @@ async function configure(venueId,body){
       if(entry.staffInformedCoordinator!==true || entry.coordinatorInformedOrganiser!==true || typeof entry.note!=='string' || !entry.note.trim() || entry.note.trim().length>1000)error(422,'COMMUNICATION_REQUIRED','Record Staff-to-Coordinator and Coordinator-to-Organiser communication with a note for every Event');
       return {...event,staffInformedCoordinator:true,coordinatorInformedOrganiser:true,note:entry.note.trim()};
     });
-    const result=await callVenue(venueId,'legacy-buffers',{...body,communications});
-    if(result.id!==venueId || result.version!==body.version+1 || result.legacyBufferConfigurationPending!==false || !result.buffersLockedAt)error(503,'VENUE_UNAVAILABLE','Invalid configuration acknowledgement. Reload before retrying');
+    const retainLock=await confirmedAtVenue(venueId,tx);
+    const result=await callVenue(venueId,'legacy-buffers',{...body,communications,retainLock});
+    if(result.id!==venueId || result.version!==body.version+1 || result.legacyBufferConfigurationPending!==false || (retainLock?!result.buffersLockedAt:result.buffersLockedAt!==null))error(503,'VENUE_UNAVAILABLE','Invalid configuration acknowledgement. Reload before retrying');
     return result;
   });
 }

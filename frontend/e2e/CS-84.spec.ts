@@ -2,7 +2,7 @@ import {expect} from '@playwright/test'
 import {test,session,emails,signIn} from './helpers'
 import {createVenue,planningEvent,hold,reviewDatabase,databaseEvidence} from './venue-fixtures'
 import {mutation} from './helpers'
-test('TC-CS84-39 LIVE coordinated legacy buffers retain both approved bookings and flag inherited conflicts',async({page,playwright,owner},info)=>{
+test('TC-CS84-39 TC-CS84-41 LIVE coordinated legacy buffers preserve approvals and first-confirmation flexibility',async({page,playwright,owner},info)=>{
   const staff=await session(playwright.request,emails.staff),a=await planningEvent(playwright.request,owner),b=await planningEvent(playwright.request,owner)
   try{
     const venue=await createVenue(staff,{setupMinutes:0,turnaroundMinutes:0})
@@ -35,6 +35,16 @@ test('TC-CS84-39 LIVE coordinated legacy buffers retain both approved bookings a
     const rows=(await reviewDatabase<any>('venue',db=>db.query(query,[venue.id,'LEGACY_BUFFERS_CONFIGURED']))).rows
     expect(rows).toHaveLength(1);expect(rows[0].changes.communications).toHaveLength(2)
     await databaseEvidence(page,info,'TC-CS84-39',[{database:'venue_db',query,rows}])
+    const empty=await createVenue(staff,{setupMinutes:0,turnaroundMinutes:0})
+    await reviewDatabase('venue',db=>db.query('UPDATE venues SET "legacyBufferConfigurationPending"=true,"buffersLockedAt"=CURRENT_TIMESTAMP WHERE id=$1',[empty.id]))
+    await page.goto(`/venue/${empty.id}`)
+    const initial=page.getByRole('region',{name:'Coordinated initial buffer configuration'})
+    await initial.getByLabel('Initial setup time (minutes)').fill('30');await initial.getByLabel('Initial buffer configuration reason').fill('Initial policy; no Event commitments require consultation')
+    await initial.getByRole('button',{name:'Save initial buffers',exact:true}).click();await expect(initial).toHaveCount(0)
+    await expect(page.getByLabel('Setup time (minutes)',{exact:true})).toBeEnabled()
+    const unlocked=await (await staff.get(`/api/venues/${empty.id}`)).json();expect(unlocked.buffersLockedAt).toBeNull();expect(unlocked.legacyBufferConfigurationPending).toBe(false)
+    await page.getByLabel('Setup time (minutes)',{exact:true}).fill('60');await page.getByRole('button',{name:'Save changes',exact:true}).click();await page.getByLabel('Reason or note').fill('Flexible before the first confirmed booking');await page.getByRole('button',{name:'Continue',exact:true}).click();await expect(page).toHaveURL(/\/venue$/)
+    expect((await (await staff.get(`/api/venues/${empty.id}`)).json()).setupMinutes).toBe(60)
   }finally{await staff.dispose();await a.coordinator.dispose();await b.coordinator.dispose()}
 })
 test('TC-CS84-30 LIVE Staff buffer form persists an audited version without altering venue hours',async({page,playwright},info)=>{

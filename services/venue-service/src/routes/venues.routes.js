@@ -49,8 +49,7 @@ router.get('/:id/buffer-status',auth,manage,async(req,res)=>{
   if(!venue)return res.status(404).json({error:'Venue not found'});
   let canEdit=!venue.buffersLockedAt;
   if(!canEdit && !venue.legacyBufferConfigurationPending){
-    const actions=(await store.listHistory(venue.id)).map(h=>h.action);
-    if(actions.includes('VENUE_BUFFERS_LOCKED') && !actions.includes('LEGACY_BUFFERS_CONFIGURED')){
+    if(store.recoverableFence(venue,await store.listHistory(venue.id))){
       const checked=await bookingClient.legacyBuffers(venue.id,undefined,'buffer-status');
       if(checked.venueId!==venue.id || checked.version!==venue.version || typeof checked.everConfirmed!=='boolean')return res.status(409).json({error:{code:'STALE_VENUE',message:'Venue changed. Reload before editing'}});
       canEdit=!checked.everConfirmed;

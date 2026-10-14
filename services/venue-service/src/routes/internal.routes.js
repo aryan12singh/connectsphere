@@ -10,7 +10,7 @@ router.put('/venues/:id/buffer-fence-recovery',internalOnly,async(req,res)=>{
 });
 router.put('/venues/:id/legacy-buffers',internalOnly,async(req,res)=>{
   const errors=require('../validation').validateLegacyBuffers(req.body);
-  if(Object.keys(errors).length || typeof req.body?.actor?.id!=='string' || !req.body.actor.id.trim() || typeof req.body?.actor?.role!=='string' || !req.body.actor.role.trim())return res.status(422).json({error:{code:'VALIDATION_ERROR',message:'Valid buffers, communication, version and actor required'}});
+  if(Object.keys(errors).length || typeof req.body?.retainLock!=='boolean' || typeof req.body?.actor?.id!=='string' || !req.body.actor.id.trim() || typeof req.body?.actor?.role!=='string' || !req.body.actor.role.trim())return res.status(422).json({error:{code:'VALIDATION_ERROR',message:'Valid buffers, communication, confirmation proof, version and actor required'}});
   const venue=await store.configureLegacyBuffers(req.params.id,req.body,req.body.actor);
   return venue?res.json(venue):res.status(404).json({error:'Venue not found'});
 });

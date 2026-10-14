@@ -160,8 +160,8 @@ async function configureLegacyBuffers(idValue,input,actor){
     if(!current)return null;
     checkVersion(current,input.version);
     if(!current.legacyBufferConfigurationPending)throw Object.assign(new Error('Initial coordinated configuration is no longer available'),{status:409,code:'LEGACY_CONFIGURATION_CLOSED'});
-    const stamp=new Date(),data={setupMinutes:input.setupMinutes,turnaroundMinutes:input.turnaroundMinutes,legacyBufferConfigurationPending:false,buffersLockedAt:current.buffersLockedAt || stamp};
-    const changes={before:{setupMinutes:current.setupMinutes,turnaroundMinutes:current.turnaroundMinutes},after:{setupMinutes:input.setupMinutes,turnaroundMinutes:input.turnaroundMinutes},communications:input.communications};
+    const stamp=new Date(),data={setupMinutes:input.setupMinutes,turnaroundMinutes:input.turnaroundMinutes,legacyBufferConfigurationPending:false,buffersLockedAt:input.retainLock?current.buffersLockedAt || stamp:null};
+    const changes={before:{setupMinutes:current.setupMinutes,turnaroundMinutes:current.turnaroundMinutes},after:{setupMinutes:input.setupMinutes,turnaroundMinutes:input.turnaroundMinutes},communications:input.communications,configuredAfterConfirmation:input.retainLock};
     if(!tx){const saved={...current,...data,buffersLockedAt:iso(data.buffersLockedAt),version:current.version+1,updatedAt:stamp.toISOString()};state.venues.set(idValue,saved);recordHistory(idValue,actor,'LEGACY_BUFFERS_CONFIGURED',input.reason,changes);enqueueRecheck(saved,actor,input.reason);return saved;}
     const saved=await tx.venue.update({where:{id:idValue},data:{...data,version:{increment:1}},include:{operatingHours:true}});
     await tx.venueHistory.create({data:{venueId:idValue,actorId:actor.id,actorRole:actor.role,action:'LEGACY_BUFFERS_CONFIGURED',reason:input.reason,changes:safeJson(changes)}});
@@ -172,13 +172,13 @@ async function configureLegacyBuffers(idValue,input,actor){
   return prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM venues WHERE id=${idValue} FOR UPDATE`;return save(await tx.venue.findUnique({where:{id:idValue},include:{operatingHours:true}}),tx);});
 }
 
-function recoverableFence(current,actions){return Boolean(current.buffersLockedAt && !current.legacyBufferConfigurationPending && actions.includes('VENUE_BUFFERS_LOCKED') && !actions.includes('LEGACY_BUFFERS_CONFIGURED'));}
+function recoverableFence(current,history){return Boolean(current.buffersLockedAt && !current.legacyBufferConfigurationPending && history.some(h=>h.action==='VENUE_BUFFERS_LOCKED') && !history.some(h=>h.action==='LEGACY_BUFFERS_CONFIGURED' && h.changes?.configuredAfterConfirmation!==false));}
 function replaceVenue(idValue, input, actor,options={}) {
   if (isMemory) {
     const current = state.venues.get(idValue);
     if (!current) return null;
     checkVersion(current,input.version);
-    const recover=options.recoverFence && recoverableFence(current,state.history.filter(row=>row.venueId===idValue).map(row=>row.action));
+    const recover=options.recoverFence && recoverableFence(current,state.history.filter(row=>row.venueId===idValue));
     if(options.recoverFence && !recover)throw Object.assign(new Error('This venue does not have an uncommitted confirmation fence'),{status:409,code:'VENUE_BUFFERS_LOCKED'});
     if(!recover)checkBufferLock(current,input);
     const updated = {
@@ -202,7 +202,7 @@ function replaceVenue(idValue, input, actor,options={}) {
     const current = await tx.venue.findUnique({ where: { id: idValue }, include: { operatingHours: true } });
     if (!current) return null;
     checkVersion(current,input.version);
-    const recover=options.recoverFence && recoverableFence(current,(await tx.venueHistory.findMany({where:{venueId:idValue},select:{action:true}})).map(row=>row.action));
+    const recover=options.recoverFence && recoverableFence(current,await tx.venueHistory.findMany({where:{venueId:idValue},select:{action:true,changes:true}}));
     if(options.recoverFence && !recover)throw Object.assign(new Error('This venue does not have an uncommitted confirmation fence'),{status:409,code:'VENUE_BUFFERS_LOCKED'});
     if(!recover)checkBufferLock(current,input);
     await tx.venue.update({
@@ -373,7 +373,7 @@ function deleteVenue(idValue,version) {
 }
 
 module.exports = {
-  state, reset, createVenue, replaceVenue, lockBuffers, configureLegacyBuffers, setOperatingHours, listHistory,
+  state, reset, createVenue, replaceVenue, lockBuffers, configureLegacyBuffers,recoverableFence, setOperatingHours, listHistory,
   getVenue, listVenues, deleteVenue, isMemory,
   enqueueInitialBufferRechecks,pendingRechecks,finishRecheck,
 };

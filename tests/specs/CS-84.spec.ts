@@ -18,6 +18,26 @@ beforeEach(() => store.reset())
 afterAll(async () => { await api.close(); store.reset() })
 
 describe('CS-84 — venue buffer HTTP contract', () => {
+  it('TC-CS84-41 a legacy venue without any confirmed booking remains flexible after coordinated initialization',async()=>{
+    const f=require('../helpers/venue-workflow.cjs'),stack=await f.stack(),native=globalThis.fetch
+    let intercept:any
+    try{
+      const v=await stack.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()}),row=f.venues.state.venues.get(v.body.id)
+      row.buffersLockedAt='2026-10-14T00:00:00Z';row.legacyBufferConfigurationPending=true
+      const context=(await stack.venue.http(`/venues/${row.id}/legacy-buffer-context`,{headers:f.staff})).body
+      const initial=await stack.venue.http(`/venues/${row.id}/legacy-buffers`,{method:'PUT',headers:f.staff,body:{version:context.version,setupMinutes:30,turnaroundMinutes:45,reason:'Initial configuration; no affected Event commitments',communications:[],retainLock:true}})
+      expect(initial.status).toBe(200);expect(initial.body.buffersLockedAt).toBeNull();expect(initial.body.legacyBufferConfigurationPending).toBe(false)
+      const edited=await stack.venue.http('/venues/'+row.id,{method:'PUT',headers:f.staff,body:{...initial.body,setupMinutes:60,reason:'Still before first confirmation'}})
+      expect(edited.status).toBe(200)
+      const {event}=await f.eventFixture(),held=await stack.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'legacy-first-confirmation'},body:{eventId:event.id,venueId:row.id,title:'Room',reason:'First later booking',startAt:event.startAt,endAt:event.endAt,timeZone:event.timeZone}})
+      let lose=true;intercept=vi.spyOn(globalThis,'fetch').mockImplementation(async(url:any,options:any)=>{const result=await native(url,options);if(String(url).endsWith('/buffer-lock') && lose){lose=false;throw new Error('Lost acknowledgement')}return result})
+      expect((await stack.booking.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Interrupted first confirmation'}})).status).toBe(503)
+      const fenced=(await stack.venue.http('/venues/'+row.id,{headers:f.staff})).body
+      expect((await stack.venue.http(`/venues/${row.id}/buffer-status`,{headers:f.staff})).body.canEdit).toBe(true)
+      const recovered=await stack.venue.http('/venues/'+row.id,{method:'PUT',headers:f.staff,body:{...fenced,setupMinutes:90,reason:'No successful confirmation yet'}})
+      expect(recovered.status).toBe(200);expect(recovered.body.buffersLockedAt).toBeNull()
+    }finally{intercept?.mockRestore();await stack.close()}
+  })
   it('TC-CS84-36 an uncommitted confirmation fence can be recovered before the first successful booking',async()=>{
     const f=require('../helpers/venue-workflow.cjs'),stack=await f.stack(),native=globalThis.fetch
     let intercept:any
@@ -78,7 +98,7 @@ describe('CS-84 — venue buffer HTTP contract', () => {
       expect(context.status).toBe(200)
       expect(context.body.affectedEvents).toMatchObject([{eventId:event.id,coordinatorId:'coordinator',organiserId:'organiser',bookings:[{id:held.body.id,version:2}]}])
       const before=JSON.stringify({venue:f.venues.getVenue(v.body.id),history:f.venues.state.history,outbox:f.venues.state.outbox})
-      const body={version:context.body.version,setupMinutes:30,turnaroundMinutes:45,reason:'Coordinated initial configuration',communications:context.body.affectedEvents.map((e:any)=>({...e,staffInformedCoordinator:true,coordinatorInformedOrganiser:true,note:'Discussed with assigned Coordinator; Coordinator confirmed Organiser informed.'}))}
+      const body={version:context.body.version,setupMinutes:30,turnaroundMinutes:45,reason:'Coordinated initial configuration',retainLock:false,communications:context.body.affectedEvents.map((e:any)=>({...e,staffInformedCoordinator:true,coordinatorInformedOrganiser:true,note:'Discussed with assigned Coordinator; Coordinator confirmed Organiser informed.'}))}
       for(const communications of [[],body.communications.map((e:any)=>({...e,coordinatorId:'former'})),body.communications.map((e:any)=>({...e,coordinatorInformedOrganiser:false})),body.communications.map((e:any)=>({...e,note:' '}))]) {
         expect((await stack.venue.http(`/venues/${v.body.id}/legacy-buffers`,{method:'PUT',headers:f.staff,body:{...body,communications}})).status).toBeGreaterThanOrEqual(400)
         expect(JSON.stringify({venue:f.venues.getVenue(v.body.id),history:f.venues.state.history,outbox:f.venues.state.outbox})).toBe(before)
