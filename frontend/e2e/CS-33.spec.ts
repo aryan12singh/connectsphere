@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { test, field, signIn, session, mutation, emails } from './helpers'
 import { createVenue, databaseEvidence, reviewDatabase } from './venue-fixtures'
 
-test('TC-CS33-12 TC-CS33-13 LIVE invalid venue time zones show field guidance and preserve the record/history', async ({ page, playwright }, info) => {
+test('TC-CS33-12 TC-CS33-13 TC-CS33-16 LIVE invalid venue time zones show field guidance and preserve the record/history with an unobstructed retry', async ({ page, playwright }, info) => {
   const staff = await session(playwright.request, emails.staff)
   try {
     const venue = await createVenue(staff)
@@ -24,6 +24,7 @@ test('TC-CS33-12 TC-CS33-13 LIVE invalid venue time zones show field guidance an
     await expect(page.locator('#venue-time-zone-error')).toHaveText('Use a valid time zone, such as Asia/Singapore')
     await expect(field(page, 'Time zone')).toHaveAttribute('aria-invalid', 'true')
     await expect(field(page, 'Time zone')).toHaveValue('Asia/Singapor')
+    await expect(page.locator('[data-sonner-toast]')).toHaveCount(0)
     expect(await (await staff.get(`/api/venues/${venue.id}`)).json()).toEqual(venue)
     const afterFailureHistory = await staff.get(`/api/venues/${venue.id}/history/combined`)
     expect(afterFailureHistory.status()).toBe(200)
@@ -52,6 +53,7 @@ test('TC-CS33-12 TC-CS33-13 LIVE invalid venue time zones show field guidance an
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
     await expect(page.locator('#venue-time-zone-error')).toHaveText('Use a valid time zone, such as Asia/Singapore')
     await expect(field(page, 'Venue name')).toHaveValue(name)
+    await expect(page.locator('[data-sonner-toast]')).toHaveCount(0)
     await field(page, 'Time zone').fill('Asia/Singapore')
     await page.getByRole('button', { name: 'Create venue', exact: true }).click()
     await page.getByRole('button', { name: 'Continue', exact: true }).click()

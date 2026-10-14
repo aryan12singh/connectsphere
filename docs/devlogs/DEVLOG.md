@@ -89,7 +89,10 @@ October. Team adoption, teammate signatures and the spike timebox remain
 pending. CS-93/94/95 current tables now follow Session 3 while preserving source
 history. Independent review found an invalid Venue timezone defect; its HTTP,
 form and real BFF handling are fixed, along with working pagination/history
-controls. Full frontend347/347, changed-controls desktop/mobile8/8, other
+controls. The first hosted73/74 run exposed a mobile validation toast covering
+Continue; usable422 guidance now stays in the form with all messages visible,
+while generic service failures retain alerts. Final frontend353/353,
+changed-controls desktop/mobile8/8, other
 venue workflows22/22, live11/11 and restart1/1 pass; typechecks/build and final
 independent review pass. See the [phase report](2026-10-14-venue-review-preparation.md)
 for exact layers, preserved diagnostics and remaining gates. Q2 and live Safety

@@ -20,6 +20,7 @@ import VenueWorkspace from '../../frontend/app/components/venue/VenueWorkspace.v
 import VenueDetails from '../../frontend/app/components/venue/VenueDetails.vue'
 import { apiErrorMessage } from '../../frontend/app/components/shared/api-error'
 import { applyOperatingSchedule, createVenueForm, operatingSchedule, venuePayload } from '../../frontend/app/components/venue/venue-form-state'
+import { venueSaveFailure } from '../../frontend/app/components/venue/venue-save-error'
 import { useErrorAlert } from '../../frontend/app/composables/useErrorAlert'
 
 process.env.DATA_MODE = 'memory'
@@ -35,6 +36,58 @@ function physicalVenue(overrides: Record<string, unknown> = {}) {
 afterEach(() => { venueUi.history = []; venueUi.historyResponses = [] })
 
 describe('CS-33 — venue records', () => {
+  it.each([
+    { statusCode: 422, data: { data: { error: { fields: { timeZone: ['Use a valid time zone'] } } } } },
+    { status: 422, data: { error: { fields: { timeZone: ['Use a valid time zone'] } } } },
+    { data: { statusCode: 422, error: { fields: { timeZone: ['Use a valid time zone'] } } } },
+    { statusCode: 422, error: { fields: { timeZone: ['Use a valid time zone'] } } },
+  ])('TC-CS33-16 keeps usable 422 field guidance in the form without a duplicate blocking toast (%j)', error => {
+    expect(venueSaveFailure(error, 'Could not save this venue.')).toEqual({ fields: { timeZone: ['Use a valid time zone'] }, notify: false })
+  })
+  it('TC-CS33-16 ignores unusable field messages and keeps malformed validation and generic failures visible', () => {
+    const fallback = 'Could not save this venue.'
+    const unusable = { empty: [], blank: ['  '], scalar: 'Use a value', numeric: [7], absent: [null] }
+    for (const error of [
+      { statusCode: 422, data: { error: { fields: unusable } } },
+      { statusCode: 422, data: { error: { fields: [] } } },
+      { statusCode: 422, data: { error: { fields: null } } },
+      { statusCode: 422 },
+      { statusCode: 403 },
+      { statusCode: 409 },
+      { statusCode: 503 },
+      new Error('Network unavailable'),
+      null,
+    ]) expect(venueSaveFailure(error, fallback)).toEqual({ fields: { form: [fallback] }, notify: true })
+    for (const statusCode of [403, 409, 503, undefined]) {
+      expect(venueSaveFailure({ statusCode, data: { error: { fields: { version: ['Reload before saving'] } } } }, fallback))
+        .toEqual({ fields: { version: ['Reload before saving'] }, notify: true })
+    }
+    expect(venueSaveFailure({ statusCode: 422, data: { error: { fields: { ...unusable, name: ['Venue name required'] } } } }, fallback))
+      .toEqual({ fields: { name: ['Venue name required'] }, notify: false })
+  })
+  it('TC-CS33-16 shows all uncovered field guidance in an in-flow alert after the reason popover closes without losing entered values', async () => {
+    const errors = {
+      name: ['Choose a venue name'], venueType: ['Select a venue type'], supportedLayouts: ['Check supported layouts'],
+      facilities: ['Check facilities'], accessibilityTags: ['Check accessibility'], managedById: ['Choose the responsible Staff'],
+      'operatingHours.0.time': ['Closing time must be after opening time'], reason: ['Record the change reason'],
+      'metadata.code': ['Review the catalogue reference'], timeZone: ['Use a valid time zone', 'Keep the venue schedule in its own local time zone'],
+    }
+    const wrapper = mount(VenueForm, { props: { venue: physicalVenue() }, attachTo: document.body })
+    try {
+      await wrapper.get('#venue-name').setValue('My corrected venue')
+      await wrapper.get('#venue-time-zone').setValue('Asia/Singapor')
+      await wrapper.setProps({ errors })
+      const guidance = wrapper.findAll('[role="alert"]').map(alert => alert.text()).join(' ')
+      for (const messages of Object.values(errors)) for (const message of messages) expect(guidance).toContain(message)
+      expect((wrapper.get('#venue-name').element as HTMLInputElement).value).toBe('My corrected venue')
+      expect((wrapper.get('#venue-time-zone').element as HTMLInputElement).value).toBe('Asia/Singapor')
+      expect(wrapper.find('#venue-reason').exists()).toBe(false)
+      expect(wrapper.get('#venue-time-zone-error').text()).toBe(errors.timeZone[0])
+      await wrapper.setProps({ errors: null })
+      expect(wrapper.findAll('[role="alert"]')).toHaveLength(0)
+      expect((wrapper.get('#venue-name').element as HTMLInputElement).value).toBe('My corrected venue')
+    } finally { wrapper.unmount() }
+  })
   it('TC-CS33-14 pages actual venue results, bounds navigation and resets or clamps after search/data changes without changing the selected room', async () => {
     const venues = Array.from({ length: 13 }, (_, index) => ({ id: `room-${index + 1}`, name: `Hall ${String(index + 1).padStart(2, '0')}` }))
     const Calendar = defineComponent({ props: ['venueId', 'canDecide'], template: '<div data-calendar-venue>{{ venueId }} / {{ canDecide }}</div>' })

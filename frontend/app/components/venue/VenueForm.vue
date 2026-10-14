@@ -58,6 +58,10 @@ function errorFor(field: string) {
   return props.errors?.[field]?.[0]
 }
 
+const inlineErrorFields = new Set(['address', 'capacity', 'setupMinutes', 'turnaroundMinutes', 'timeZone', 'operatingHours', 'form'])
+const errorSummary = computed(() => Object.entries(props.errors ?? {})
+  .flatMap(([field, messages]) => inlineErrorFields.has(field) ? messages.slice(1) : messages))
+
 function toggle(values: string[], value: string, checked: boolean | 'indeterminate') {
   const index = values.indexOf(value)
   if (checked === true && index === -1) values.push(value)
@@ -81,6 +85,11 @@ function updateOperatingTime(type: 'opensAt' | 'closesAt', value: string | numbe
   <form class="mx-auto grid w-full max-w-[90rem] gap-6 px-5 py-8 md:px-12 md:py-8" @submit.prevent="requestSubmit">
     <div class="grid gap-3">
       <slot name="title" />
+    </div>
+
+    <div v-if="errorSummary.length" role="alert" class="rounded-xl border border-destructive p-4 text-sm text-destructive">
+      <p class="font-medium">Please correct these venue details.</p>
+      <ul class="mt-2 list-disc space-y-1 pl-5"><li v-for="(message, index) in errorSummary" :key="index">{{ message }}</li></ul>
     </div>
 
     <fieldset :disabled="!ready || saving" class="grid min-w-0 gap-6 border-0 p-0" aria-label="Venue details form">

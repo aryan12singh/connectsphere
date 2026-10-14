@@ -34,13 +34,21 @@ confirmation decision (Q2).
   and catalogue changes, and preserves selection. History expands/collapses
   actual records, resets by venue, exposes accessible state and remains
   disabled before hydration. These replace previously inert controls.
+- The first full hosted run at `f79eb6a` passed73/74 browser cases but exposed
+  a mobile retry defect: the previous validation toast covered Continue in
+  the reason popover. Both Venue save handlers now keep usable422 field
+  validation in the form, with a visible alert for uncovered/indexed keys,
+  closed-popover reason errors and additional messages. Network, permission,
+  conflict, service and malformed validation failures retain generic alerts.
+  The strengthened browser case uses normal immediate corrective clicks,
+  requires no validation toast and retains the actual SQL assertions.
 
 ## Verification
 
 | Layer | Final observed result |
 | --- | --- |
-| Full frontend suite, Node 22.23.3 | 347/347; zero pending, failures or skips |
-| Frontend coverage | Statements 77.44%, branches 75.64%, functions 76.13%, lines 78.66% |
+| Full frontend suite, Node 22.23.3 | 353/353; zero pending, failures or skips |
+| Frontend coverage | Statements 77.65%, branches 75.88%, functions 76.5%, lines 78.81% |
 | Frontend/browser TypeScript and production build | Passed |
 | Changed-controls real production browser | 8/8 desktop/mobile; zero failed, skipped or flaky |
 | Other venue production workflows | 22/22 in the broader local run |
@@ -49,6 +57,7 @@ confirmation decision (Q2).
 | Independent CS-78/85 domain / real PostgreSQL spike | 54/54 and 10/10 |
 | Prisma schemas / scratch-schema cleanup | Both validate; no CS-78 scratch schemas remain |
 | Final independent review | No remaining confirmed issue in this changed scope |
+| Retry correction / independent re-review | TC-CS33-16 focused6/6 and full CS-33 independently21/21; real production8/8 |
 
 The new browser assertions require successful BFF combined-history responses
 and check actual PostgreSQL versions/history counts. Invalid edits leave both
@@ -60,6 +69,14 @@ Earlier local attempts with incomplete harness environment, a wrong history
 fixture and overlapping service restarts/builds are retained as diagnostics.
 The corrected standalone controls run passes all eight cases; the other 22
 venue cases passed. This is not represented as a single clean local 30/30 run.
+The first hosted run's73/74 result is retained as a real defect reproduction,
+not called green. One local retry-suite launch inherited the development
+authentication profile and failed three isolated CS-10 fixture checks; the
+correct CI test profile (`NUXT_AUTH_MODE=mock`) passes353/353 while the real
+browser stack separately uses live authentication. No production assertion
+was weakened. The new TC-CS33-16 RED records expose the toast decision and
+hidden field messages before the correction.
+
 Hosted CI must run the full unfiltered 74-case browser suite against the pushed
 commit; the exact run/SHA and final outcome are recorded on Jira and in the
 external evidence package.
