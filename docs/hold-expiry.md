@@ -78,7 +78,9 @@ idempotent. Email is optional under the present channel decision.
 For integration choose an agreed polling interval, worker batch/lease configuration
 and retry backoff. Do not claim a one-minute customer SLA or deployment from this
 local run. Track overdue work, failed intents and lease retries. The team has not
-yet recorded the planning timebox/policy approvals or independent spike review.
+yet recorded the planning timebox or teammate review. Production hold duration,
+extension allowance and warning timing are agreed in the policy register;
+independent technical checks do not supply those human review records.
 Event completion (CS-31) and waiting-list offers (CS-49) may reuse clock/lease
 mechanics, but need their own business transitions and deadlines.
 
@@ -99,7 +101,8 @@ Individual hold expiry, room replacement or cancellation must not generate an
 Attendee withdrawal, release unrelated equipment or automatically cancel/complete
 the parent Event. A reusable scheduler cannot supply those business decisions.
 Record agreed target intervals, failure visibility and owners in CS-76/77 before
-their production jobs; numerical warning/processing targets remain pending.
+their production jobs. The agreed warning lead is 24 hours; poll/lease/batch
+settings are engineering configuration, not unanswered customer policy.
 
 ## Run and evidence
 
@@ -123,8 +126,9 @@ TEST_RESULTS_JSON=/tmp/venue-domain.json npm run test:report -- \
   ../tests/specs/CS-78.spec.ts ../tests/specs/CS-85.spec.ts
 ```
 
-These two files use Vitest's Node environment and need no database. Full frontend
-regressions require the migrated isolated Event database described in the README.
+CS-78 exercises the clock domain; CS-85 also uses Nuxt runtime/component tests.
+Neither focused spec needs a database. Full frontend regressions require the
+migrated isolated Event database described in the README.
 Convert actual spike results using the existing record compiler from repo root:
 
 ```bash

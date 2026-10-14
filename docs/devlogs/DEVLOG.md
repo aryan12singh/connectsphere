@@ -80,6 +80,27 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 2026-10-14 — Aryan — Venue review, current Safety criteria and Figma annotations
+
+CS-74/78/96 have the venue/model/spike review packet, nine screen annotation
+packs and an async evidence template; four requirements notes are published
+in the shared Figma file. Private evidence checks are scheduled for 17/20
+October. Team adoption, teammate signatures and the spike timebox remain
+pending. CS-93/94/95 current tables now follow Session 3 while preserving source
+history. Independent review found an invalid Venue timezone defect; its HTTP,
+form and real BFF handling are fixed, along with working pagination/history
+controls. Full frontend347/347, changed-controls desktop/mobile8/8, other
+venue workflows22/22, live11/11 and restart1/1 pass; typechecks/build and final
+independent review pass. See the [phase report](2026-10-14-venue-review-preparation.md)
+for exact layers, preserved diagnostics and remaining gates. Q2 and live Safety
+peer integration remain open; no PR or human acceptance is claimed.
+
+The earlier 14 October phases delivered the Session 3 reconciliation,
+[agreed policies](2026-10-14-agreed-venue-policies.md), and
+[first-confirmation locking with coordinated existing bookings](2026-10-14-coordinated-legacy-buffers.md).
+Their dated records retain the applicable implementation and verification
+baselines; this entry supersedes older pending-Q1 summaries.
+
 ### 2026-10-13 — Aryan — Automatic buffer rollout, venue evidence and Safety UI
 
 CS-86 now automatically evaluates inherited venues through durable initial

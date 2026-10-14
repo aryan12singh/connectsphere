@@ -19,7 +19,7 @@ const errors = ref<Record<string, string[]> | null>(null)
 const { showError } = useErrorAlert()
 watch(loadError, value => { if (value) showError(value, 'Unable to load venue') }, { immediate: true })
 watch(optionsError, value => { if (value) showError(value, 'Unable to load venue options') }, { immediate: true })
-async function save(form: VenueFormState) { saving.value = true; errors.value = null; try { await $fetch(`/api/venues/${id.value}`, { method: 'PUT', body: venuePayload(form, user.value?.id ?? '') } as any); await navigateTo('/venue') } catch (caught: any) { errors.value = caught?.data?.error?.fields ?? { form: ['Could not save this venue.'] }; showError(caught, 'Unable to save venue') } finally { saving.value = false } }
+async function save(form: VenueFormState) { saving.value = true; errors.value = null; try { await $fetch(`/api/venues/${id.value}`, { method: 'PUT', body: venuePayload(form, user.value?.id ?? '') } as any); await navigateTo('/venue') } catch (caught: any) { errors.value = caught?.data?.data?.error?.fields ?? caught?.data?.error?.fields ?? { form: ['Could not save this venue.'] }; showError(caught, 'Unable to save venue') } finally { saving.value = false } }
 async function configureLegacy(payload:unknown){saving.value=true;errors.value=null;try{await $fetch(`/api/venues/${id.value}/legacy-buffers`,{method:'PUT',body:payload} as any);await refreshVenue();await refreshStatus()}catch(caught:any){showError(caught,'Unable to configure initial buffers');errors.value={form:[caught?.data?.error?.message??'Reload and check the communication record before retrying.']};await refreshVenue();if((venue.value as any)?.legacyBufferConfigurationPending)await refreshLegacy()}finally{saving.value=false}}
 </script>
 

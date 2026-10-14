@@ -2,19 +2,22 @@
 
 Blue section. Date of Creation: 2026-10-13T20:47:00+08:00.
 
-Source: [CS-94](https://spmg8.atlassian.net/browse/CS-94), current Jira criteria and preserved PM source cases below. These specifications do not establish test execution. Source endpoints, lifecycle names and policy examples remain subject to CS-76/77; no mock represents a delivered role, API, reservation, notice or Safety transition.
+Source: [CS-94](https://spmg8.atlassian.net/browse/CS-94), reconciled with the [Session 3 customer answers](../../../docs/session3-decisions.md), rows2–3/17/45–51, on 14 October 2026. The current acceptance criteria below supersede contradictory historical examples. CS-77 still owns the reviewed API/state mapping; no mock represents a delivered role, API, reservation, notice or Safety transition. These specifications do not establish execution or acceptance.
 
 ## Acceptance criteria
 
-1. The Safety Officer sees all Pending Safety Check events, soonest event date first.
+1. An authorized Safety Officer sees permitted Pending Safety Check reviews through the review queue/assignment, soonest event date first, with relevant arrangement/change history. This does not grant unrestricted access to unrelated event information.
 2. The review page shows expected attendance against each venue's capacity, layout, emergency access, accessibility requirements, equipment placement, crowd movement notes and venue restrictions. Attendance above capacity is highlighted.
-3. The Safety Officer records exactly one decision per review round: Approve, Reject or Request Changes. Reject and Request Changes require a reason, and Request Changes also requires the affected area(s): Venue, Equipment/Technical, or Event details.
-4. Approve records a current safety approval, updates the agreed lifecycle/readiness state and informs the Coordinator.
-5. Each versioned review-round decision records officer, time, outcome/reasons and remains immutable. Concurrent duplicate or stale decisions cannot approve superseded arrangements.
+3. The Safety Officer reviews all seven factors and records exactly one decision per current review round: Approve, Reject the venue arrangement, or Request Changes. Rejection identifies the affected venue booking(s); Reject and Request Changes require actionable reasons, and Request Changes also requires the affected area(s): Venue, Equipment/Technical, or Event details. The reviewed checklist does not assert that every factor is safe regardless of the chosen outcome.
+4. Approve records a current safety approval, updates the reviewed lifecycle/readiness state and informs the Coordinator. Safety approval precedes Confirmed; Preparation is a separate later stage. Reject/Request Changes leaves the event in Planning for Coordinator-directed action and does not automatically reset venue/equipment approvals or reject/cancel the entire event.
+5. Each versioned review-round decision records officer, time, reviewed checklist, outcome, affected arrangements/areas, shared actionable comments and separate private internal notes, and remains immutable. Concurrent duplicate or stale decisions cannot approve superseded arrangements.
 6. Only Safety Officers can record a safety decision. Other roles receive 403.
-7. Preparation cannot proceed on a pending, rejected, changes-requested or outdated safety decision. Visibility follows Q15 and record/role authorization.
+7. Confirmation and preparation cannot bypass a pending, rejected, changes-requested or outdated safety decision. Staff preparation updates require the event to enter Preparation with current safety approval and complete required-arrangement readiness.
+8. The Organiser sees the outcome and actionable comments, including the next action, but never private internal notes. The server enforces role/record authorization and redacts private content before returning the response; component hiding is not the privacy boundary.
 
-## Preserved source cases
+## Preserved source cases — historical snapshot
+
+The raw rows below retain their original examples byte-for-byte. They are historical source proposals, not current policy or execution results. TC-CS94-08's blanket suppression of reasons is superseded: Organisers receive actionable comments while private internal notes remain hidden. Current criteria and the [Safety integration boundary](../../../docs/safety-ui.md) govern new execution.
 
 | TC ID | Type · Level | AC | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Assertions | Intent | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -28,7 +31,7 @@ Source: [CS-94](https://spmg8.atlassian.net/browse/CS-94), current Jira criteria
 
 ## Preserved PM supplemental cases
 
-Source: [7 October PM reconciliation](https://spmg8.atlassian.net/browse/CS-94?focusedCommentId=10125). These source cases remain Not Executed. Lifecycle, endpoint and privacy examples require CS-76/77 decisions; independent component assertions do not execute these cross-service cases.
+Source: [7 October PM reconciliation](https://spmg8.atlassian.net/browse/CS-94?focusedCommentId=10125). These unchanged historical source cases remain Not Executed. Their old provisional policy labels are superseded by the current criteria above; exact API/state mapping still requires CS-77. Independent component assertions do not execute these cross-service cases.
 
 | Test Case ID | Type · Level | Source AC / original ID | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Assertions | Intent / reconciliation | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

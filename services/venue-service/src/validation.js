@@ -29,7 +29,13 @@ function validateVenue(body, partial = false) {
   if (body?.supportedLayouts !== undefined && (!Array.isArray(body.supportedLayouts) || body.supportedLayouts.some((item) => typeof item !== 'string' || !item.trim() || !LAYOUTS.includes(item.trim())))) errors.supportedLayouts = ['Supported layouts contain an unknown value'];
   if (body?.facilities !== undefined && (!Array.isArray(body.facilities) || body.facilities.some((item) => typeof item !== 'string' || !item.trim()))) errors.facilities = ['Facilities must contain only non-empty strings'];
   if (body?.accessibilityTags !== undefined && (!Array.isArray(body.accessibilityTags) || body.accessibilityTags.some((item) => typeof item !== 'string' || !item.trim()))) errors.accessibilityTags = ['Accessibility tags must contain only non-empty strings'];
-  if (body?.timeZone !== undefined && !text(body.timeZone)) errors.timeZone = ['Time zone is required'];
+  if (body?.timeZone !== undefined) {
+    if (!text(body.timeZone)) errors.timeZone = ['Time zone is required'];
+    else {
+      try { new Intl.DateTimeFormat('en', { timeZone: text(body.timeZone) }); }
+      catch { errors.timeZone = ['Use a valid time zone, such as Asia/Singapore']; }
+    }
+  }
   if (body?.managedById !== undefined && !text(body.managedById)) errors.managedById = ['A venue staff manager is required'];
   if (body?.reason !== undefined && !text(body.reason)) errors.reason = ['Reason is required'];
   for (const field of ['setupMinutes', 'turnaroundMinutes']) {

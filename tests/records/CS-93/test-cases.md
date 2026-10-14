@@ -6,18 +6,20 @@ Date of Creation: 2026-10-13T21:11:00+08:00. TC-CS93-30 covers current coordinat
 
 Blue section. Date of Creation: 2026-10-13T20:47:00+08:00.
 
-Source: [CS-93](https://spmg8.atlassian.net/browse/CS-93), current Jira criteria and preserved PM source cases below. These specifications do not establish test execution. Source endpoints, lifecycle names and policy examples remain subject to CS-76/77; no mock represents a delivered role, API, reservation, notice or Safety transition.
+Source: [CS-93](https://spmg8.atlassian.net/browse/CS-93), reconciled with the [Session 3 customer answers](../../../docs/session3-decisions.md), rows2–3/17/45–51, on 14 October 2026. The current acceptance criteria below supersede contradictory historical examples. CS-77 still owns the reviewed API/state mapping; no mock represents a delivered role, API, reservation, notice or Safety transition. These specifications do not establish execution or acceptance. The remaining Coordinator venue-confirmation question concerns the hold workflow, not the resolved ordering of Safety before Confirmed and separate Preparation.
 
 ## Acceptance criteria
 
-1. After all required current venue bookings and technical/support arrangements are approved/reserved or explicitly not required, the current assigned Coordinator can submit a safety review and the event reflects the pending stage.
-2. Until then, the action is disabled and the outstanding arrangements are listed.
-3. The event appears in the Safety Officer queue with expected attendance, each venue's capacity and layout, accessibility requirements, equipment list and known venue restrictions.
-4. Pending-review arrangements cannot bypass controlled change handling. A legitimate change invalidates or supersedes the pending snapshot according to the agreed lifecycle; routine unrelated edits follow CS-43.
+1. After every required current venue booking is approved and technical/support arrangements have current approval/reservation proof or explicit `NOT_REQUIRED`, the current assigned Coordinator can submit a versioned safety review. The event remains in Planning while approvals are outstanding and its review reflects Pending Safety Check. Exact stored state names follow the reviewed CS-77 contract.
+2. Until then, the action is disabled and the outstanding arrangements are listed. Missing, unknown or stale technical proof never counts as approved or not required.
+3. The review is routed through an authorized Safety Officer queue/assignment, with relevant change history and seven factors: attendance against each venue's capacity, layout, emergency access, accessibility requirements, equipment placement, crowd movement and venue restrictions. Unknown facts are explicit; room capacities are not summed and access to unrelated event information is denied.
+4. Pending-review arrangements cannot bypass controlled change handling. A significant accepted change follows Coordinator review and the standard event lifecycle, returning affected event work to Planning/review. Current review evidence is invalidated or superseded as necessary; no venue or equipment approval is automatically reset. Routine unrelated edits follow CS-43.
 5. Safety Officers are notified when an event enters the queue.
-6. Preparation is blocked until a current safety approval exists. The draft also blocks Confirmed until safety approval; that additional lifecycle ordering remains a Q1 working assumption.
+6. Safety approval is required before Confirmed. Preparation is a separate stage after confirmation, and Venue Staff/Technical Support preparation updates unlock only once current safety approval exists and the event enters Preparation. Every required venue and technical arrangement must remain ready; submission itself never confirms the event.
 
-## Preserved source cases
+## Preserved source cases — historical snapshot
+
+The raw rows below retain their original examples byte-for-byte. They are historical source proposals, not current policy or execution results. In particular, TC-CS93-06's blanket edit lock and the provisional lifecycle wording in the PM rows must be interpreted through the current acceptance criteria and [Safety integration boundary](../../../docs/safety-ui.md). Do not implement an automatic sign-off reset from an older example.
 
 | TC ID | Type · Level | AC | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Assertions | Intent | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -31,7 +33,7 @@ Source: [CS-93](https://spmg8.atlassian.net/browse/CS-93), current Jira criteria
 
 ## Preserved PM supplemental cases
 
-Source: [7 October PM reconciliation](https://spmg8.atlassian.net/browse/CS-93?focusedCommentId=10121). These source cases remain Not Executed. Lifecycle, endpoint and privacy examples require CS-76/77 decisions; independent component assertions do not execute these cross-service cases.
+Source: [7 October PM reconciliation](https://spmg8.atlassian.net/browse/CS-93?focusedCommentId=10121). These unchanged historical source cases remain Not Executed. Their old provisional policy labels are superseded by the current criteria above; exact API/state mapping still requires CS-77. Independent component assertions do not execute these cross-service cases.
 
 | Test Case ID | Type · Level | Source AC / original ID | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Assertions | Intent / reconciliation | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

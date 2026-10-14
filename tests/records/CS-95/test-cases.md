@@ -2,19 +2,21 @@
 
 Blue section. Date of Creation: 2026-10-13T20:47:00+08:00.
 
-Source: [CS-95](https://spmg8.atlassian.net/browse/CS-95), current Jira criteria and preserved PM source cases below. These specifications do not establish test execution. Source endpoints, lifecycle names and policy examples remain subject to CS-76/77; no mock represents a delivered role, API, reservation, notice or Safety transition.
+Source: [CS-95](https://spmg8.atlassian.net/browse/CS-95), reconciled with the [Session 3 customer answers](../../../docs/session3-decisions.md), rows2–3/17/45–51, on 14 October 2026. The current acceptance criteria below supersede contradictory historical examples. CS-77 still owns the reviewed API/state mapping; no mock represents a delivered role, API, reservation, notice or Safety transition. These specifications do not establish execution or acceptance.
 
 ## Acceptance criteria
 
-1. On Request Changes, return the event to the agreed earlier planning stage and reopen the affected venue/technical/event-detail areas. Exact status names and mappings follow Q1.
-2. Arrangements in areas not selected keep their Approved status.
-3. The Coordinator sees the Safety Officer's comments and the flagged items. The relevant Venue Staff and Technical Support Staff are notified.
-4. Once the flagged arrangements are re-approved, the Coordinator can resubmit for a new safety review round. Earlier rounds and decisions stay in the history.
-5. On safety rejection, preparation remains blocked. The draft returns to Planning with all arrangements flagged; final rework scope follows the recorded decision and does not automatically cancel the event.
-6. A new valid review round must approve the corrected arrangements before preparation. The draft also requires this before Confirmed, pending Q1.
-7. Significant changes invalidate affected safety evidence under Q14 while preserving audit history and unrelated commitments; resubmission cannot reuse an approval for an older arrangement version.
+1. On Request Changes, keep the event in Planning with the Safety issue and affected venue/technical/event-detail areas visible. The Coordinator reviews the decision and records the next action; exact stored states follow the reviewed CS-77 contract.
+2. Do not automatically reset any venue or equipment sign-off, including affected areas. The Coordinator decides which arrangements require changes or a new approval. Unrelated commitments/approvals remain; stale evidence must not be represented as current readiness.
+3. The Coordinator sees the permitted Safety feedback and affected items, and relevant Venue Staff/Technical Support Staff receive the required notice. The Organiser sees the outcome and actionable comments/next action, but not private internal notes or staff-only review details. The server enforces that separation.
+4. After recorded Coordinator review of the current round/requirements revision and any directed rework, the current assigned Coordinator can resubmit only with complete current required-venue and technical/support readiness proof, or explicit technical `NOT_REQUIRED`. A new review round is created; previous rounds/decisions remain immutable. Reapproval is required only where the reviewed change process calls for it, not as an automatic response to every Safety decision.
+5. Safety rejection targets the unsuitable venue arrangement(s), leaves the event in Planning with its issue/reason visible, and allows revised arrangements followed by another review. It does not reject/cancel the entire event or flag every unrelated arrangement. The Coordinator may separately reject/cancel the event through the normal event decision process.
+6. A new valid review round must approve the corrected current arrangements before Confirmed and the separate Preparation stage. Staff preparation updates remain blocked until the event enters Preparation with current safety approval and complete required-arrangement readiness.
+7. A significant accepted change follows Coordinator review and the standard event lifecycle, returning work to Planning/review as required and invalidating affected Safety evidence while retaining audit history. No sign-off is automatically reset; resubmission cannot reuse an approval for an older arrangement version.
 
-## Preserved source cases
+## Preserved source cases — historical snapshot
+
+The raw rows below retain their original examples byte-for-byte. They are historical source proposals, not current policy or execution results. TC-CS95-01/06/07's automatic reopening or blanket rejection flags are superseded by recorded Coordinator-directed action and scoped venue rejection. New execution follows the current criteria and [Safety integration boundary](../../../docs/safety-ui.md); no historical row is a current approval-reset requirement.
 
 | TC ID | Type · Level | AC | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Assertions | Intent | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -28,7 +30,7 @@ Source: [CS-95](https://spmg8.atlassian.net/browse/CS-95), current Jira criteria
 
 ## Preserved PM supplemental cases
 
-Source: [7 October PM reconciliation](https://spmg8.atlassian.net/browse/CS-95?focusedCommentId=10123). These source cases remain Not Executed. Lifecycle, endpoint and privacy examples require CS-76/77 decisions; independent component assertions do not execute these cross-service cases.
+Source: [7 October PM reconciliation](https://spmg8.atlassian.net/browse/CS-95?focusedCommentId=10123). These unchanged historical source cases remain Not Executed. Their old provisional policy labels are superseded by the current criteria above; exact API/state mapping still requires CS-77. Independent component assertions do not execute these cross-service cases.
 
 | Test Case ID | Type · Level | Source AC / original ID | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Assertions | Intent / reconciliation | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
