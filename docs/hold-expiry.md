@@ -5,7 +5,7 @@ integration updates 12–13 October. The research worker below still uses dispos
 PostgreSQL tables. Production requests, decisions, extensions, search, calendar
 and readiness now persist/use buffers, versions and deadlines. The production
 expiry/reminder scheduler (CS-90) and actual notification delivery remain pending;
-see the [working policies](venue-policy-decisions.md).
+see the [agreed policies](venue-policy-decisions.md).
 
 ## Reusable domain code
 
@@ -148,3 +148,9 @@ every original API/browser scenario. Failed runs remain alongside reruns.
 [Phase delivery](devlogs/2026-10-12-venue-workflows.md) records current layers,
 commands and remaining gates. Neither the spike nor this phase establishes PO
 acceptance or completed Safety/notification stories.
+
+## Agreed team timing — 14 October 2026
+
+Default holds are 72 hours capped at setup. The current Coordinator submits a versioned extension request; Venue Staff approves that exact requested deadline, at most once and up to 24 hours later, still capped at setup. The persisted request/count, activity and outbox are atomic. Pending requests retain the old expiry, expired holds cannot be extended, and migration preserves previously spent extensions through retained outbox history. Ordinary arrangement changes invalidate a pending request without replenishing the count.
+
+The warning threshold is 24 hours. Creation inside that threshold queues VenueHoldExpiring intent immediately, once per idempotent request. This is not delivery: CS-90 must process later warning thresholds/expiry, and CS-50/51 must deliver notices to the current Coordinator while suppressing obsolete deadline messages. No Event cancellation or equipment release follows individual hold expiry. Polling interval, lease/batch settings are engineering configuration, not additional customer policy questions.

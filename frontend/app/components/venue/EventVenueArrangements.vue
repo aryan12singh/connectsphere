@@ -5,9 +5,9 @@ import { Card } from '@/components/ui/card'
 import { calendarIsoToWallTime,calendarWallTimeToIso } from './booking-state'
 import CoordinatorSafetyPreparation from '../safety/CoordinatorSafetyPreparation.vue'
 
-interface Room {id:string;eventId:string;venueId:string;venueName?:string;venueType?:string|null;venueCapacity?:number|null;title:string;reason:string;timeZone:string;status:string;effectiveStatus?:string;version:number;startAt:string;endAt:string;occupiedStart:string;occupiedEnd:string;expiresAt:string|null;expectedAttendance:number;layout:string;facilities?:string[];accessibilityNeeds?:string[];flags:string[]}
+interface Room {extensionCount?:number;extensionRequest?:{expiresAt:string;reason:string;requestedById:string}|null;id:string;eventId:string;venueId:string;venueName?:string;venueType?:string|null;venueCapacity?:number|null;title:string;reason:string;timeZone:string;status:string;effectiveStatus?:string;version:number;startAt:string;endAt:string;occupiedStart:string;occupiedEnd:string;expiresAt:string|null;expectedAttendance:number;layout:string;facilities?:string[];accessibilityNeeds?:string[];flags:string[]}
 interface Event {id:string;title:string;status:string;venueType?:string;currentCoordinatorId:string;startAt:string;endAt:string;timeZone:string;expectedAttendance:number;preferredLayout:string;accessibilityNeeds:string[];venueRequirements?:string}
-interface Summary {primaryVenue?:{bookingId:string|null;version:number;available:boolean};event:Event;items:Room[];venueReady:boolean;outstanding:Array<{bookingId:string|null;venueName?:string;reasons:string[]}>}
+interface Summary {attendancePlan?:{expectedAttendance:number;ready:boolean;sessions:Array<{startAt:string;endAt:string;allocated:number|null;reason:string|null}>};primaryVenue?:{bookingId:string|null;version:number;available:boolean};event:Event;items:Room[];venueReady:boolean;outstanding:Array<{bookingId:string|null;venueName?:string;reasons:string[]}>}
 interface Match {id:string;name:string;address?:string;capacity:number|null;setupMinutes:number;turnaroundMinutes:number;match:'FULL'|'PARTIAL';gaps:string[];canRequest:boolean;occupiedStart:string;occupiedEnd:string}
 interface Option {value:string;label:string}
 const props=defineProps<{eventId:string}>()
@@ -24,6 +24,7 @@ const sourceRoom=ref<Room|null>(null)
 let searchGeneration=0
 function invalidateSearch(){searchGeneration++;matches.value=null}
 const form=reactive({startAt:'',endAt:'',attendance:0,layout:'',facilities:[] as string[],accessibility:[] as string[],location:'',reason:''})
+const extensionDates=reactive<Record<string,string>>({}),extensionReasons=reactive<Record<string,string>>({})
 const releaseReasons=reactive<Record<string,string>>({}),requestKeys=new Map<string,string>()
 const now=ref(Date.now());let timer:ReturnType<typeof setInterval>|undefined
 onMounted(()=>{ready.value=true;timer=setInterval(()=>{now.value=Date.now()},1000)});onUnmounted(()=>{clearInterval(timer);invalidateSearch()})
@@ -45,6 +46,17 @@ watch(()=>props.eventId,()=>{sourceRoom.value=null;open.value=false;invalidateSe
 function format(value:string){return calendarIsoToWallTime(value,data.value?.event.timeZone || 'Asia/Singapore').replace('T',' ')}
 function countdown(room:Room){const minutes=room.expiresAt?Math.max(0,Math.ceil((Date.parse(room.expiresAt)-now.value)/60000)):0;return minutes?`${Math.floor(minutes/60)}h ${minutes%60}m remaining`:'Expired — request a new hold'}
 function status(room:Room){const value=room.expiresAt && Date.parse(room.expiresAt)<=now.value?'EXPIRED':room.effectiveStatus || room.status;return value==='CONFIRMED'?'Venue approved':value.replaceAll('_',' ').toLowerCase()}
+function canRequestExtension(room:Room){return canArrange.value && room.status==='TENTATIVELY_HELD' && Boolean(room.expiresAt) && Date.parse(room.expiresAt!)>now.value && (room.extensionCount ?? 0)<1}
+async function requestExtension(room:Room){
+  if(!ready.value || !canRequestExtension(room) || posting.value || !extensionDates[room.id] || !extensionReasons[room.id]?.trim())return
+  posting.value=room.id
+  try{
+    const expiresAt=calendarWallTimeToIso(extensionDates[room.id]!,data.value!.event.timeZone)
+    await requestFetch(`/api/bookings/${encodeURIComponent(room.id)}/hold-extension/request`,{method:'POST',body:{version:room.version,expiresAt,reason:extensionReasons[room.id]!.trim()}})
+    extensionDates[room.id]='';extensionReasons[room.id]='';await refresh()
+  }catch(caught){showError(caught,'Unable to request this extension');await refresh()}
+  finally{posting.value=null}
+}
 function criteria(){const zone=data.value?.event.timeZone || 'Asia/Singapore';return {startAt:calendarWallTimeToIso(form.startAt,zone),endAt:calendarWallTimeToIso(form.endAt,zone),expectedAttendance:Number(form.attendance),layout:form.layout,facilities:[...form.facilities],accessibilityNeeds:[...form.accessibility]}}
 const canChangeSource=computed(()=>sourceRoom.value && ['TENTATIVELY_HELD','REJECTED'].includes(sourceRoom.value.status) && (!sourceRoom.value.expiresAt || Date.parse(sourceRoom.value.expiresAt)>now.value))
 function fillForm(room?:Room){const event=data.value?.event;if(!event)return;form.startAt=calendarIsoToWallTime(room?.startAt || event.startAt,event.timeZone);form.endAt=calendarIsoToWallTime(room?.endAt || event.endAt,event.timeZone);form.attendance=room?.expectedAttendance ?? event.expectedAttendance;form.layout=room?.layout || event.preferredLayout || (event.venueType==='VIRTUAL'?'VIRTUAL':'');form.facilities=[...(room?.facilities || [])];form.accessibility=[...new Set([...(event.accessibilityNeeds || []),...(room?.accessibilityNeeds || [])])];form.location='';form.reason='';matches.value=null;message.value=''}
@@ -82,6 +94,7 @@ async function release(room:Room){if(!ready.value || !canArrange.value || postin
     <template v-else-if="data">
       <p role="status" class="text-sm">{{ data.venueReady ? 'All required venues are approved for the current requirements.' : 'Venue arrangements are outstanding.' }}</p>
       <ul v-if="data.outstanding.length" id="venue-outstanding" class="list-disc pl-5 text-sm text-muted-foreground"><li v-for="item in data.outstanding" :key="item.bookingId ?? 'none'">{{ item.venueName || item.bookingId || 'Venue booking' }}: {{ item.reasons.map(r => r.replaceAll('_',' ').toLowerCase()).join(', ') }}</li></ul>
+      <section v-if="data.attendancePlan" aria-label="Attendance allocations" class="grid gap-2 text-sm"><p>Event attendance: {{ data.attendancePlan.expectedAttendance }}. Each simultaneous session must account for this total; room capacities are not added across the day.</p><p v-for="session in data.attendancePlan.sessions" :key="session.startAt">{{ format(session.startAt) }}–{{ format(session.endAt) }}: {{ session.allocated ?? 'Unverified' }} allocated<span v-if="session.reason"> — {{ session.reason.replaceAll('_',' ').toLowerCase() }}</span></p></section>
       <p class="text-sm text-muted-foreground">Technical/support approval and a current Safety Officer review are also required before preparation.</p>
       <CoordinatorSafetyPreparation v-if="data.event.id === props.eventId && data.event.currentCoordinatorId === user?.id" :event-id="props.eventId" :event-title="data.event.title" :rooms="data.items" :venue-ready="data.venueReady" :outstanding="data.outstanding" />
       <p v-if="!data.primaryVenue?.bookingId" class="text-sm text-muted-foreground">Choose a primary attendee location. Other rooms remain part of the Event.</p>
@@ -93,6 +106,8 @@ async function release(room:Room){if(!ready.value || !canArrange.value || postin
         <Button v-else-if="canArrange && ['TENTATIVELY_HELD','CONFIRMED'].includes(room.effectiveStatus || room.status) && !room.flags.length" size="sm" variant="outline" :disabled="!ready || Boolean(posting) || loading || room.status === 'TENTATIVELY_HELD' && (!room.expiresAt || Date.parse(room.expiresAt) <= now)" @click="selectPrimary(room)">Make primary location</Button>
         <p class="text-sm">{{ room.expectedAttendance }} attendees · {{ room.layout }} layout</p><p class="text-sm">Event time: {{ format(room.startAt) }}–{{ format(room.endAt) }}</p><p class="text-sm text-muted-foreground">Occupied, including setup and turnaround: {{ format(room.occupiedStart) }}–{{ format(room.occupiedEnd) }} ({{ data.event.timeZone }})</p>
         <p v-if="room.expiresAt" class="text-sm">Hold expires {{ format(room.expiresAt) }} · {{ countdown(room) }}</p><p v-if="room.flags.length" role="alert" class="text-sm text-destructive">Needs attention: {{ room.flags.map(f => f.replaceAll('_',' ').toLowerCase()).join(', ') }}</p>
+        <div v-if="canRequestExtension(room)" class="grid gap-2 text-sm"><p v-if="room.extensionRequest">Extension awaiting Staff approval: {{ format(room.extensionRequest.expiresAt) }} — {{ room.extensionRequest.reason }}. The current deadline still applies.</p><p>One extension of up to 24 hours is allowed, capped at setup start.</p><label :for="`extension-deadline-${room.id}`">Requested deadline ({{ data.event.timeZone }})</label><input :id="`extension-deadline-${room.id}`" v-model="extensionDates[room.id]" type="datetime-local" :disabled="!ready || Boolean(posting)" class="h-9 rounded-xl border border-border px-3" /><label :for="`extension-reason-${room.id}`">Extension request reason</label><input :id="`extension-reason-${room.id}`" v-model="extensionReasons[room.id]" :disabled="!ready || Boolean(posting)" class="h-9 rounded-xl border border-border px-3" /><Button size="sm" variant="outline" :disabled="!ready || Boolean(posting) || !extensionDates[room.id] || !extensionReasons[room.id]?.trim()" @click="requestExtension(room)">Request hold extension</Button></div>
+        <p v-else-if="room.extensionCount" class="text-sm">The one permitted hold extension has been used.</p>
         <Button v-if="canArrange && room.status !== 'CANCELLED'" size="sm" variant="outline" :disabled="!ready || Boolean(posting) || loading" @click="findAlternatives(room)">Find alternatives</Button>
         <div v-if="canArrange && ['TENTATIVELY_HELD','REJECTED'].includes(room.status)" class="flex flex-wrap items-end gap-3"><label class="grid flex-1 gap-1 text-sm">Reason for releasing this room<input v-model="releaseReasons[room.id]" :disabled="!ready || Boolean(posting)" class="h-9 rounded-xl border border-border px-3" /></label><Button size="sm" variant="outline" :disabled="!ready || Boolean(posting) || !releaseReasons[room.id]?.trim()" @click="release(room)">Release this booking</Button></div>
       </Card>

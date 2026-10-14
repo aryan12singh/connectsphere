@@ -1,18 +1,30 @@
 import { beforeAll, beforeEach, afterAll, afterEach, describe, expect, it,vi } from 'vitest'
 import { createRequire } from 'node:module'
 import { mockNuxtImport,mountSuspended } from '@nuxt/test-utils/runtime'
-const actions=vi.hoisted(()=>({send:vi.fn(),flags:[] as string[]}))
+const actions=vi.hoisted(()=>({send:vi.fn(),flags:[] as string[],extensionRequest:null as any}))
 mockNuxtImport('useRequestFetch',()=>()=>actions.send)
-mockNuxtImport('useFetch',()=>async()=>{const {ref}=await import('vue');return {data:ref({items:[{id:'room-ui',venueId:'venue-ui',venueName:'Bay Hall',eventId:'event-ui',title:'Conference',status:'TENTATIVELY_HELD',effectiveStatus:'TENTATIVELY_HELD',version:1,currentCoordinatorId:'current-coordinator',statusChangedById:'previous-staff',requestedById:'original-requester',reason:'Private customer room',timeZone:'Asia/Singapore',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:30:00.000Z',expiresAt:'2027-01-01T00:00:00.000Z',expectedAttendance:80,layout:'THEATRE',facilities:['PROJECTOR'],accessibilityNeeds:[],flags:actions.flags}]}),error:ref(null),refresh:vi.fn()}})
+mockNuxtImport('useFetch',()=>async()=>{const {ref}=await import('vue');return {data:ref({items:[{id:'room-ui',venueId:'venue-ui',venueName:'Bay Hall',eventId:'event-ui',title:'Conference',status:'TENTATIVELY_HELD',effectiveStatus:'TENTATIVELY_HELD',version:1,currentCoordinatorId:'current-coordinator',statusChangedById:'previous-staff',requestedById:'original-requester',reason:'Private customer room',timeZone:'Asia/Singapore',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:30:00.000Z',expiresAt:'2027-01-01T00:00:00.000Z',expectedAttendance:80,layout:'THEATRE',facilities:['PROJECTOR'],accessibilityNeeds:[],flags:actions.flags,extensionRequest:actions.extensionRequest,extensionCount:0}]}),error:ref(null),refresh:vi.fn()}})
 const require = createRequire(import.meta.url)
 const f = require('../helpers/venue-workflow.cjs')
 let api:any
 beforeAll(async()=>{api=await f.stack()})
-beforeEach(()=>{f.reset();actions.send.mockReset();actions.flags=[]})
+beforeEach(()=>{f.reset();actions.send.mockReset();actions.flags=[];actions.extensionRequest=null})
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();vi.useRealTimers()})
 afterAll(async()=>{await api.close()})
 async function hold(){const {event,request}=await f.eventFixture();const v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()});const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'decision'},body:{eventId:event.id,venueId:v.body.id,title:'Conference room',reason:'Client conference',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}});expect(r.status).toBe(201);return {booking:r.body,event,request,venue:v.body}}
 describe('CS-38 — guarded independent decisions',()=>{
+  it('TC-CS38-18 Staff approves only the displayed Coordinator-requested extension deadline',async()=>{
+    actions.extensionRequest={requestedById:'current-coordinator',reason:'Awaiting review',expiresAt:'2027-01-01T01:00:00.000Z'}
+    const c=(await import('../../frontend/app/components/venue/VenueBookingRequests.vue')).default,w=await mountSuspended(c,{props:{canDecide:true}})
+    try{
+      expect(w.text()).toContain('Awaiting review')
+      expect(w.find('input[type="datetime-local"]').exists()).toBe(false)
+      await w.get('#decision-reason-room-ui').setValue('Approved requested extra hour')
+      await w.findAll('button').find(b=>b.text()==='Approve extension')!.trigger('click');await new Promise(r=>setTimeout(r,0))
+      expect(actions.send).toHaveBeenCalledWith('/api/bookings/room-ui/hold-extension',expect.objectContaining({method:'PUT',body:{version:1,expiresAt:'2027-01-01T01:00:00.000Z',reason:'Approved requested extra hour'}}))
+    }finally{w.unmount()}
+  })
+
   it('TC-CS38-17 a legacy hold with a null Event link is also explicitly non-actionable without poisoning healthy requests',async()=>{
     const {booking,venue}=await hold(),orphan=await f.bookings.createBooking({...booking,id:undefined,eventId:null,title:'Unlinked legacy hold',startAt:'2026-12-21T06:00:00.000Z',endAt:'2026-12-21T07:00:00.000Z',flags:[],venueId:venue.id},{id:'staff',role:'VENUE_STAFF'},'null-event-hold')
     const before=JSON.stringify({bookings:f.bookings.listBookings(),activities:f.bookings.state.activities,outbox:f.bookings.state.outbox})

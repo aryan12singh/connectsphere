@@ -15,6 +15,61 @@ async function setup(eventExtra: any = {}, venueExtra: any = {}) {
   return {event,request,venue:venue.body,body:{eventId:event.id,venueId:venue.body.id,title:'Main room',reason:'Customer conference',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore',status:'TENTATIVELY_HELD'}}
 }
 describe('CS-37 — persisted, checked venue holds',()=>{
+  it('TC-CS37-31 re-requesting a rejected room within 24 hours creates an immediate warning for its new hold',async()=>{
+    const x=await setup(),created=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'rerequest-warning'},body:x.body})
+    const rejected=await api.booking.http(`/venue-bookings/${created.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'REJECTED',reason:'Revise request'}});expect(rejected.status).toBe(200)
+    vi.spyOn(require('../../services/booking-service/src/clock'),'now').mockReturnValue(new Date('2026-12-20T13:30:00.000Z'))
+    const renewed=await api.booking.http(`/venue-bookings/${created.body.id}`,{method:'PUT',headers:f.coordinator,body:{...rejected.body,status:'TENTATIVELY_HELD',reason:'Revised arrangement'}})
+    expect(renewed.status).toBe(200);expect(renewed.body.expiresAt).toBe('2026-12-21T01:30:00.000Z')
+    const notices=f.bookings.state.outbox.filter((r:any)=>r.kind==='VenueHoldExpiring');expect(notices).toHaveLength(1);expect(notices[0].payload.version).toBe(renewed.body.version)
+  })
+
+  it('TC-CS37-30 an unassigned dual-role actor cannot overwrite the assigned Coordinator extension request',async()=>{
+    const x=await setup(),r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'dual-extension'},body:x.body})
+    const path=`/venue-bookings/${r.body.id}/hold-extension/request`,expiresAt=new Date(Date.parse(r.body.expiresAt)+3600000).toISOString()
+    const requested=await api.booking.http(path,{method:'POST',headers:f.coordinator,body:{version:1,expiresAt,reason:'Valid request'}});expect(requested.status).toBe(200)
+    const native=globalThis.fetch,spy=vi.spyOn(globalThis,'fetch').mockImplementation(async(url:any,options:any)=>String(url).endsWith('/internal/sessions/validate')?new Response(JSON.stringify({valid:true,user:{id:'unassigned-dual',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR','VENUE_STAFF']},permissions:['venue_bookings.create','venue_bookings.decide','venues.view']}),{status:200,headers:{'content-type':'application/json'}}):native(url,options))
+    try{
+      const before=JSON.stringify(f.bookings.state)
+      const denied=await api.booking.http(path,{method:'POST',headers:{authorization:'Bearer dual-role-fixture'},body:{version:2,expiresAt,reason:'Overwrite other Coordinator'}})
+      expect(denied.status).toBe(403);expect(f.bookings.getBooking(r.body.id)).toEqual(requested.body);expect(JSON.stringify(f.bookings.state)).toBe(before)
+    }finally{spy.mockRestore()}
+  })
+
+  it('TC-CS37-28 creates one immediate warning intent for a short hold and deduplicates request replay',async()=>{
+    const x=await setup(),clock=require('../../services/booking-service/src/clock')
+    vi.spyOn(clock,'now').mockReturnValue(new Date('2026-12-20T13:30:00.000Z'))
+    const send=()=>api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'short-warning'},body:x.body})
+    const r=await send();expect(r.status).toBe(201);expect(r.body.expiresAt).toBe('2026-12-21T01:30:00.000Z')
+    expect((await send()).status).toBe(200)
+    const warnings=f.bookings.state.outbox.filter((x:any)=>x.kind==='VenueHoldExpiring')
+    expect(warnings).toHaveLength(1);expect(warnings[0].payload).toMatchObject({bookingId:r.body.id,coordinatorId:'coordinator',expiresAt:r.body.expiresAt})
+  })
+
+  it('TC-CS37-26 requires a current Coordinator request before Staff may approve a single bounded extension',async()=>{
+    const x=await setup(),r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'policy-extension'},body:x.body})
+    const path=`/venue-bookings/${r.body.id}/hold-extension`,expiresAt=new Date(Date.parse(r.body.expiresAt)+86400000).toISOString()
+    expect((await api.booking.http(path,{method:'PUT',headers:f.staff,body:{version:1,expiresAt,reason:'Unrequested extension'}})).status).toBe(409)
+    const requested=await api.booking.http(path+'/request',{method:'POST',headers:f.coordinator,body:{version:1,expiresAt,reason:'Need one more day'}})
+    expect(requested.status).toBe(200);expect(requested.body.expiresAt).toBe(r.body.expiresAt)
+    expect(requested.body.extensionRequest).toMatchObject({requestedById:'coordinator',expiresAt,reason:'Need one more day'})
+    const approved=await api.booking.http(path,{method:'PUT',headers:f.staff,body:{version:2,expiresAt,reason:'One extension approved'}})
+    expect(approved.status).toBe(200);expect(approved.body).toMatchObject({version:3,expiresAt,extensionCount:1,extensionRequest:null})
+    expect((await api.booking.http(path+'/request',{method:'POST',headers:f.coordinator,body:{version:3,expiresAt:new Date(Date.parse(expiresAt)+3600000).toISOString(),reason:'Another extension'}})).status).toBe(409)
+    expect(f.bookings.state.outbox.filter((x:any)=>x.kind==='VenueHoldExtended')).toHaveLength(1)
+  })
+  it('TC-CS37-27 rejects excessive, expired, stale and unauthorized extension requests without changing the hold',async()=>{
+    const x=await setup(),r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'policy-guards'},body:x.body}),path=`/venue-bookings/${r.body.id}/hold-extension/request`
+    const body={version:1,expiresAt:new Date(Date.parse(r.body.expiresAt)+86400001).toISOString(),reason:'Too long'}
+    expect((await api.booking.http(path,{method:'POST',headers:f.coordinator,body})).status).toBe(422)
+    body.expiresAt=new Date(Date.parse(r.body.expiresAt)+3600000).toISOString()
+    for(const headers of [f.staff,{'x-test-user-id':'other','x-test-role':'EVENT_COORDINATOR'}])expect((await api.booking.http(path,{method:'POST',headers,body})).status).toBe(403)
+    expect((await api.booking.http(path,{method:'POST',headers:f.coordinator,body:{...body,version:2}})).status).toBe(409)
+    vi.spyOn(require('../../services/booking-service/src/clock'),'now').mockReturnValue(new Date(r.body.expiresAt))
+    expect((await api.booking.http(path,{method:'POST',headers:f.coordinator,body})).status).toBe(409)
+    expect(f.bookings.getBooking(r.body.id)).toEqual(r.body)
+  })
+
   it('TC-CS37-19 saves one durable request intent alongside the hold',async()=>{
     const x=await setup()
     const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'intent'},body:x.body})
@@ -54,12 +109,13 @@ describe('CS-37 — persisted, checked venue holds',()=>{
     const path=`/venue-bookings/${created.body.id}/hold-extension`, expiresAt=new Date(Date.parse(created.body.expiresAt)+24*3600000).toISOString()
     const body={version:1,expiresAt,reason:'Customer needs another day'}
     expect((await api.booking.http(path,{method:'PUT',headers:f.coordinator,body})).status).toBe(403)
-    const updated=await api.booking.http(path,{method:'PUT',headers:f.staff,body})
-    expect(updated.status).toBe(200);expect(updated.body).toMatchObject({expiresAt,version:2,status:'TENTATIVELY_HELD'})
+    const requested=await api.booking.http(path+'/request',{method:'POST',headers:f.coordinator,body});expect(requested.status).toBe(200)
+    const updated=await api.booking.http(path,{method:'PUT',headers:f.staff,body:{...body,version:requested.body.version}})
+    expect(updated.status).toBe(200);expect(updated.body).toMatchObject({expiresAt,version:3,status:'TENTATIVELY_HELD'})
     expect((await api.booking.http(path,{method:'PUT',headers:f.staff,body})).status).toBe(409)
-    expect(f.bookings.state.activities).toHaveLength(2)
-    expect(f.bookings.state.activities[1].changes.before.expiresAt).toBe(created.body.expiresAt)
-    expect(f.bookings.state.activities[1].changes.after.expiresAt).toBe(expiresAt)
+    expect(f.bookings.state.activities).toHaveLength(3)
+    expect(f.bookings.state.activities[2].changes.before.expiresAt).toBe(created.body.expiresAt)
+    expect(f.bookings.state.activities[2].changes.after.expiresAt).toBe(expiresAt)
   })
   it('TC-CS37-21 failed move preserves both rooms and a successful move releases only its old room',async()=>{
     const x=await setup(), rooms=[x.venue]
@@ -89,7 +145,8 @@ describe('CS-37 — persisted, checked venue holds',()=>{
     const x=await setup(),r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'extended-edit'},body:x.body})
     expect(r.status).toBe(201)
     const expiresAt=new Date(Date.parse(r.body.expiresAt)+3600000).toISOString()
-    const extended=await api.booking.http(`/venue-bookings/${r.body.id}/hold-extension`,{method:'PUT',headers:f.staff,body:{version:1,expiresAt,reason:'Approved extension'}})
+    const requested=await api.booking.http(`/venue-bookings/${r.body.id}/hold-extension/request`,{method:'POST',headers:f.coordinator,body:{version:1,expiresAt,reason:'Request more time'}});expect(requested.status).toBe(200)
+    const extended=await api.booking.http(`/venue-bookings/${r.body.id}/hold-extension`,{method:'PUT',headers:f.staff,body:{version:requested.body.version,expiresAt,reason:'Approved extension'}})
     expect(extended.status).toBe(200)
     const edited=await api.booking.http(`/venue-bookings/${r.body.id}`,{method:'PUT',headers:f.coordinator,body:{...extended.body,title:'Updated room label',reason:'Clarify label'}})
     expect(edited.status).toBe(200);expect(edited.body.expiresAt).toBe(expiresAt)

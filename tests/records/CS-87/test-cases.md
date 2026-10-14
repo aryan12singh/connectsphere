@@ -76,3 +76,9 @@ Source: `docs/session3-decisions.md`, rows4/6/25/26. Old buffer-edit expectation
 | --- | --- | --- |
 | TC-CS87-26 | Reduced current capacity makes primary selection fail409 with no stored selection | Real service HTTP |
 | TC-CS87-27 | Hold expires during asynchronous conflict scan; primary selection fails409 without writes | HTTP with controlled clock |
+
+## Agreed allocation and extension policy — 14 October 2026
+
+TC-CS87-28: An 80-attendee plenary followed by simultaneous 40/40 breakouts remains an 80-attendee Event. Validate allocation totals per scheduled room interval; under/over-allocation blocks readiness while retaining room approvals. Unbooked schedule gaps do not imply a venue session. Existing TC-CS87-01 uses 80/40/40/40 parallel allocations for 200 attendees following this policy.
+
+TC-CS87-29: Coordinator UI submits a versioned extension request, not an approval. Staff remains the approval authority.

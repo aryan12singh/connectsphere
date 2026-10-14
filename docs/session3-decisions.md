@@ -8,9 +8,7 @@ These answers supersede contradictory Week 7 working assumptions, not dated evid
 
 - Rows 4/6: buffers cannot be changed once set versus once venue confirmed. Confirm the exact lock point and initial configuration of existing venues. Unrestricted edits are not accepted Session 3 behaviour.
 - Row 10: confirm whether requesting a venue is the Coordinator confirmation action or whether an additional action is required before Staff approval.
-- Rows 25/26: define Event registration capacity and attendee allocations without blindly summing rooms; attendee visibility beyond the primary location needs a consistent projection.
-- Rows 33/41: record supervision scope and decide cross-Lead reassignment/scope transfer behaviour.
-- Rows 28/31/32: numerical buffer maximum, valid hold durations/extensions/caps and warning timing need justified team decisions. Customer permits non-negative buffers and explicitly delegates hold period and warning timing.
+- Policies 3–6 were agreed by Aryan on 14 October 2026: 72-hour holds with one Staff-approved extension of at most 24 hours following a Coordinator request; 24-hour/expiry notices; explicit Event attendance with per-session room allocations; scoped Leads and recorded cross-scope handover; configurable 0–480 whole-minute buffers. See the [policy register](venue-policy-decisions.md) for exact rules and ownership. These team decisions do not amend the customer transcript below.
 
 ## Authoritative answer transcript
 

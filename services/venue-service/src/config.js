@@ -3,7 +3,7 @@ require('dotenv').config();
 const dataMode = process.env.DATA_MODE || 'prisma';
 const databaseUrl = process.env.DATABASE_URL || '';
 const maxVenueCapacity = Number(process.env.MAX_VENUE_CAPACITY || 10000);
-// Discussion proposal, configurable until the customer/PO confirms the cap.
+// Team-agreed maximum; configurable operationally, not a customer-mandated cap.
 const maxBufferMinutes = Number(process.env.MAX_VENUE_BUFFER_MINUTES || 480);
 const recheckPollMs=Number(process.env.RECHECK_POLL_MS || 5000);
 if (!Number.isSafeInteger(recheckPollMs) || recheckPollMs<1 || recheckPollMs>60000) throw new Error('RECHECK_POLL_MS must be whole milliseconds from 1 to 60000');

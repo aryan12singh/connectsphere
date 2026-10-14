@@ -2,9 +2,9 @@
 import { computed,onMounted,onUnmounted,reactive,ref,watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { calendarIsoToWallTime,calendarWallTimeToIso } from './booking-state'
+import { calendarIsoToWallTime } from './booking-state'
 import type { CalendarBooking } from './calendar-state'
-interface Request extends CalendarBooking {version:number;venueName?:string;venueCapacity?:number|null;organiserId?:string;currentCoordinatorId?:string;currentVenueNotes?:string;effectiveStatus?:string;expectedAttendance?:number;layout?:string;facilities?:string[];accessibilityNeeds?:string[]}
+interface Request extends CalendarBooking {extensionCount?:number;extensionRequest?:{requestedById:string;expiresAt:string;reason:string}|null;version:number;venueName?:string;venueCapacity?:number|null;organiserId?:string;currentCoordinatorId?:string;currentVenueNotes?:string;effectiveStatus?:string;expectedAttendance?:number;layout?:string;facilities?:string[];accessibilityNeeds?:string[]}
 const props=defineProps<{canDecide:boolean}>(),emit=defineEmits<{updated:[]}>()
 const {data,error,refresh}=await useFetch<{items:Request[]}>('/api/bookings',{query:{status:'TENTATIVELY_HELD'}})
 const {showError}=useErrorAlert()
@@ -14,7 +14,7 @@ const ready=ref(false)
 const now=ref(Date.now());let timer:ReturnType<typeof setInterval>|undefined
 onMounted(()=>{ready.value=true;timer=setInterval(()=>{now.value=Date.now()},1000)})
 onUnmounted(()=>clearInterval(timer))
-const search=ref(''),saving=ref<string|null>(null),reasons=reactive<Record<string,string>>({}),extensions=reactive<Record<string,string>>({})
+const search=ref(''),saving=ref<string|null>(null),reasons=reactive<Record<string,string>>({})
 const items=computed(()=>(data.value?.items ?? []).filter(row=>`${row.title} ${row.venueName || row.venueId} ${row.currentCoordinatorId || ''}`.toLowerCase().includes(search.value.toLowerCase())))
 function format(value:string|undefined,booking:Request){return value?calendarIsoToWallTime(value,booking.timeZone || 'Asia/Singapore').replace('T',' '):'—'}
 function active(booking:Request,at=now.value){return props.canDecide && !booking.flags?.includes('EVENT_NOT_FOUND') && booking.status==='TENTATIVELY_HELD' && Boolean(booking.expiresAt) && Date.parse(booking.expiresAt!)>at && booking.effectiveStatus!=='EXPIRED'}
@@ -26,9 +26,9 @@ async function decide(booking:Request,status:'CONFIRMED'|'REJECTED'){
   finally{saving.value=null}
 }
 async function extend(booking:Request){
-  if(!ready.value || !active(booking,Date.now()) || saving.value || !reasons[booking.id]?.trim() || !extensions[booking.id])return
+  if(!ready.value || !active(booking,Date.now()) || saving.value || !reasons[booking.id]?.trim() || !booking.extensionRequest || booking.extensionRequest.requestedById!==booking.currentCoordinatorId || (booking.extensionCount ?? 0)>=1)return
   saving.value=booking.id
-  try{const expiresAt=calendarWallTimeToIso(extensions[booking.id]!,booking.timeZone || 'Asia/Singapore');await requestFetch(`/api/bookings/${encodeURIComponent(booking.id)}/hold-extension`,{method:'PUT',body:{version:booking.version,expiresAt,reason:reasons[booking.id]!.trim()}});extensions[booking.id]='';await refresh();emit('updated')}
+  try{const expiresAt=booking.extensionRequest.expiresAt;await requestFetch(`/api/bookings/${encodeURIComponent(booking.id)}/hold-extension`,{method:'PUT',body:{version:booking.version,expiresAt,reason:reasons[booking.id]!.trim()}});await refresh();emit('updated')}
   catch(caught){showError(caught,'Unable to extend this hold');await refresh()}
   finally{saving.value=null}
 }
@@ -44,7 +44,7 @@ async function extend(booking:Request){
       <p v-if="booking.flags?.length" role="alert" class="text-sm text-destructive">Resolve before approval: {{ booking.flags.join(', ') }}</p><p v-if="!active(booking)" class="text-sm text-muted-foreground">This hold is expired or unavailable for a decision.</p>
       <label :for="`decision-reason-${booking.id}`" class="grid gap-1 text-sm">Decision or extension reason<input :id="`decision-reason-${booking.id}`" v-model="reasons[booking.id]" :disabled="!ready || !active(booking) || Boolean(saving)" class="h-9 rounded-xl border border-border px-3" /></label>
       <div class="flex flex-wrap gap-2"><Button size="sm" :disabled="!ready || !active(booking) || Boolean(saving) || !reasons[booking.id]?.trim() || Boolean(booking.flags?.length)" @click="decide(booking,'CONFIRMED')">Approve</Button><Button size="sm" variant="destructive" :disabled="!ready || !active(booking) || Boolean(saving) || !reasons[booking.id]?.trim()" @click="decide(booking,'REJECTED')">Reject</Button><Button size="sm" variant="outline" :disabled="!ready || Boolean(saving)" @click="refresh()">Refresh request</Button></div>
-      <details v-if="active(booking)" class="text-sm"><summary class="cursor-pointer">Extend hold deadline</summary><div class="mt-3 flex flex-wrap items-end gap-3"><label class="grid gap-1">New deadline ({{ booking.timeZone }})<input v-model="extensions[booking.id]" type="datetime-local" :disabled="!ready || Boolean(saving)" class="h-9 rounded-xl border border-border px-3" /></label><Button size="sm" variant="outline" :disabled="!ready || Boolean(saving) || !extensions[booking.id] || !reasons[booking.id]?.trim()" @click="extend(booking)">Extend hold</Button></div></details>
+      <div v-if="active(booking) && booking.extensionRequest && booking.extensionRequest.requestedById === booking.currentCoordinatorId && (booking.extensionCount ?? 0) < 1" class="grid gap-2 text-sm"><p>Coordinator requested deadline: {{ format(booking.extensionRequest.expiresAt,booking) }} ({{ booking.timeZone }})</p><p>{{ booking.extensionRequest.reason }}</p><Button size="sm" variant="outline" :disabled="!ready || Boolean(saving) || !reasons[booking.id]?.trim()" @click="extend(booking)">Approve extension</Button></div>
     </Card>
   </section>
 </template>

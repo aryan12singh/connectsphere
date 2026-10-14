@@ -17,7 +17,7 @@ module.exports = {
   // tests opt into DATA_MODE=memory explicitly so they remain deterministic.
   dataMode,
   databaseUrl,
-  // Recorded discussion assumptions, pending CS-76 customer/PO confirmation.
+  // Team-agreed defaults; questions on confirmation action and initial buffer locking remain separate.
   holdHours,
   allowTouching: process.env.VENUE_ALLOW_TOUCHING !== 'false',
   allowExpiryAtSetup: process.env.VENUE_ALLOW_EXPIRY_AT_SETUP !== 'false',

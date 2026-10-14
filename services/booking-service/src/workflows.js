@@ -1,4 +1,5 @@
 const store = require('./store');
+const {attendancePlan}=require('./attendancePlan');
 const config = require('./config');
 const { planningContext,canBookEvent } = require('./eventClient');
 const { venueContext,catalogue,lockVenueBuffers } = require('./venueClient');
@@ -6,7 +7,7 @@ const { withinHours } = require('./hours');
 const { instant } = require('./time');
 const clock = require('./clock');
 const { occupiedWindow,occupiedWindowsOverlap } = require('./occupiedWindow');
-const { validateHoldDeadline } = require('./holdClock');
+const { validateHoldDeadline,holdWarningDue } = require('./holdClock');
 const { isStaff } = require('./policy');
 const { hasPermission } = require('../../utils/role-policy');
 
@@ -93,7 +94,7 @@ async function decision(req,id,body) {
     planning(context);
     let venue=await venueContext(current.venueId);
     at=await store.transactionNow(tx);activeHold(current,at);
-    let input={...current,status:body.status,reason:body.reason.trim(),expiresAt:null,flags:[]};
+    let input={...current,status:body.status,reason:body.reason.trim(),expiresAt:null,extensionRequest:null,flags:[]};
     if (body.status==='CONFIRMED') {
       if (current.requirementsFingerprint && current.requirementsFingerprint!==store.fingerprint(venueRequirements(context))) fail(409,'REQUIREMENTS_CHANGED','Event requirements changed. The Coordinator must review this booking before approval.');
       input=checkedNeeds(input,context,venue);
@@ -110,6 +111,31 @@ async function decision(req,id,body) {
     return saved;
   });
 }
+function extensionDeadline(current,body,occupied,at) {
+  if ((current.extensionCount ?? 0)>=1) fail(409,'EXTENSION_LIMIT','This hold has already used its one extension');
+  try {validateHoldDeadline({createdAt:at.toISOString(),expiresAt:body.expiresAt,occupiedStartAt:occupied.startAt},{allowExpiryAtOccupiedStart:config.allowExpiryAtSetup});}
+  catch {fail(422,'VALIDATION_ERROR','Use a future deadline no later than setup',{expiresAt:['Use a future deadline no later than the occupied start']});}
+  const extra=Date.parse(body.expiresAt)-Date.parse(current.expiresAt);
+  if(extra<=0 || extra>24*3600000)fail(422,'VALIDATION_ERROR','An extension must add at most 24 hours',{expiresAt:['Choose a later deadline within 24 hours of the current expiry']});
+}
+async function requestExtension(req,id,body) {
+  if(!hasPermission(req.actor,'venue_bookings.create'))fail(403,'FORBIDDEN','Only the assigned Coordinator may request an extension');
+  const first=await store.getBooking(id);
+  if(!first)fail(404,'NOT_FOUND','Booking not found');
+  return store.withLocks([eventLock(first.eventId),venueLock(first.venueId)],async(tx,at)=>{
+    const current=await store.getBooking(id,tx);version(current,body.version);activeHold(current,at);
+    const context=await contextFor(req,current.eventId);
+    if(context.currentCoordinatorId!==req.actor.id)fail(403,'FORBIDDEN','Event is not assigned to you');
+    planning(context);
+    const venue=await venueContext(current.venueId);
+    at=await store.transactionNow(tx);activeHold(current,at);
+    extensionDeadline(current,body,windowFor(current,venue),at);
+    const extensionRequest={requestedById:req.actor.id,requestedAt:at.toISOString(),expiresAt:new Date(body.expiresAt).toISOString(),reason:body.reason.trim()};
+    const saved=await store.replaceBooking(current,{...current,extensionRequest,activityAction:'HOLD_EXTENSION_REQUESTED',activityReason:extensionRequest.reason},req.actor,tx);
+    await store.addOutbox(saved,'VenueHoldExtensionRequested',{bookingId:saved.id,eventId:saved.eventId,venueId:saved.venueId,coordinatorId:req.actor.id,...extensionRequest,version:saved.version},tx);
+    return saved;
+  });
+}
 async function extend(req,id,body) {
   const first=await store.getBooking(id);
   if (!first) fail(404,'NOT_FOUND','Booking not found');
@@ -120,10 +146,9 @@ async function extend(req,id,body) {
     const context=await contextFor(req,current.eventId);planning(context);
     const venue=await venueContext(current.venueId),occupied=windowFor(current,venue);
     at=await store.transactionNow(tx);activeHold(current,at);
-    try {validateHoldDeadline({createdAt:at.toISOString(),expiresAt:body.expiresAt,occupiedStartAt:occupied.startAt},{allowExpiryAtOccupiedStart:config.allowExpiryAtSetup});}
-    catch {fail(422,'VALIDATION_ERROR','Use a future deadline no later than setup',{expiresAt:['Use a future deadline no later than the occupied start']});}
-    if (Date.parse(body.expiresAt)<=Date.parse(current.expiresAt)) fail(422,'VALIDATION_ERROR','An extension must increase the deadline',{expiresAt:['Choose a later deadline']});
-    const input={...current,expiresAt:new Date(body.expiresAt).toISOString(),reason:body.reason.trim()};
+    extensionDeadline(current,body,occupied,at);
+    if(!current.extensionRequest || current.extensionRequest.requestedById!==context.currentCoordinatorId || Date.parse(current.extensionRequest.expiresAt)!==Date.parse(body.expiresAt))fail(409,'EXTENSION_REQUEST_REQUIRED','The current Coordinator must request this deadline before Staff approves it');
+    const input={...current,expiresAt:new Date(body.expiresAt).toISOString(),extensionCount:1,extensionRequest:null,reason:body.reason.trim(),activityAction:'HOLD_EXTENDED'};
     const saved=await store.replaceBooking(current,input,req.actor,tx);
     await store.addOutbox(saved,'VenueHoldExtended',{bookingId:saved.id,eventId:saved.eventId,coordinatorId:context.currentCoordinatorId,oldExpiresAt:current.expiresAt,expiresAt:saved.expiresAt,actorId:req.actor.id,reason:input.reason,version:saved.version},tx);
     return saved;
@@ -151,6 +176,7 @@ async function create(req,input,key) {
     value={...value,createdAt:at.toISOString(),setupMinutes:operational?0:venue.setupMinutes,turnaroundMinutes:operational?0:venue.turnaroundMinutes,venueVersion:venue.version,occupiedStart:occupied.startAt,occupiedEnd:occupied.endAt,expiresAt:input.status==='TENTATIVELY_HELD'?deadline(input,occupied,at):null,flags:[],requestFingerprint:original};
     const booking=await store.createBooking(value,req.actor,key,tx);
     await store.addOutbox(booking,input.status==='CANCELLED'?'VenueCancelled':operational?'VenueBlocked':'VenueRequested',{bookingId:booking.id,eventId:booking.eventId,venueId:booking.venueId,coordinatorId:context?.currentCoordinatorId ?? null,actorId:req.actor.id,version:booking.version},tx);
+    if(booking.status==='TENTATIVELY_HELD' && holdWarningDue(booking.expiresAt,at.toISOString(),24*3600000))await store.addOutbox(booking,'VenueHoldExpiring',{bookingId:booking.id,eventId:booking.eventId,coordinatorId:context.currentCoordinatorId,expiresAt:booking.expiresAt,version:booking.version},tx);
     await recheckInTransaction(venue,req.actor,'Venue commitment added',tx,await store.transactionNow(tx));
     return {status:201,booking:await store.getBooking(booking.id,tx)};
   });
@@ -176,7 +202,7 @@ async function replace(req,id,input,body) {
       if (!hasPermission(req.actor,'venue_bookings.create') || context.currentCoordinatorId!==req.actor.id || !['TENTATIVELY_HELD','CANCELLED','REJECTED'].includes(current.status) || !['TENTATIVELY_HELD','CANCELLED'].includes(input.status)) fail(403,'FORBIDDEN','Only the assigned Coordinator may change an unapproved venue arrangement');
       if (current.status==='TENTATIVELY_HELD' && !effective(current,at) && input.status!=='CANCELLED') fail(409,'HOLD_EXPIRED','Request a new hold after expiry');
     } else if (!isStaff(req.actor) || !['BLOCKED','UNAVAILABLE','CANCELLED'].includes(input.status)) fail(403,'FORBIDDEN','Only Venue Staff may edit or release an operational window');
-    let value={...current,...input,eventId:current.eventId};
+    let value={...current,...input,eventId:current.eventId,extensionRequest:null};
     if (input.status==='CANCELLED') {value.expiresAt=null;value.flags=[];}
     else {
       const venue=await venueContext(input.venueId);
@@ -195,6 +221,7 @@ async function replace(req,id,input,body) {
     }
     const saved=await store.replaceBooking(current,value,req.actor,tx);
     await store.addOutbox(saved,input.status==='CANCELLED'?'VenueCancelled':operational?'VenueBlocked':'VenueRequested',{bookingId:saved.id,eventId:saved.eventId,venueId:saved.venueId,coordinatorId:context?.currentCoordinatorId ?? null,actorId:req.actor.id,reason:value.reason,version:saved.version},tx);
+    if(saved.status==='TENTATIVELY_HELD' && (current.status!=='TENTATIVELY_HELD' || current.expiresAt!==saved.expiresAt) && holdWarningDue(saved.expiresAt,(await store.transactionNow(tx)).toISOString(),24*3600000))await store.addOutbox(saved,'VenueHoldExpiring',{bookingId:saved.id,eventId:saved.eventId,coordinatorId:context.currentCoordinatorId,expiresAt:saved.expiresAt,version:saved.version},tx);
     for(const venueId of [...new Set([current.venueId,saved.venueId])]) {
       let venue;
       try{venue=await venueContext(venueId);}catch(error){
@@ -271,9 +298,11 @@ async function summary(req,eventId,{allowMissingEvent=false}={}) {
       if (row.required && row.status!=='CANCELLED' && (row.status!=='CONFIRMED' || flags.size)) outstanding.push({bookingId:row.id,venueId:row.venueId,venueName:venue.name,reasons:[...(row.status!=='CONFIRMED'?[expired?'HOLD_EXPIRED':row.status]:[]),...flags]});
     }
     if (!rows.some(row=>row.required && row.status!=='CANCELLED')) outstanding.push({bookingId:null,reasons:['NO_VENUE_BOOKING']});
+    const allocations=attendancePlan(context,items);
+    for(const session of allocations.sessions)if(session.reason)outstanding.push({bookingId:null,reasons:[session.reason],startAt:session.startAt,endAt:session.endAt,allocated:session.allocated,expectedAttendance:allocations.expectedAttendance});
     const primaryVenue=await store.primaryVenue(eventId,tx);
     const primary=items.find(row=>row.id===primaryVenue.bookingId);
-    return {event:context,items,primaryVenue:{...primaryVenue,available:Boolean(primary && ['TENTATIVELY_HELD','CONFIRMED'].includes(primary.effectiveStatus) && !primary.flags.length)},venueReady:outstanding.length===0,outstanding,checkedAt:at.toISOString(),policy:{allowTouching:config.allowTouching,holdHours:config.holdHours,allowExpiryAtSetup:config.allowExpiryAtSetup,status:'WORKING_ASSUMPTION'}};
+    return {event:context,items,attendancePlan:allocations,primaryVenue:{...primaryVenue,available:Boolean(primary && ['TENTATIVELY_HELD','CONFIRMED'].includes(primary.effectiveStatus) && !primary.flags.length)},venueReady:outstanding.length===0,outstanding,checkedAt:at.toISOString(),policy:{allowTouching:config.allowTouching,holdHours:config.holdHours,allowExpiryAtSetup:config.allowExpiryAtSetup,extensionHours:24,maxExtensions:1,warningHours:24,status:'TEAM_AGREED',pendingClarifications:['BUFFER_LOCK_POINT','COORDINATOR_CONFIRMATION_ACTION']}};
   });
 }
 
@@ -422,4 +451,4 @@ async function availability(req,query) {
   const checkedAt=clock.now();
   return {items:items.filter(row=>effective(row,checkedAt)),conflictDetection:'server',checkedAt:checkedAt.toISOString(),policy:{allowTouching:config.allowTouching}};
 }
-module.exports={selectPrimaryVenue,create,decision,extend,replace,summary,search,availability,recheck,staffRecheck,conflictReport,recheckInTransaction,version,activeHold,contextFor,planning,needs,gaps,checkedNeeds,conflicts,effective,windowFor,venueRequirements,venueLock,eventLock,fail};
+module.exports={requestExtension,selectPrimaryVenue,create,decision,extend,replace,summary,search,availability,recheck,staffRecheck,conflictReport,recheckInTransaction,version,activeHold,contextFor,planning,needs,gaps,checkedNeeds,conflicts,effective,windowFor,venueRequirements,venueLock,eventLock,fail};

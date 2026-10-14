@@ -253,3 +253,20 @@ test('TC-CS87-24 PostgreSQL primary selection is atomic, durable and does not al
   try{assert.equal((await api.http(path,{method:'PUT',headers,body:{bookingId:saved.bookingId,bookingVersion:1,version:2}})).status,403);}finally{coordinatorActor();}
   assert.equal((await prisma.eventPrimaryVenue.findUnique({where:{eventId:'assigned-event'}})).version,2);
 });
+
+test('TC-CS37-29 PostgreSQL extension request survives restart and competing Staff approvals spend it once',async()=>{
+  coordinatorActor();const venueId='pg-extension-'+randomUUID(),body=independentValues(venueId)
+  const held=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId},body});assert.equal(held.status,201)
+  const path=`/venue-bookings/${held.body.id}/hold-extension`,expiresAt=new Date(Date.parse(held.body.expiresAt)+86400000).toISOString()
+  const requested=await api.http(path+'/request',{method:'POST',headers,body:{version:1,expiresAt,reason:'Awaiting room review'}});assert.equal(requested.status,200)
+  await api.close();await prisma.$disconnect();api=await start(require('../../src/app'))
+  const persisted=await api.http('/venue-bookings/'+held.body.id,{headers});assert.equal(persisted.body.extensionRequest.expiresAt,expiresAt);assert.equal(persisted.body.expiresAt,held.body.expiresAt)
+  actor={id:'venue-staff',role:'VENUE_STAFF',roles:['VENUE_STAFF'],permissions:[...defaults.VENUE_STAFF]}
+  const approve=()=>api.http(path,{method:'PUT',headers,body:{version:2,expiresAt,reason:'One additional day approved'}})
+  const results=await Promise.all([approve(),approve()]);assert.deepEqual(results.map(r=>r.status).sort(),[200,409])
+  await api.close();await prisma.$disconnect();api=await start(require('../../src/app'))
+  const saved=await api.http('/venue-bookings/'+held.body.id,{headers});assert.equal(saved.body.extensionCount,1);assert.equal(saved.body.extensionRequest,null);assert.equal(saved.body.expiresAt,expiresAt)
+  assert.equal(await prisma.bookingOutbox.count({where:{aggregateId:held.body.id,kind:'VenueHoldExtended'}}),1)
+  assert.equal(await prisma.venueBookingActivity.count({where:{bookingId:held.body.id,action:'HOLD_EXTENDED'}}),1)
+  coordinatorActor();assert.equal((await api.http(path+'/request',{method:'POST',headers,body:{version:3,expiresAt:new Date(Date.parse(expiresAt)+3600000).toISOString(),reason:'Second request'}})).status,409)
+});

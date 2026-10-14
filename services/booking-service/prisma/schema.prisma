@@ -36,6 +36,8 @@ model VenueBookingRequest {
   statusReason      String?
   version           Int                @default(1)
   expiresAt         DateTime?
+  extensionCount    Int                @default(0)
+  extensionRequest  Json?
   expectedAttendance Int?
   layout            String?
   facilities        String[]           @default([])

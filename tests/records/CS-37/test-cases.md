@@ -45,3 +45,19 @@ Source clarification: TC-CS37-14 includes a missing-deadline example. Current cr
 | TC-CS37-24 | Preserve an approved extension during title edit | Staff extends an active hold | Coordinator edits title with current version | Same extended deadline retained; valid versioned audit | Real HTTP / memory | 2026-10-12T19:13:47+08:00 |
 | TC-CS37-25 | Expired hold and catalogue deletion | Persisted hold at exact deadline | Delete otherwise unused venue | Deletion allowed; original booking/history retained | Real HTTP / memory | 2026-10-12T19:13:47+08:00 |
 | TC-CS37-26 | Calendar deadline without navigation | Fetched active hold; component clock crosses its deadline | Advance time without refetch/navigation | Hold disappears at deadline; no audit mutation | Nuxt component | 2026-10-12T19:13:47+08:00 |
+
+## Team policy agreement — 14 October 2026
+
+TC-CS37-26: Staff cannot extend without the current Coordinator's recorded request. One approval adds at most 24 hours to the current deadline, never past setup. Request does not extend occupancy; acceptance increments the count and preserves history/outbox atomically.
+
+TC-CS37-27: Reject over-limit, unauthorized, stale and expired extension requests with no hold mutation.
+
+Existing TC-CS37-11/24 now require the preceding Coordinator request, following the newly agreed policy.
+
+TC-CS37-28: A hold created within 24 hours of its capped deadline queues one immediate Coordinator warning intent; idempotent replay does not duplicate it. This verifies durable intent, not message delivery.
+
+TC-CS37-29: Real PostgreSQL HTTP request survives service reconnect; simultaneous Staff approvals yield one success and one stale conflict, one immutable extension activity and one outbox intent. The consumed limit survives reconnect.
+
+TC-CS37-30: A valid authenticated dual Coordinator/Staff actor who is not assigned to the Event receives 403 when requesting an extension; the existing request, version, activity and outbox remain unchanged.
+
+TC-CS37-31: Re-requesting a rejected room into a short active hold queues an immediate warning for the new version. Deadline-shortening edits receive the same rule; ordinary title edits do not create duplicate warnings.

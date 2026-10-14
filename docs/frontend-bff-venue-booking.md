@@ -128,3 +128,9 @@ Coordinator, Venue Staff and Technical Support may read venue details and availa
 An open operating-hours row requires `closesAt > opensAt`; equality/reversed hours return422 on create, full replacement and the hours-only endpoint without changing venue/history. Calendar day/week boundaries use the venue's IANA zone; each civil midnight is converted independently so DST days have 23 or 25 hours. Intervals split at local midnight and clip to the selected view. Cleared/invalid or ambiguous local booking inputs disable save and show field guidance.
 
 Ordinary Coordinator bookings require the caller's create grant and the current assignment of the actual Event ID. Booking-service asks `GET /events/:eventId/booking-access` on Event service using the same verified bearer token; it never reads event_db or trusts an assignment field in the browser. Detail, edit, list and history recheck current assignment as well as booking ownership. Foreign/removed assignment returns 403; dependency failure returns 503 before writes, with safe retry guidance. Venue Staff with the decision grant may act on existing bookings and create operational windows without an Event link.
+
+## Agreed hold/allocation additions — 14 October 2026
+
+- `POST /api/bookings/:id/hold-extension/request` forwards the current Coordinator's version, requested expiry and reason to Booking. It does not extend the hold.
+- Staff `PUT /api/bookings/:id/hold-extension` approves the persisted request only. The UI displays the exact requested deadline and requires an approval reason. One extension of at most 24 hours is allowed, capped at setup; current assignment, expiry and version are rechecked server-side.
+- Event summary `attendancePlan` contains expected attendance and per-interval allocations. The Coordinator sees shortages/over-allocation, and these reasons feed the existing Safety preparation readiness display. It does not set a registration limit or bypass technical/Safety approval.

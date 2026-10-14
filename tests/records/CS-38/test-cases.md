@@ -63,3 +63,5 @@ The cases below preserve current scope and original source assertions. Date of C
 | Test Case ID | Scenario / AC | Pre-conditions | Steps | Expected result | Date of Creation |
 | --- | --- | --- | --- | --- | --- |
 | TC-CS38-19 | AC3/6: current venue after queue wait | PostgreSQL queue at A waits behind a supported room move to B | Move wins lock; Staff reads A tentative queue | Moved booking omitted; all original filters reapply to current rows | 2026-10-13T19:07:55+08:00 |
+
+TC-CS38-18: Staff sees the Coordinator request and approves its exact deadline with a reason; no free-form unrequested extension control. Team policy agreed 14 October 2026.

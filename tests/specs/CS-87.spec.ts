@@ -21,6 +21,40 @@ beforeEach(() => {fixture.reset();roomUi.items=[];roomUi.primaryVenue={bookingId
 afterAll(async () => { await api.close() })
 
 describe('CS-87 — independent venue bookings', () => {
+  it('TC-CS87-28 checks allocations for each simultaneous session without adding sequential room capacities',async()=>{
+    const {event}=await fixture.eventFixture(),rooms=[]
+    for(const [n,start,end,attendance] of [[0,2,3,80],[1,3,4,40],[2,3,4,40]] as number[][]){
+      const v=await api.venue.http('/venues',{method:'POST',headers:fixture.staff,body:fixture.venueInput({name:`Allocated ${n}`})})
+      const held=await api.booking.http('/venue-bookings',{method:'POST',headers:{...fixture.coordinator,'idempotency-key':`allocation-${n}`},body:{eventId:event.id,venueId:v.body.id,title:`Session ${n}`,reason:'Explicit allocation',startAt:`2026-12-21T0${start}:00:00.000Z`,endAt:`2026-12-21T0${end}:00:00.000Z`,timeZone:event.timeZone,expectedAttendance:attendance}})
+      expect(held.status).toBe(201)
+      const approved=await api.booking.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers:fixture.staff,body:{version:1,status:'CONFIRMED',reason:'Capacity verified'}});expect(approved.status).toBe(200);rooms.push(approved.body)
+    }
+    const path=`/venue-bookings/events/${event.id}/summary`
+    let summary=await api.booking.http(path,{headers:fixture.coordinator})
+    expect(summary.body.attendancePlan).toMatchObject({expectedAttendance:80,ready:true})
+    expect(summary.body.attendancePlan.sessions.map((x:any)=>x.allocated)).toEqual([80,80]);expect(summary.body.venueReady).toBe(true)
+    // Historical incomplete allocation remains visible and blocks readiness, without resetting approvals.
+    fixture.bookings.state.bookings.set(rooms[2].id,{...rooms[2],expectedAttendance:30})
+    summary=await api.booking.http(path,{headers:fixture.coordinator});expect(summary.body.venueReady).toBe(false)
+    expect(summary.body.outstanding.some((x:any)=>x.reasons.includes('ATTENDANCE_ALLOCATION_INCOMPLETE'))).toBe(true)
+    expect(summary.body.items.every((x:any)=>x.status==='CONFIRMED')).toBe(true)
+    fixture.bookings.state.bookings.set(rooms[2].id,{...rooms[2],expectedAttendance:50})
+    summary=await api.booking.http(path,{headers:fixture.coordinator});expect(summary.body.attendancePlan.ready).toBe(false)
+    expect(summary.body.outstanding.some((x:any)=>x.reasons.includes('ATTENDANCE_ALLOCATION_EXCEEDS_EVENT'))).toBe(true)
+  })
+  it('TC-CS87-29 Coordinator requests a bounded extension through the venue UI without extending it directly',async()=>{
+    const expiry=new Date(Date.now()+86400000).toISOString()
+    roomUi.items=[{id:'extend-room',eventId:'event-ui',venueId:'venue',venueName:'Hall',title:'Room',status:'TENTATIVELY_HELD',effectiveStatus:'TENTATIVELY_HELD',version:1,expiresAt:expiry,extensionCount:0,extensionRequest:null,startAt:'2026-12-21T02:00:00Z',endAt:'2026-12-21T04:00:00Z',occupiedStart:'2026-12-21T01:30:00Z',occupiedEnd:'2026-12-21T04:30:00Z',flags:[],expectedAttendance:80,layout:'THEATRE'}]
+    const component=(await import('../../frontend/app/components/venue/EventVenueArrangements.vue')).default,w=await mountSuspended(component,{props:{eventId:'event-ui'}})
+    try{
+      expect(w.text()).toContain('Request hold extension')
+      await w.get('#extension-deadline-extend-room').setValue('2026-10-17T10:00')
+      await w.get('#extension-reason-extend-room').setValue('Awaiting venue review')
+      await w.findAll('button').find(b=>b.text()==='Request hold extension')!.trigger('click');await flushPromises()
+      expect(roomUi.send).toHaveBeenCalledWith('/api/bookings/extend-room/hold-extension/request',expect.objectContaining({method:'POST',body:expect.objectContaining({version:1,reason:'Awaiting venue review'})}))
+    }finally{w.unmount()}
+  })
+
   it('TC-CS87-23 Coordinator selects the attendee-facing primary room through the versioned API',async()=>{
     roomUi.items=[{id:'primary-room',eventId:'event-ui',venueId:'venue',venueName:'Auditorium',title:'Main room',status:'CONFIRMED',effectiveStatus:'CONFIRMED',version:2,startAt:'2026-12-21T02:00:00Z',endAt:'2026-12-21T04:00:00Z',occupiedStart:'2026-12-21T02:00:00Z',occupiedEnd:'2026-12-21T04:00:00Z',flags:[],expectedAttendance:80,layout:'THEATRE'}]
     roomUi.send.mockImplementation(async()=>{roomUi.primaryVenue={bookingId:'primary-room',version:1,available:true};return roomUi.primaryVenue})
@@ -221,7 +255,7 @@ describe('CS-87 — independent venue bookings', () => {
     const rooms=[]
     for(let n=0;n<4;n++){
       const v=await api.venue.http('/venues',{method:'POST',headers:fixture.staff,body:fixture.venueInput({name:`Room ${n}`,capacity:n?40:300})})
-      const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...fixture.coordinator,'idempotency-key':`room-${n}`},body:{eventId:event.id,venueId:v.body.id,title:`Room ${n}`,reason:'Conference spaces',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:n?40:200}})
+      const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...fixture.coordinator,'idempotency-key':`room-${n}`},body:{eventId:event.id,venueId:v.body.id,title:`Room ${n}`,reason:'Conference spaces',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:n?40:80}})
       expect(r.status).toBe(201);rooms.push(r.body)
     }
     expect(new Set(rooms.map((r:any)=>r.id)).size).toBe(4)

@@ -18,9 +18,9 @@ function canonical(value) {
   return value;
 }
 function fingerprint(payload) { return crypto.createHash('sha256').update(JSON.stringify(canonical(payload))).digest('hex'); }
-const metadataKeys = ['expiresAt','expectedAttendance','layout','facilities','accessibilityNeeds','required','setupMinutes','turnaroundMinutes','occupiedStart','occupiedEnd','venueVersion','requirements','requirementsFingerprint','flags'];
+const metadataKeys = ['extensionCount','extensionRequest','expiresAt','expectedAttendance','layout','facilities','accessibilityNeeds','required','setupMinutes','turnaroundMinutes','occupiedStart','occupiedEnd','venueVersion','requirements','requirementsFingerprint','flags'];
 function metadata(input, dates = false) {
-  return Object.fromEntries(metadataKeys.filter(key=>input[key] !== undefined).map(key=>[key, dates && key==='requirements' && input[key]===null ? require('@prisma/client').Prisma.DbNull : dates && ['expiresAt','occupiedStart','occupiedEnd'].includes(key) && input[key] ? new Date(input[key]) : input[key]]));
+  return Object.fromEntries(metadataKeys.filter(key=>input[key] !== undefined).map(key=>[key, dates && ['requirements','extensionRequest'].includes(key) && input[key]===null ? require('@prisma/client').Prisma.DbNull : dates && ['expiresAt','occupiedStart','occupiedEnd'].includes(key) && input[key] ? new Date(input[key]) : input[key]]));
 }
 
 function toApiBooking(booking) {
@@ -43,6 +43,8 @@ function toApiBooking(booking) {
     statusReason: booking.statusReason || null,
     version: booking.version ?? 1,
     expiresAt: iso(booking.expiresAt) || null,
+    extensionCount:booking.extensionCount ?? 0,
+    extensionRequest:booking.extensionRequest || null,
     expectedAttendance: booking.expectedAttendance ?? null,
     layout: booking.layout || null,
     facilities: booking.facilities || [],
@@ -109,7 +111,7 @@ function createBooking(input, actor, key, transaction) {
       status: input.status, idempotencyKey: key,
       statusChangedById: actor.id, statusChangedRole: actor.role, statusChangedAt: timestamp,
       statusReason: input.reason, createdAt: timestamp, updatedAt: timestamp,
-      version:1, expiresAt:null, expectedAttendance:null, layout:null, facilities:[], accessibilityNeeds:[], required:true,
+      version:1, extensionCount:0,extensionRequest:null, expiresAt:null, expectedAttendance:null, layout:null, facilities:[], accessibilityNeeds:[], required:true,
       setupMinutes:0,turnaroundMinutes:0,occupiedStart:input.startAt,occupiedEnd:input.endAt,venueVersion:0,flags:[],
       ...metadata(input),requestFingerprint:input.requestFingerprint || fingerprint(input),
     };

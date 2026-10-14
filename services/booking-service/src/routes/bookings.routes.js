@@ -150,6 +150,10 @@ router.put('/:id/decision',auth,operationalBlockPermission,async(req,res)=>{
   if (Object.keys(errors).length) return validationError(res,errors);
   return res.json(await workflows.decision(req,req.params.id,body));
 });
+router.post('/:id/hold-extension/request',auth,async(req,res)=>{
+  if (!text(req.body?.reason)) return validationError(res,{reason:['Extension request reason is required']});
+  return res.json(await workflows.requestExtension(req,req.params.id,req.body));
+});
 router.put('/:id/hold-extension',auth,operationalBlockPermission,async(req,res)=>{
   if (!text(req.body?.reason)) return validationError(res,{reason:['Extension reason is required']});
   return res.json(await workflows.extend(req,req.params.id,req.body));

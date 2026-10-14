@@ -65,3 +65,5 @@ prove only their display, validation and emitted intents. Original Safety queue,
 submission, role authorization, durable rounds, controlled edits/rework, inbox
 and whole-Event acceptance cases remain unexecuted until their implementations
 exist. Human review, main merge/CI and PO acceptance remain separate gates.
+
+Agreed attendance policy (14 October 2026): the venue summary now supplies session allocation validation. Incomplete or excessive simultaneous headcounts block venue readiness and appear in Coordinator Safety preparation, without resetting existing approvals. Sequential room capacities are never summed to derive Event registration capacity. The existing checklist still requires Officer review of attendance/layout; real Safety persistence and authorization remain peer integration gates.
