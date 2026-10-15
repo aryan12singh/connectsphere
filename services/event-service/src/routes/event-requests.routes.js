@@ -1,5 +1,5 @@
 const express = require('express');
-const { requireAuth, requireAnyPermission } = require('../auth');
+const { requireAuth, requireAnyPermission, requirePermission } = require('../auth');
 const { decide, ACTIONS } = require('../domain/transitions');
 const { pickCoordinator } = require('../domain/assignment');
 const repository = require('../store');
@@ -8,15 +8,14 @@ const config = require('../config');
 const { normaliseInput, validate } = require('../validation');
 const { isOrganiser, isCoordinator, canRead } = require('../policy');
 const { mutation: transactionalMutation } = require('../workflows');
-const { history: workflowHistory, load: loadWorkflowRequest } = require('../workflows');
+const { history: workflowHistory, load: loadWorkflowRequest, read: workflowRead, dto: workflowDto } = require('../workflows');
 const prisma = require('../db');
 
 const router = express.Router();
 const REVIEW_QUEUE_STATUSES = ['SUBMITTED', 'RETURNED_FOR_AMENDMENT', 'APPROVED', 'REJECTED'];
 router.use(requireAuth());
-// Every request read or mutation is capability-gated. Relationship checks
-// below decide which records the capability may be used against.
-router.use(requireAnyPermission('event_requests.create', 'event_requests.review', 'events.view'));
+// Every route below names the exact permission(s) it needs. Relationship checks
+// (owner, assigned Coordinator) then decide which records they apply to.
 
 function sendError(res, status, code, message, details) {
   return res.status(status).json({ error: { code, message, ...(details ? { details } : {}) } });
@@ -60,15 +59,19 @@ async function runTransactionalMutation(req, res, next, mode, id, body = req.bod
   return true;
 }
 
+// Active Coordinators from user-service (it pages 25 at a time).
 async function coordinatorCandidates() {
+  const found = [];
   try {
-    const response = await fetch(`${config.userServiceUrl}/internal/users?role=EVENT_COORDINATOR&page=1`, { headers: { 'x-internal-api-key': config.internalApiKey } });
-    if (!response.ok) return [];
-    const body = await response.json();
-    return (body.users || []).filter(user => user.isActive !== false);
-  } catch {
-    return [];
-  }
+    for (let pageNumber = 1; pageNumber <= 20; pageNumber += 1) {
+      const response = await fetch(`${config.userServiceUrl}/internal/users?role=EVENT_COORDINATOR&page=${pageNumber}`, { headers: { 'x-internal-api-key': config.internalApiKey } });
+      if (!response.ok) break;
+      const body = await response.json();
+      found.push(...(body.users || []));
+      if (found.length >= (body.total || 0) || !(body.users || []).length) break;
+    }
+  } catch { /* an unreachable directory means "no candidates", never a crash */ }
+  return found.filter(user => user.isActive !== false);
 }
 
 async function coordinatorById(coordinatorId) {
@@ -106,7 +109,15 @@ async function response(record, actor) {
   return toRequest(record, actor, await repository.currentAssignment(record.id));
 }
 
-router.get('/review-queue', requireAnyPermission('event_requests.review'), async (req, res, next) => {
+// In database mode a read goes through the same load -> access check -> dto
+// path as the writes, so a GET returns exactly what the last write returned.
+async function prismaRead(req, id) {
+  const record = await loadWorkflowRequest(prisma, id);
+  workflowRead(workflowActor(req.actor), record);
+  return workflowDto(record);
+}
+
+router.get('/review-queue', requirePermission('events.view', 'event_requests.review'), async (req, res, next) => {
   try {
     const requestedStatuses = Array.isArray(req.query.status)
       ? req.query.status
@@ -122,7 +133,7 @@ router.get('/review-queue', requireAnyPermission('event_requests.review'), async
   } catch (error) { return next(error); }
 });
 
-router.post('/', requireAnyPermission('event_requests.create'), async (req, res, next) => {
+router.post('/', requirePermission('event_requests.create'), async (req, res, next) => {
   try {
     if (await runTransactionalMutation(req, res, next, 'create')) return;
     const idempotencyKey = req.get('Idempotency-Key');
@@ -144,21 +155,33 @@ router.post('/', requireAnyPermission('event_requests.create'), async (req, res,
   } catch (error) { return next(error); }
 });
 
-router.get('/', requireAnyPermission('events.view'), async (req, res, next) => {
+// Coordinators a request can be handed to (names for the "Change coordinator"
+// dropdown). Names live in user-service, so event-service passes them through
+// and the browser never talks to user-service directly.
+router.get('/coordinators', requirePermission('events.view', 'event_requests.review'), async (req, res, next) => {
   try {
-    if (!req.actor.permissions?.includes('event_requests.create')) return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to do this');
-    const where = req.query.scope === 'organisation' && req.actor.organisationId
-      ? { organisationId: req.actor.organisationId }
-      : { organiserId: req.actor.id };
-    const requestedStatuses = Array.isArray(req.query.status) ? req.query.status : req.query.status ? [req.query.status] : null;
-    if (requestedStatuses) where.status = requestedStatuses;
+    const items = (await coordinatorCandidates()).map(user => ({ id: user.id, name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || user.id, email: user.email || '' }));
+    return res.json({ items });
+  } catch (error) { return next(error); }
+});
+
+router.get(['/', '/drafts'], requirePermission('events.view'), async (req, res, next) => {
+  try {
+    if (!isOrganiser(req.actor)) return sendError(res, 403, 'FORBIDDEN', 'Only Organisers may list their requests');
+    // Private request lists are always the caller's own. Organisation-wide
+    // visibility applies to published Events, not to the requests behind them.
+    const where = { organiserId: req.actor.id };
+    if (req.path === '/drafts') where.status = 'DRAFT';
+    else if (req.query.status) where.status = Array.isArray(req.query.status) ? req.query.status : [req.query.status];
     const requests = await repository.listRequests(where);
-    const items = await Promise.all(requests.map(record => response(record, req.actor)));
+    const items = config.dataMode === 'prisma'
+      ? requests.map(workflowDto)
+      : await Promise.all(requests.map(record => response(record, req.actor)));
     return res.json(page(items, req));
   } catch (error) { return next(error); }
 });
 
-router.get('/:id/activity', requireAnyPermission('events.view'), async (req, res, next) => {
+router.get('/:id/activity', requirePermission('events.view'), async (req, res, next) => {
   try {
     const record = await repository.findRequest(req.params.id);
     if (!record) return sendError(res, 404, 'NOT_FOUND', 'Event request not found');
@@ -172,7 +195,7 @@ router.get('/:id/activity', requireAnyPermission('events.view'), async (req, res
   } catch (error) { return next(error); }
 });
 
-router.get('/:id/coordinator', requireAnyPermission('events.view'), async (req, res, next) => {
+router.get('/:id/coordinator', requirePermission('events.view'), async (req, res, next) => {
   try {
     const record = await repository.findRequest(req.params.id);
     if (!record) return sendError(res, 404, 'NOT_FOUND', 'Event request not found');
@@ -184,7 +207,7 @@ router.get('/:id/coordinator', requireAnyPermission('events.view'), async (req, 
   } catch (error) { return next(error); }
 });
 
-router.post('/:id/submit', requireAnyPermission('event_requests.create'), async (req, res, next) => {
+router.post('/:id/submit', requirePermission('event_requests.create'), async (req, res, next) => {
   try {
     if (await runTransactionalMutation(req, res, next, 'submit', req.params.id)) return;
     const record = await repository.findRequest(req.params.id);
@@ -204,7 +227,7 @@ router.post('/:id/submit', requireAnyPermission('event_requests.create'), async 
   } catch (error) { return next(error); }
 });
 
-router.post('/:id/resubmit', requireAnyPermission('event_requests.create'), async (req, res, next) => {
+router.post('/:id/resubmit', requirePermission('event_requests.create'), async (req, res, next) => {
   try {
     if (await runTransactionalMutation(req, res, next, 'resubmit', req.params.id)) return;
     const record = await repository.findRequest(req.params.id);
@@ -219,8 +242,9 @@ router.post('/:id/resubmit', requireAnyPermission('event_requests.create'), asyn
   } catch (error) { return next(error); }
 });
 
-router.get('/:id', requireAnyPermission('events.view'), async (req, res, next) => {
+router.get('/:id', requirePermission('events.view'), async (req, res, next) => {
   try {
+    if (config.dataMode === 'prisma') return res.json(await prismaRead(req, req.params.id));
     const record = await repository.findRequest(req.params.id);
     if (!record) return sendError(res, 404, 'NOT_FOUND', 'Event request not found');
     if (!(await readable(req.actor, record))) return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to do this');
@@ -228,7 +252,8 @@ router.get('/:id', requireAnyPermission('events.view'), async (req, res, next) =
   } catch (error) { return next(error); }
 });
 
-router.put('/:id', requireAnyPermission('event_requests.create'), async (req, res, next) => {
+// PUT and PATCH are the same save operation (the contract documents both).
+for (const method of ['put', 'patch']) router[method]('/:id', requirePermission('event_requests.create'), async (req, res, next) => {
   try {
     if (await runTransactionalMutation(req, res, next, 'save', req.params.id)) return;
     const record = await repository.findRequest(req.params.id);
@@ -246,7 +271,7 @@ router.put('/:id', requireAnyPermission('event_requests.create'), async (req, re
   } catch (error) { return next(error); }
 });
 
-router.post('/:id/decision', requireAnyPermission('event_requests.review'), async (req, res, next) => {
+router.post('/:id/decision', requirePermission('event_requests.review'), async (req, res, next) => {
   try {
     const decisionActions = { approve: 'APPROVE', reject: 'REJECT', amendments: 'RETURN' };
     const workflowBody = {
@@ -280,8 +305,9 @@ router.post('/:id/decision', requireAnyPermission('event_requests.review'), asyn
   }
 });
 
-router.post('/:id/reassign', requireAnyPermission('event_requests.review'), async (req, res, next) => {
+router.post('/:id/reassign', requirePermission('event_requests.review'), async (req, res, next) => {
   try {
+    if (await runTransactionalMutation(req, res, next, 'reassign', req.params.id)) return;
     const record = await repository.findRequest(req.params.id);
     if (!record) return sendError(res, 404, 'NOT_FOUND', 'Event request not found');
     const targetId = typeof req.body?.coordinatorId === 'string' ? req.body.coordinatorId.trim() : '';
@@ -291,7 +317,7 @@ router.post('/:id/reassign', requireAnyPermission('event_requests.review'), asyn
     if (!record.currentCoordinatorId && targetId !== req.actor.id) return sendError(res, 403, 'FORBIDDEN', 'An unassigned request can only be claimed by you.');
     if (record.currentCoordinatorId === targetId) return sendError(res, 422, 'VALIDATION_FAILED', 'The new Coordinator must be different.');
     const target = await coordinatorById(targetId);
-    if (target && (target.isActive === false || target.role !== 'EVENT_COORDINATOR')) return sendError(res, 422, 'VALIDATION_FAILED', 'The target user must be an active Coordinator.');
+    if (target && (target.isActive === false || !(target.roles || [target.role]).includes('EVENT_COORDINATOR'))) return sendError(res, 422, 'VALIDATION_FAILED', 'The target user must be an active Coordinator.');
     const updated = await repository.updateRequest(record.id, {}, req.body.version);
     if (!updated) return sendError(res, 409, 'STALE_VERSION', 'This request was changed by someone else. Reload and try again.');
     await repository.assignCoordinator(record.id, targetId, req.actor.id, 'REASSIGNED');

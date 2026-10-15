@@ -109,12 +109,13 @@ submit it; venue creates follow the same rule):
 Idempotency-Key: 6f1c0c9e-3b0a-4c2e-9a53-2f7a8d4e1b10     (a client-generated UUID)
 ```
 
-* Same key + same caller + same body within 24 h → the **original response is replayed**
-  (status and body), with the header `Idempotent-Replayed: true`. Nothing runs twice.
-* Same key + **different** body → 422 `IDEMPOTENCY_KEY_REUSED`.
-* Decisions (approve / reject / return), resubmit and reassign take **no** key. The status guard and
-  the `version` check protect them, so a repeated approval is a 409, not a replayed 200 (story CS-12).
-* No key on a create → the call simply runs once per request.
+* Every write (create, save, submit, resubmit, decision, reassign) **requires** the key; without it the
+  service answers 400 `IDEMPOTENCY_KEY_REQUIRED`. The Nuxt BFF generates one when the browser sends none.
+* Same key + same caller + same path + same body → the **original response is replayed**
+  (status and body), with the header `Idempotency-Replayed: true`. Nothing runs twice.
+* Same key + **different** body → 409 `IDEMPOTENCY_CONFLICT`.
+* A *new* key on an already-decided request is not a replay: the status guard and the `version`
+  check still apply, so a second approval with a fresh key is a 409 (story CS-12).
 * Stored in `event_db.idempotency_records` for event-service. Other services may adopt the same pattern later.
 
 ## 6. Concurrency (stale and simultaneous actions)
