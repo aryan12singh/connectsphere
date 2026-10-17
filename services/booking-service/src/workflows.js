@@ -268,7 +268,7 @@ async function selectPrimaryVenue(req,eventId,body) {
   });
 }
 
-async function summary(req,eventId,{allowMissingEvent=false,transaction=null}={}) {
+async function summary(req,eventId,{allowMissingEvent=false,transaction}={}) {
   const project=async(tx)=>{
     let context;
     try{context=!eventId && allowMissingEvent && isStaff(req.actor)?null:await contextFor(req,eventId);}catch(error){
@@ -311,7 +311,8 @@ async function summary(req,eventId,{allowMissingEvent=false,transaction=null}={}
     const primary=items.find(row=>row.id===primaryVenue.bookingId);
     return {event:context,items,attendancePlan:allocations,primaryVenue:{...primaryVenue,available:Boolean(primary && ['TENTATIVELY_HELD','CONFIRMED'].includes(primary.effectiveStatus) && !primary.flags.length)},venueReady:outstanding.length===0,outstanding,checkedAt:at.toISOString(),policy:{allowTouching:config.allowTouching,holdHours:config.holdHours,allowExpiryAtSetup:config.allowExpiryAtSetup,extensionHours:24,maxExtensions:1,warningHours:24,status:'TEAM_AGREED',pendingClarifications:['COORDINATOR_CONFIRMATION_ACTION']}};
   };
-  return transaction?project(transaction):store.withLocks([eventLock(eventId)],project);
+  // The memory adapter represents an already-held transaction with null.
+  return transaction!==undefined?project(transaction):store.withLocks([eventLock(eventId)],project);
 }
 
 function managedFlag(flag) { return ['VENUE_MAINTENANCE_PENDING','BUFFER_CONFLICT','CAPACITY','LAYOUT','VENUE_TYPE','INACTIVE','OUTSIDE_OPERATING_HOURS','EVENT_NOT_FOUND','REQUIREMENTS_CHANGED'].includes(flag) || /^(FACILITY|ACCESSIBILITY):/.test(flag); }

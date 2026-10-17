@@ -262,7 +262,7 @@ describe('CS-84 — venue buffer HTTP contract', () => {
   })
 })
 
-if(process.env.CS_MAINTENANCE_ACCEPTANCE==='1') it('TC-CS84-42 durable owner maintenance fence blocks readiness after downstream timeout and before actual Venue commit',async()=>{
+if(process.env.CS_MAINTENANCE_ACCEPTANCE==='1') it('TC-CS84-43 durable owner maintenance fence blocks readiness after downstream timeout and before actual Venue commit',async()=>{
  const {maintenanceTimeout}=require('../helpers/venue-maintenance-live.cjs')
  const result=await maintenanceTimeout()
  expect(result.pendingBlockedReadiness).toBe(true)

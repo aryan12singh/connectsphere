@@ -14,6 +14,23 @@ before(async () => {
  boundary=await start(app);require('../../src/config').bookingServiceUrl=boundary.base;
 });
 after(async () => { await api?.close();await boundary?.close(); await prisma.$disconnect(); });
+test('TC-CS84-44 additive buffer migration preserves an existing catalogue row and history with zero defaults',async()=>{
+  const before=await prisma.venue.count();
+  const sql=require('node:fs').readFileSync(require.resolve('../../prisma/migrations/20261012190000_venue_buffers/migration.sql'),'utf8');
+  await prisma.$transaction(async tx=>{
+    await tx.$executeRawUnsafe('CREATE TEMP TABLE "venues" (id TEXT PRIMARY KEY,name TEXT NOT NULL) ON COMMIT DROP');
+    await tx.$executeRawUnsafe('CREATE TEMP TABLE "old_venue_history" (id TEXT PRIMARY KEY,"venueId" TEXT REFERENCES pg_temp."venues"(id),reason TEXT) ON COMMIT DROP');
+    await tx.$executeRawUnsafe('INSERT INTO pg_temp."venues" (id,name) VALUES ($1,$2)','pre-buffer-venue','Existing catalogue');
+    await tx.$executeRawUnsafe('INSERT INTO pg_temp."old_venue_history" (id,"venueId",reason) VALUES ($1,$2,$3)','preserved-history','pre-buffer-venue','Prior audit');
+    const exists=await tx.$queryRawUnsafe("SELECT to_regclass('pg_temp.venues') IS NOT NULL AS present");assert.equal(exists[0].present,true);
+    // PostgreSQL resolves the session's temporary relation before public.
+    // The original migration runs against this disposable pre-change table.
+    for(const statement of sql.replace(/--[^\n]*/g,'').split(';').map(s=>s.trim()).filter(Boolean))await tx.$executeRawUnsafe(statement);
+    assert.deepEqual(await tx.$queryRawUnsafe('SELECT id,name,"setupMinutes","turnaroundMinutes",version FROM pg_temp."venues"'),[{id:'pre-buffer-venue',name:'Existing catalogue',setupMinutes:0,turnaroundMinutes:0,version:1}]);
+    assert.deepEqual(await tx.$queryRawUnsafe('SELECT * FROM pg_temp."old_venue_history"'),[{id:'preserved-history',venueId:'pre-buffer-venue',reason:'Prior audit'}]);
+  });
+  assert.equal(await prisma.venue.count(),before);
+});
 test('TC-CS33-01 PostgreSQL venue creation atomically persists hours and history', async () => {
   const result = await api.http('/venues', { method: 'POST', headers: staff, body: values });
   assert.equal(result.status, 201); venue = result.body;

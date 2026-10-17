@@ -21,7 +21,11 @@ async function projection(eventId,tx){
  const venues=summary.items.filter(row=>row.status==='CONFIRMED').map(row=>({bookingId:row.id,venueId:row.venueId,venueName:row.venueName,venueType:row.venueType,expectedAttendance:row.expectedAttendance,capacity:row.venueCapacity,layout:row.layout,bookingStartAt:row.startAt,bookingEndAt:row.endAt,occupiedStartAt:row.occupiedStart,occupiedEndAt:row.occupiedEnd,accessibilityDetails:row.requirements?.accessibilityDetails??null,venueRequirements:row.currentVenueNotes??null,emergencyAccess:row.emergencyAccess??null,accessibilityNeeds:row.accessibilityNeeds,equipmentPlacement:null,crowdMovement:row.crowdMovement??null,restrictions:row.restrictions??null,bookingVersion:row.version,venueVersion:row.currentVenueVersion,required:row.required,flags:row.flags})).sort((a,b)=>a.bookingId.localeCompare(b.bookingId));
  const snapshot={eventId,eventTitle:context.title,eventStartAt:context.startAt,eventEndAt:context.endAt,timeZone:context.timeZone,venues};
  const fingerprint=store.fingerprint({requestVersion:context.requestVersion,startAt:context.startAt,endAt:context.endAt,venues,attendancePlan:summary.attendancePlan});
- return {eventId,eventRequestId:context.eventRequestId,venueReady:summary.venueReady,outstanding:summary.outstanding,snapshot,fingerprint,context};
+ // Human review follows Safety facts; exact versions still fence resource writes.
+ const requirementsVenues=venues.map(({bookingVersion,venueVersion,venueName,...facts})=>({...facts,accessibilityNeeds:[...new Set(facts.accessibilityNeeds||[])].sort(),flags:[...new Set(facts.flags||[])].sort()}));
+ const attendancePlan={...summary.attendancePlan,sessions:summary.attendancePlan.sessions.map(session=>({...session,bookingIds:[...new Set(session.bookingIds)].sort()}))};
+ const requirementsFingerprint=store.fingerprint({startAt:context.startAt,endAt:context.endAt,timeZone:context.timeZone,venues:requirementsVenues,attendancePlan});
+ return {eventId,eventRequestId:context.eventRequestId,venueReady:summary.venueReady,outstanding:summary.outstanding,snapshot,fingerprint,requirementsFingerprint,context};
 }
 async function preview(eventId){return store.withLocks([require('./workflows').eventLock(eventId)],async tx=>{const {context,...proof}=await projection(eventId,tx);return proof;});}
 async function prepare(eventId,{token,generation}){

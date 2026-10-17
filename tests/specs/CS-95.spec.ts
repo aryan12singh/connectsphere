@@ -51,10 +51,13 @@ describe('CS-95 independent rework presentation and validation',()=>{
     expect(w.find('button').exists()).toBe(false);w.unmount()
   })
   it('TC-CS95-22 requires explicit readiness for every affected area',async()=>{
-    const p=reworkProps();p.canResubmit=true;p.feedback.affectedAreas=['VENUE','TECHNICAL']
-    const w=await mountSuspended(SafetyReworkPanel,{props:p as any})
-    expect(w.get('button').attributes('disabled')).toBeDefined()
-    await w.setProps({arrangements:p.arrangements.map(a=>({...a,ready:true}))});expect(w.get('button').attributes('disabled')).toBeUndefined();w.unmount()
+    for(const areas of [['VENUE'],['VENUE','TECHNICAL'],['VENUE','TECHNICAL','EVENT_DETAILS']]){
+      const p=reworkProps();p.canResubmit=true;p.feedback.affectedAreas=areas
+      const w=await mountSuspended(SafetyReworkPanel,{props:p as any})
+      expect(w.get('button').attributes('disabled')).toBeDefined()
+      for(const area of areas)expect(w.get('[data-rework-area="'+area+'"]').text()).not.toContain('Approval retained')
+      await w.setProps({arrangements:p.arrangements.map(a=>({...a,ready:true}))});expect(w.get('button').attributes('disabled')).toBeUndefined();w.unmount()
+    }
   })
   it('TC-CS95-23 refuses outdated or unknown readiness proof',async()=>{
     for(const override of [{readinessRequirementsRevision:'old-revision'},{feedback:{...reworkProps().feedback,affectedAreas:['UNREVIEWED_AREA']}}]){

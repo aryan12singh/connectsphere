@@ -12,6 +12,7 @@ const fail=(status,code,message)=>Object.assign(new Error(message),{status,code}
 const json=value=>JSON.parse(JSON.stringify(value));
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const revision=(event,request)=>hash([event.id,event.startAt,event.endAt,request.expectedAttendance,request.minimumCapacity,request.venueType,request.preferredLayout,request.venueRequirements,request.accessibilityNeeds,request.accessibilityDetails,request.equipmentNeeds,request.technicalDetails]);
+const reviewRevision=(event,venues,technical)=>hash([revision(event,event.eventRequest),venues?.requirementsFingerprint??venues?.fingerprint??null,technical.fingerprint??null]);
 function role(actor,name){return rolesForUser(actor).includes(name);}
 function coordinator(actor,event){return role(actor,'EVENT_COORDINATOR')&&actor.id===event.eventRequest.currentCoordinatorId&&actor.id!==event.organiserId;}
 function requireCoordinator(actor,event,permission='safety.submit'){if(!coordinator(actor,event)||!hasPermission(actor,permission))throw fail(403,'FORBIDDEN','Only the current assigned Coordinator may perform this action');}
@@ -49,7 +50,7 @@ async function currentReadiness(event){
  const outstanding=[...(venues?.outstanding||(!venues?[{reasons:['VENUE_VERIFICATION_UNAVAILABLE']}]:[]))];
  if(!['APPROVED','NOT_REQUIRED'].includes(technical.status))outstanding.push({reasons:[technical.reason||'TECHNICAL_NOT_READY']});
  const ready=venues?.venueReady===true&&outstanding.length===0;
- return {venues,technical,outstanding,ready,requirementsRevision:hash([revision(event,event.eventRequest),venues?.fingerprint||null,technical.fingerprint||null])};
+ return {venues,technical,outstanding,ready,requirementsRevision:reviewRevision(event,venues,technical)};
 }
 function decisionView(decision,privateAllowed=false){
  if(!decision)return null;
@@ -129,7 +130,7 @@ async function submit(req,id){
    const current=await lockEvent(tx,id);requireCoordinator(actor,current);open(current);
    const saved=await replay(tx,actor,key,url,requestHash);if(saved)return saved.responseBody;
    if(current.safetyToken!==operation.token||current.safetyGeneration!==operation.generation||current.eventRequest.version!==operation.requestVersion||current.safetyState!=='PREPARING')throw fail(409,'SAFETY_SUPERSEDED','Arrangements changed during submission. Refresh and review them again');
-   const reqRevision=hash([revision(current,current.eventRequest),venues.fingerprint,technical.fingerprint]);
+   const reqRevision=reviewRevision(current,venues,technical);
    const previous=await latestRound(current,tx);
    if(previous&&(['STALE','CHANGES_REQUIRED'].includes(operation.previousState)||['REQUEST_CHANGES','REJECT','SUPERSEDED'].includes(previous.status))&&(!current.safetyRework||current.safetyRework.roundId!==previous.id||current.safetyRework.reviewedById!==actor.id||current.safetyRework.reviewedRevision!==reqRevision))throw fail(409,'COORDINATOR_REVIEW_REQUIRED','Review the current round and arrangements before resubmitting');
    if(unchangedRejectedRooms(previous,withPlacement(venues.snapshot,technical)).length)throw fail(409,'REJECTED_VENUE_UNCHANGED','Correct or replace each rejected venue arrangement before resubmitting');

@@ -32,3 +32,10 @@ Source: [CS-85](https://spmg8.atlassian.net/browse/CS-85), Week 7 change 1 and t
 The domain inputs are explicit ISO instants and explicit non-negative whole-minute venue durations. They do not select a default or the proposed 480-minute business maximum, read a venue, persist bookings, enforce per-venue transactions, extend equipment reservations, interpret operating hours or expire holds. Those choices and adapters belong to CS-84/77/78/39 and their consumers.
 
 CS-77 remains the shared design prerequisite, CS-84 supplies the persisted settings, and Q3 supplies the final touching policy. Keep calculation reusable; integrate it into all search/calendar/submission/approval/block paths under CS-85 before claiming the whole story delivered. CS-39 owns atomic conflict enforcement. Source API/UI cases remain Not Executed until their actual boundaries exist and pass.
+
+
+## 17 October final evidence audit
+
+| Test Case ID | Acceptance proof | Execution layer | Date of Creation |
+|---|---|---|---|
+| TC-CS85-15 | Same-fixture search, actual mounted calendar, conflict explanation/ID, disabled submit and rejected direct write agree; no business effects are created. | Real HTTP services with isolated repositories plus actual mounted calendar. Production PostgreSQL occupied-window boundaries are separately in TC-CS85-30. | 2026-10-17 |

@@ -67,3 +67,10 @@ TC-CS37-29: Real PostgreSQL HTTP request survives service reconnect; simultaneou
 TC-CS37-30: A valid authenticated dual Coordinator/Staff actor who is not assigned to the Event receives 403 when requesting an extension; the existing request, version, activity and outbox remain unchanged.
 
 TC-CS37-31: Re-requesting a rejected room into a short active hold queues an immediate warning for the new version. Deadline-shortening edits receive the same rule; ordinary title edits do not create duplicate warnings.
+
+
+## 17 October final evidence audit
+
+| Test Case ID | Acceptance proof | Execution layer | Date of Creation |
+|---|---|---|---|
+| TC-CS37-33 | Changing an existing hold's time into a conflicting commitment returns409 VENUE_CONFLICT; both bookings, histories and outbox entries remain unchanged. | Actual service HTTP with isolated repositories. | 2026-10-17 |

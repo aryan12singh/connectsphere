@@ -137,15 +137,19 @@ describe('CS-36 — live venue search',()=>{
   })
   it('TC-CS36-12 sorts full before partial and excludes inactive, small and occupied rooms without reserving',async()=>{
     const {event}=await f.eventFixture(),ids:any={}
-    for(const [key,extra] of Object.entries({full:{name:'Zulu full'},partial:{name:'Alpha partial',facilities:[]},small:{capacity:79},inactive:{isActive:false},busy:{name:'Busy room'}}))ids[key]=(await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput(extra)})).body.id
+    for(const [key,extra] of Object.entries({full:{name:'Zulu full'},partial:{name:'Alpha partial',facilities:[]},layout:{name:'Layout gap',supportedLayouts:['CLASSROOM']},access:{name:'Access gap',accessibilityTags:[]},small:{capacity:79},inactive:{isActive:false},busy:{name:'Busy room'},blocked:{name:'Operationally blocked'}}))ids[key]=(await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput(extra)})).body.id
     const hold=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'busy'},body:{eventId:event.id,venueId:ids.busy,title:'Booked room',reason:'Conference',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
     expect(hold.status).toBe(201)
+    const block=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.staff,'idempotency-key':'blocked-search'},body:{venueId:ids.blocked,title:'Operational closure',reason:'Private staff maintenance',status:'BLOCKED',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    expect(block.status).toBe(201)
     const path=`/venue-bookings/events/${event.id}/venue-search?startAt=2026-12-21T04%3A15%3A00.000Z&endAt=2026-12-21T06%3A00%3A00.000Z&facilities=PROJECTOR`
     const r=await api.booking.http(path,{headers:f.coordinator})
-    expect(r.status).toBe(200);expect(r.body.items.map((v:any)=>v.id)).toEqual([ids.full,ids.partial])
+    expect(r.status).toBe(200);expect(r.body.items[0].id).toBe(ids.full);expect(r.body.items.slice(1).map((v:any)=>v.id).sort()).toEqual([ids.partial,ids.layout,ids.access].sort())
     expect(r.body.items[0]).toMatchObject({match:'FULL',gaps:[],expectedAttendance:80,layout:'THEATRE',occupiedStart:'2026-12-21T03:45:00.000Z',occupiedEnd:'2026-12-21T06:30:00.000Z'})
-    expect(r.body.items[1]).toMatchObject({match:'PARTIAL',gaps:['FACILITY:PROJECTOR'],canRequest:false})
-    expect(f.bookings.listBookings()).toHaveLength(1)
+    expect(r.body.items.find((v:any)=>v.id===ids.partial)).toMatchObject({match:'PARTIAL',gaps:['FACILITY:PROJECTOR'],canRequest:false})
+    expect(r.body.items.find((v:any)=>v.id===ids.layout)).toMatchObject({match:'PARTIAL',gaps:['LAYOUT'],canRequest:false})
+    expect(r.body.items.find((v:any)=>v.id===ids.access)).toMatchObject({match:'PARTIAL',gaps:['ACCESSIBILITY:WHEELCHAIR_ACCESS'],canRequest:false})
+    expect(f.bookings.listBookings()).toHaveLength(2)
   })
   it('TC-CS36-13 uses current assignment and refuses a search by another Coordinator',async()=>{
     const {event}=await f.eventFixture()
@@ -170,6 +174,12 @@ describe('CS-36 — live venue search',()=>{
     expect(r.status).toBe(200);expect(r.body.items).toHaveLength(1)
     expect(r.body.items[0].title).toBe('Occupied venue');expect(r.body.items[0]).not.toHaveProperty('reason');expect(r.body.items[0]).not.toHaveProperty('eventId');expect(r.body.items[0]).not.toHaveProperty('flags')
     expect(r.body.items[0]).toMatchObject({startAt:'2026-12-21T02:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:30:00.000Z'})
+    const block=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.staff,'idempotency-key':'organiser-flag'},body:{venueId:v.body.id,title:'Private operational closure',reason:'Private flag reason',status:'BLOCKED',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    expect(block.status).toBe(201);expect(f.bookings.listBookings().some((x:any)=>x.eventId===event.id&&x.flags.includes('BUFFER_CONFLICT'))).toBe(true)
+    const owner={'x-test-user-id':'organiser','x-test-role':'EVENT_ORGANISER'}
+    expect((await api.booking.http('/venue-bookings/availability?venueId='+v.body.id,{headers:owner})).status).toBe(403)
+    const publicEvent=await api.event.http('/events/'+event.id,{headers:owner})
+    expect(publicEvent.status).toBe(200);expect(JSON.stringify(publicEvent.body)).not.toContain('BUFFER_CONFLICT');expect(publicEvent.body).not.toHaveProperty('flags')
   })
   it('TC-CS36-18 lets read-only support identify an operational closure without exposing staff notes or write access',async()=>{
     const v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})

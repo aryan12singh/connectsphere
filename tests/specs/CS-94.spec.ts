@@ -53,6 +53,11 @@ describe('CS-94 independent Safety review display and validation',()=>{
     expect(rooms[1]!.text()).toContain('41 / 40');expect(rooms[1]!.find('[role="alert"]').text()).toContain('Attendance exceeds capacity')
     expect(w.text()).toContain('Equipment approval has not been verified');expect(w.text()).toContain('Not recorded')
     expect(w.text()).not.toContain('No equipment required');w.unmount()
+    for(const [attendance,over] of [[299,false],[300,false],[301,true]] as const){
+      const snapshot=safetySnapshot();snapshot.venues=[{...snapshot.venues[0]!,capacity:300,expectedAttendance:attendance}]
+      const boundary=await mountSuspended(SafetyReviewDetails,{props:{snapshot:snapshot as any}})
+      expect(boundary.get('[data-safety-booking]').find('[role="alert"]').exists()).toBe(over);boundary.unmount()
+    }
   })
   it('TC-CS94-21 rejects a blank rejection reason',async()=>{
     const w=await mountSuspended(SafetyDecisionForm,{props:props()});await completeChecklist(w)

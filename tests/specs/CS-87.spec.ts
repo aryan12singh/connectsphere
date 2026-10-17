@@ -259,6 +259,11 @@ describe('CS-87 — independent venue bookings', () => {
       expect(r.status).toBe(201);rooms.push(r.body)
     }
     expect(new Set(rooms.map((r:any)=>r.id)).size).toBe(4)
+    const tooSmall=await api.venue.http('/venues',{method:'POST',headers:fixture.staff,body:fixture.venueInput({name:'Unsuitable fifth room',capacity:39})})
+    const beforeNegative=JSON.stringify({bookings:fixture.bookings.listBookings(),activities:fixture.bookings.state.activities,outbox:fixture.bookings.state.outbox})
+    const invalid=await api.booking.http('/venue-bookings',{method:'POST',headers:{...fixture.coordinator,'idempotency-key':'too-small'},body:{eventId:event.id,venueId:tooSmall.body.id,expectedAttendance:40,title:'Unsuitable request',reason:'Cannot fit forty attendees',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    expect(invalid.status).toBe(422);expect(invalid.body.error.fields.venueId).toContain('CAPACITY')
+    expect(JSON.stringify({bookings:fixture.bookings.listBookings(),activities:fixture.bookings.state.activities,outbox:fixture.bookings.state.outbox})).toBe(beforeNegative)
     const path=`/venue-bookings/events/${event.id}/summary`
     let summary=await api.booking.http(path,{headers:fixture.coordinator})
     expect(summary.status).toBe(200);expect(summary.body.items).toHaveLength(4);expect(summary.body.venueReady).toBe(false)

@@ -1,13 +1,47 @@
 import { createRequire } from 'node:module'
 import { describe, expect, it,vi } from 'vitest'
-import { mockNuxtImport,mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport,mountSuspended,registerEndpoint } from '@nuxt/test-utils/runtime'
 import {bookingDraftState} from '../../frontend/app/components/venue/booking-state'
-mockNuxtImport('useFetch',()=>async(path:string)=>{const {ref}=await import('vue');return {data:ref(path.includes('availability')?{items:[{id:'buffer-ui',venueId:'venue',title:'Conference',status:'CONFIRMED',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:45:00.000Z',setupMinutes:30,turnaroundMinutes:45}]}:{events:[]}),error:ref(null),refresh:vi.fn()}})
+const calendarProof=vi.hoisted(()=>({availability:null as any,events:[] as any[]}))
+mockNuxtImport('useFetch',()=>async(path:string)=>{const {ref}=await import('vue');return {data:ref(path.includes('availability')?(calendarProof.availability??{items:[{id:'buffer-ui',venueId:'venue',title:'Conference',status:'CONFIRMED',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:45:00.000Z',setupMinutes:30,turnaroundMinutes:45}]}):{events:calendarProof.events}),error:ref(null),refresh:vi.fn()}})
 
 const require = createRequire(import.meta.url)
 const availability = require('../../services/booking-service/src/availability.js')
 
 describe('CS-85 — occupied-window calculation (domain unit tests)', () => {
+  it('TC-CS85-15 same-fixture search, calendar, preflight and write guard agree without creating a conflicting request',async()=>{
+    const f=require('../helpers/venue-workflow.cjs'),api=await f.stack();f.reset()
+    let wrapper:any
+    try{
+      vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-12-21T00:00:00Z'))
+      const {event}=await f.eventFixture(),venue=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({turnaroundMinutes:45})})
+      const body={eventId:event.id,venueId:venue.body.id,title:'Conference',reason:'Same-fixture proof',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}
+      const booked=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'same-fixture'},body});expect(booked.status).toBe(201)
+      const available=await api.booking.http('/venue-bookings/availability?venueId='+venue.body.id,{headers:f.coordinator});expect(available.status).toBe(200)
+      calendarProof.availability=available.body;calendarProof.events=[{id:event.id,title:'Conference',status:'ARRANGEMENT_PENDING'}]
+      const component=(await import('../../frontend/app/components/venue/VenueCalendar.vue')).default
+      wrapper=await mountSuspended(component,{props:{venueId:venue.body.id,venueName:'Same fixture',timeZone:'Asia/Singapore',setupMinutes:30,turnaroundMinutes:45,canCreate:true,canDecide:false,actorRole:'EVENT_COORDINATOR',actorId:'coordinator'}})
+      const slot=wrapper.findAll('button').find((b:any)=>b.text().includes('Conference'))
+      expect(slot.attributes('title')).toContain('Occupied: 2026-12-21 09:30');expect(slot.attributes('title')).toContain('2026-12-21 12:45')
+      expect(wrapper.find('[data-buffer="setup"]').exists()).toBe(true);expect(wrapper.find('[data-buffer="turnaround"]').exists()).toBe(true)
+      await wrapper.findAll('button').find((b:any)=>b.text()==='New booking').trigger('click')
+      await wrapper.findAll('input[type="datetime-local"]')[0].setValue('2026-12-21T12:15')
+      await wrapper.findAll('input[type="datetime-local"]')[1].setValue('2026-12-21T14:00')
+      await wrapper.get('select[required]').setValue(event.id)
+      await wrapper.get('input[placeholder="Add event title..."]').setValue('Clashing room')
+      await wrapper.get('textarea').setValue('This setup still intersects the occupied interval')
+      expect(wrapper.get('[role="alert"]').text()).toBe('This booking overlaps an unavailable interval.')
+      expect(wrapper.text()).toContain('Overlaps: '+booked.body.id);expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+      const posts=vi.fn(()=>({}));registerEndpoint('/api/bookings',{method:'POST',handler:posts})
+      await wrapper.get('form').trigger('submit');expect(posts).not.toHaveBeenCalled()
+      const search=await api.booking.http('/venue-bookings/events/'+event.id+'/venue-search?startAt=2026-12-21T04%3A15%3A00.000Z&endAt=2026-12-21T06%3A00%3A00.000Z',{headers:f.coordinator})
+      expect(search.status).toBe(200);expect(search.body.items.map((r:any)=>r.id)).not.toContain(venue.body.id)
+      const before=JSON.stringify({bookings:f.bookings.listBookings(),activities:f.bookings.state.activities,outbox:f.bookings.state.outbox})
+      const denied=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'same-fixture-denial'},body:{...body,startAt:'2026-12-21T04:15:00.000Z',endAt:'2026-12-21T06:00:00.000Z'}})
+      expect(denied.status).toBe(409);expect(JSON.stringify(denied.body)).toContain(booked.body.id)
+      expect(JSON.stringify({bookings:f.bookings.listBookings(),activities:f.bookings.state.activities,outbox:f.bookings.state.outbox})).toBe(before)
+    }finally{wrapper?.unmount();calendarProof.availability=null;calendarProof.events=[];vi.useRealTimers();await api.close()}
+  })
   it('TC-CS85-14 calendar preflight uses the server occupied windows and the candidate venue buffers',()=>{
     const candidate={venueId:'venue',title:'Conference',reason:'Room request',timeZone:'Asia/Singapore',startAt:'2026-12-21T04:15:00.000Z',endAt:'2026-12-21T06:00:00.000Z',status:'TENTATIVELY_HELD'}
     const existing={id:'room',venueId:'venue',title:'Existing',status:'CONFIRMED',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:30:00.000Z'}

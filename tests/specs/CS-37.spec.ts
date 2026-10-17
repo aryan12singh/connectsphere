@@ -97,7 +97,7 @@ describe('CS-37 — persisted, checked venue holds',()=>{
   })
   it('TC-CS37-14 derives an omitted deadline but refuses null, malformed or past supplied deadlines without writes',async()=>{
     const x=await setup()
-    for(const expiresAt of [null,'not-a-deadline','2026-01-01T00:00:00.000Z']){
+    for(const expiresAt of [null,'not-a-deadline','2026-01-01T00:00:00.000Z','2026-12-21T02:00:00.000Z']){
       const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'invalid-expiry-'+String(expiresAt)},body:{...x.body,expiresAt}})
       expect(r.status).toBe(422);expect(r.body.error.fields.expiresAt).toEqual(expect.any(Array));expect(f.bookings.listBookings()).toEqual([])
     }
@@ -133,6 +133,17 @@ describe('CS-37 — persisted, checked venue holds',()=>{
     expect(f.bookings.getBooking(holds[1].id)).toEqual(holds[1])
     expect(f.bookings.listBookings().filter((r:any)=>r.venueId===rooms[0].id)).toEqual([])
     expect((await api.booking.http(path,{method:'PUT',headers:f.coordinator,body:{...holds[0],venueId:rooms[2].id,reason:'Stale move'}})).status).toBe(409)
+  })
+  it('TC-CS37-33 a conflicting time edit preserves both original commitments and all business effects',async()=>{
+    const x=await setup(),rows=[]
+    for(const [key,startAt,endAt] of [['first','2026-12-21T02:00:00Z','2026-12-21T04:00:00Z'],['later','2026-12-21T07:00:00Z','2026-12-21T08:00:00Z']]){
+      const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':key},body:{...x.body,startAt,endAt}})
+      expect(r.status).toBe(201);rows.push(r.body)
+    }
+    const before=JSON.stringify({bookings:f.bookings.listBookings(),activities:f.bookings.state.activities,outbox:f.bookings.state.outbox})
+    const r=await api.booking.http('/venue-bookings/'+rows[1].id,{method:'PUT',headers:f.coordinator,body:{...rows[1],startAt:'2026-12-21T03:00:00Z',endAt:'2026-12-21T05:00:00Z',reason:'Conflicting time edit'}})
+    expect(r.status).toBe(409);expect(r.body.error.code).toBe('VENUE_CONFLICT')
+    expect(JSON.stringify({bookings:f.bookings.listBookings(),activities:f.bookings.state.activities,outbox:f.bookings.state.outbox})).toBe(before)
   })
   it('TC-CS37-22 rejects a setup window outside operating hours without any hold',async()=>{
     const x=await setup({}, {operatingHours:[{weekday:'MONDAY',isClosed:false,opensAt:'10:00',closesAt:'18:00'}]})

@@ -61,6 +61,14 @@ async function bookingNotificationSmoke({exerciseExpiry=false,afterBooking,reque
   }
   assert.ok(expired,'An actual expired hold must inform the current Coordinator');
   result.expiredNoticeId=expired.id;result.expiredBookingId=expiring.body.id;
+  const persistedExpiry=await query('booking','SELECT id,status,"expiresAt" FROM venue_booking_requests WHERE id=$1',[expiring.body.id]);
+  assert.equal(persistedExpiry[0].status,'TENTATIVELY_HELD');
+  const effective=await call('GET',`/venue-bookings/events/${eventId}/summary`,undefined,coordinator.token);assert.equal(effective.status,200);assert.equal(effective.body.items.find(x=>x.id===expiring.body.id).effectiveStatus,'EXPIRED');
+  const expiryIntents=await query('booking','SELECT id FROM booking_outbox WHERE \"aggregateId\"=$1 AND kind=$2',[expiring.body.id,'VenueHoldExpired']);assert.equal(expiryIntents.length,1);
+  result.expiryMessageId=expiryIntents[0].id;
+  const replacement=await call('POST','/venue-bookings',{...body,startAt:'2028-11-20T07:00:00.000Z',endAt:'2028-11-20T08:00:00.000Z'},coordinator.token);
+  assert.equal(replacement.status,201,JSON.stringify(replacement.body));
+  result.expiryReplacementBookingId=replacement.body.id;result.persistedExpiry=persistedExpiry;
  }
  if(afterBooking)Object.assign(result,await afterBooking({call,login,query,owner,staff,coordinator,eventId,eventRequestId:submitted.body.id,venue:venue.body,booking:hold.body,requestBody:body}));
  if(process.env.CS_BUS_RESULT)fs.writeFileSync(process.env.CS_BUS_RESULT,JSON.stringify(result,null,2)+'\n');

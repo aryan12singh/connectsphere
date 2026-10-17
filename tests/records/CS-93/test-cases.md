@@ -88,6 +88,8 @@ These cases supplement the preserved earlier specifications. Current contracts a
 
 ## 17 October production mobile stock-entry regression
 
+TC-CS93-48: Coordinator fact-review proof remains stable after display-name edits and asynchronous Booking/Venue version updates, while exact resource-fence proof changes; a real emergency-access correction changes the fact-review proof. Actual service HTTP with isolated repositories; actual rework/resubmit acceptance and PostgreSQL evidence remain separate. Date of Creation: 17 October 2026.
+
 | Test Case ID | Scenario / AC | Preconditions | Steps | Expected result | Layer | Date of Creation |
 |---|---|---|---|---|---|---|
 | TC-CS93-47 | Required Equipment proof: inventory entry before hydration | Technical Support page server-rendered with stock16/version14 | Render the actual page before mounting and inspect stock inputs/save action | Stock entry and save remain disabled until handlers attach; early typing cannot disappear while a successful no-op stock save leaves a reservation shortfall | Actual Vue SSR; TC-CS93-46 retains real UI/PG stock/reservation evidence | 2026-10-17T12:53:09+08:00 |

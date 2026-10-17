@@ -90,7 +90,7 @@ These cases supplement the preserved earlier specifications. Current contracts a
 
 | Test Case ID | Requirement / expected result | Execution layer and precondition |
 |---|---|---|
-| TC-CS84-42 | A PG before-commit barrier times out downstream apply; durable owner pending fence blocks readiness; exact-operation resume records the update and receipt together. | Actual disposable Venue/Booking HTTP and owner PostgreSQL; opt-in CS_MAINTENANCE_ACCEPTANCE=1. The timed-out transaction may roll back or finish; both must remain safe and resumable. |
+| TC-CS84-43 | A PG before-commit barrier times out downstream apply; durable owner pending fence blocks readiness; exact-operation resume records the update and receipt together. | Actual disposable Venue/Booking HTTP and owner PostgreSQL; opt-in CS_MAINTENANCE_ACCEPTANCE=1. The timed-out transaction may roll back or finish; both must remain safe and resumable. Earlier before-commit records used42; the distinct current ID43 avoids collision with the preserved pre-confirmation receipt case42. |
 
 
 ## 17 October shared-Sheet evidence reconciliation
@@ -100,3 +100,10 @@ Existing customer intent is preserved. Logical draft fields/statuses are reconci
 | Test Case ID | Scenario / AC | Preconditions | Steps | Expected result | Layer | Date of Creation |
 | --- | --- | --- | --- | --- | --- | --- |
 | TC-CS84-03 | Buffer AC: Staff-owned configuration | Unconfirmed venue with30/45 minute buffers | Attempt PUT as Coordinator; read venue as Staff | 403; both buffers and version unchanged | Actual service HTTP with isolated repository fixtures | 2026-10-17T12:24:00+08:00 |
+
+
+## 17 October final evidence audit
+
+| Test Case ID | Acceptance proof | Execution layer | Date of Creation |
+|---|---|---|---|
+| TC-CS84-44 | Run the original additive buffer migration against an existing catalogue/history fixture; IDs and history survive with zero buffers and version1. | Actual PostgreSQL temporary pre-change tables inside the isolated venue_test transaction; application tables are preserved. | 2026-10-17 |

@@ -13,6 +13,23 @@ beforeAll(async()=>{api=await venueFixture.stack()})
 afterAll(async()=>{await api.close()})
 beforeEach(()=>{ui.safety=null;ui.send.mockReset();ui.summary={event:{id:'event-1',title:'Conference',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',startAt:'2028-11-20T02:00:00Z',endAt:'2028-11-20T04:00:00Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',accessibilityNeeds:[]},items:[],venueReady:false,outstanding:[{bookingId:null,reasons:['NO_VENUE_BOOKING']}]}})
 describe('CS-93 independent Coordinator preparation UI',()=>{
+  it('TC-CS93-48 Coordinator fact-review proof survives metadata/recheck versions but changes for actual venue Safety facts',async()=>{
+    venueFixture.reset()
+    const f=venueFixture,{event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
+    const room=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'review-facts'},body:{eventId:event.id,venueId:v.body.id,title:'Conference',reason:'Review facts',startAt:'2026-12-21T02:00:00Z',endAt:'2026-12-21T04:00:00Z',timeZone:'Asia/Singapore'}})
+    expect(room.status).toBe(201)
+    expect((await api.booking.http('/venue-bookings/'+room.body.id+'/decision',{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Current venue checked'}})).status).toBe(200)
+    const internal={'x-internal-api-key':'change-me-dev-internal-key'},path='/internal/events/'+event.id+'/readiness'
+    const read=async()=>{const r=await api.booking.http(path,{headers:internal});expect(r.status).toBe(200);return r.body}
+    const facts=(value:any)=>value.requirementsFingerprint??value.fingerprint,before=await read()
+    const current=(await api.venue.http('/venues/'+v.body.id,{headers:f.staff})).body
+    const metadata=await api.venue.http('/venues/'+v.body.id,{method:'PUT',headers:f.staff,body:{...current,name:'Renamed for display',reason:'No Safety facts changed'}});expect(metadata.status).toBe(200)
+    const renamed=await read();expect(renamed.fingerprint).not.toBe(before.fingerprint);expect(facts(renamed)).toBe(facts(before))
+    const recheck=await api.booking.http('/internal/venue-rechecks',{method:'POST',headers:internal,body:{venueId:v.body.id,version:metadata.body.version,actor:{id:'staff',role:'VENUE_STAFF'},reason:'Asynchronous metadata refresh'}});expect(recheck.status).toBe(200)
+    const afterRecheck=await read();expect(afterRecheck.fingerprint).not.toBe(renamed.fingerprint);expect(facts(afterRecheck)).toBe(facts(before))
+    const corrected=await api.venue.http('/venues/'+v.body.id,{method:'PUT',headers:f.staff,body:{...metadata.body,emergencyAccess:'A newly corrected exit route',reason:'Actual emergency-access correction'}});expect(corrected.status).toBe(200)
+    const afterCorrection=await read();expect(facts(afterCorrection)).not.toBe(facts(before))
+  },20000)
   it('TC-CS93-23 current Venue type and capacity override a Virtual booking snapshot in Safety factors',async()=>{
     venueFixture.reset()
     const {event}=await venueFixture.eventFixture({venueType:'VIRTUAL',preferredLayout:'VIRTUAL',venueRequirements:'',accessibilityNeeds:[]})
