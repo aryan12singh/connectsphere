@@ -23,6 +23,7 @@ datasource db {
 // The five fixed customer roles. Public/admin/internal provisioning only grants
 // Organiser or Attendee; Coordinator, Venue Staff and Technical Support are seeded.
 enum UserRole {
+  SAFETY_OFFICER
   EVENT_ORGANISER
   EVENT_COORDINATOR
   VENUE_STAFF

@@ -11,7 +11,12 @@ Event Planning and Venue Booking System for ConnectSphere Event Services. IS212 
 - [Auth setup](docs/auth-setup.md) — how login, roles/permissions and the tech support admin API work.
 - [Event workflows and API mapping](docs/event-workflows.md) — persistence, transactions and request/Event history.
 - [Event workflow decisions](docs/event-workflow-decisions.md) — contract choices requiring team/customer review.
-- [Development log](docs/development-log/dev-log.md) — decisions and progress, newest first.
+- [Venue data model](docs/venue-data-model.md) — authoritative running tables, consultation review and remaining schema gaps.
+- [Venue policy decisions](docs/venue-policy-decisions.md) — pending Week 7 choices and affected stories.
+- [Sprint 3 integration and RabbitMQ handoff](docs/sprint3-integration-handoff.md) — current Venue/Safety/Equipment boundaries, Marcus's queue contract, existing-volume upgrades and remaining Q2.
+- [Operational Safety UI](docs/safety-ui.md) — current Coordinator preparation, independent review/rework validation and the exact remaining integration handoff.
+- [Hold expiry and occupied windows](docs/hold-expiry.md) — reusable timing code, isolated PostgreSQL spike and its integration limits.
+- [Development log](docs/devlogs/DEVLOG.md) — decisions, verified progress and next dependencies, newest first.
 
 ## Run it locally
 
@@ -34,7 +39,7 @@ Full steps, seed users and test cases: [docs/how-to-run-and-test.md](docs/how-to
 
 ## Sprint 2 identity, venue and CI verification
 
-The existing event-workflow delivery now includes CS-10/CS-26 identity completion and CS-33/CS-34 venue repairs. [Delivery evidence](docs/sprint2/event-request-delivery.md), [access matrix](docs/access-matrix.md) and [auth setup](docs/auth-setup.md) describe the current behavior. Public signup supports Organiser (organisation required) and Attendee; internal roles remain seed-only. All five role homes work, and multi-role accounts switch in the account menu without a second login.
+The existing event-workflow delivery now includes CS-10/CS-26 identity completion and CS-33/CS-34 venue repairs. [Delivery evidence](docs/sprint2/event-request-delivery.md), [access matrix](docs/access-matrix.md) and [auth setup](docs/auth-setup.md) describe the current behavior. Public signup supports Organiser (organisation required) and Attendee; internal roles remain seed-only. The original five role homes work; Sprint 3 adds the protected Safety Officer queue and decision workflow. and multi-role accounts switch in the account menu without a second login.
 
 Use Node 22 and locked `npm ci` installs. Each service owns its PostgreSQL database; create disposable test databases only and apply migrations before integration checks. Auth/User/Venue/Booking tests refuse a database other than their matching `<service>_test` name. From each service folder:
 
@@ -64,4 +69,4 @@ NUXT_AUTH_MODE=live npm run build
 
 The [full browser runner](docs/event-review-run.md) builds a fresh Keycloak/User/Auth/Kong/PostgreSQL stack, exercises desktop/mobile and restarts without reseeding. JSON/HTML/coverage output belongs in CI artifacts or outside the checkout; selected dated Markdown records remain in `tests/records`. No numerical coverage gate is invented before the planned Sprint 3 threshold.
 
-[The workflow](.github/workflows/event-workflows.yml) has separate frontend and five service checks, real PostgreSQL migrations/API tests, per-app source coverage artifacts and a live E2E job. Its required aggregate `Sprint 2 checks` rejects failed or skipped prerequisites. Explicit Bash/pipefail preserves test exit statuses through `tee`. It runs for PRs and pushes to this branch and `main`; a main run requires the reviewed PR to be merged. Independent approval, squash merge and green CI on that merge remain delivery gates.
+[The workflow](.github/workflows/event-workflows.yml) has separate frontend and seven service checks, real PostgreSQL migrations/API tests, per-app source coverage artifacts and a live E2E job. Booking also runs the isolated CS-78 expiry/concurrency spike. Its required aggregate `Sprint 2 checks` rejects failed or skipped prerequisites. Explicit Bash/pipefail preserves test exit statuses through `tee`. It runs for PRs and pushes to `feat/aryan-sprint2-event-workflows`, `feat/aryan-sprint3-venue-safety` and `main`; a main run requires the reviewed PR to be merged. Independent approval, squash merge and green CI on that merge remain delivery gates.

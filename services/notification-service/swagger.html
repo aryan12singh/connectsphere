@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ConnectSphere Notification Service API</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>body{margin:0;font-family:system-ui,sans-serif}nav{padding:1rem 2rem;background:#075c77;color:#fff}nav a{color:#fff;margin-right:1.25rem}</style>
+</head>
+<body>
+  <nav><a href="../event-service/swagger.html">Event service</a><a href="../venue-service/swagger.html">Venue service</a><a href="../booking-service/swagger.html">Booking service</a><strong>Notification service</strong></nav>
+  <div id="swagger-ui"></div>
+  <script id="openapi-spec" type="application/json">{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "ConnectSphere Notification Service",
+  "version": "0.1.0",
+  "description": "CS-50 in-app inbox (channel of record; email optional and not built). Notices are created from domain messages (event-service outbox) and are only ever shown to their recipient. Types: REQUEST_SUBMITTED, REQUEST_RESUBMITTED, ASSIGNED_TO_YOU, COORDINATOR_ASSIGNED, REASSIGNED_AWAY, COORDINATOR_CHANGED, EVENT_APPROVED, REQUEST_REJECTED, REQUEST_RETURNED, EVENT_CONFIRMED. CS-51: NEW_BOOKING_REQUEST, VENUE_APPROVED, VENUE_REJECTED, VENUE_DECISION, VENUE_UNAVAILABLE, VENUE_CHANGE_NEEDED, BUFFER_CONFLICT, HOLD_EXPIRING, HOLD_EXPIRED, SAFETY_CHANGES_REQUESTED (message payloads: docs/api-contract.md)."
+ },
+ "servers": [
+  {
+   "url": "/"
+  }
+ ],
+ "security": [
+  {
+   "bearerAuth": []
+  }
+ ],
+ "paths": {
+  "/notifications": {
+   "get": {
+    "summary": "My notices",
+    "description": "Newest first, max 50. Read notices are hidden 30 days after they were read.",
+    "responses": {
+     "200": {
+      "description": "{items: Notification[], unread, badge}",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "items": {
+           "type": "array",
+           "items": {
+            "$ref": "#/components/schemas/Notification"
+           }
+          },
+          "unread": {
+           "type": "integer"
+          },
+          "badge": {
+           "type": "string",
+           "description": "'' when 0, exact up to 99, then '99+'"
+          }
+         }
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Not signed in"
+     }
+    }
+   }
+  },
+  "/notifications/summary": {
+   "get": {
+    "summary": "Unread count for the bell",
+    "responses": {
+     "200": {
+      "description": "{unread, badge}"
+     }
+    }
+   }
+  },
+  "/notifications/failures": {
+   "get": {
+    "summary": "Failed deliveries (Technical Support)",
+    "description": "Requires audit.view. Messages that still failed after 3 retries: messageId, messageType, aggregateId, attempts, lastError, failedAt. No notice text.",
+    "responses": {
+     "200": {
+      "description": "{items, total}"
+     },
+     "403": {
+      "description": "Not Technical Support"
+     }
+    }
+   }
+  },
+  "/notifications/{notificationId}": {
+   "parameters": [
+    {
+     "name": "notificationId",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "get": {
+    "summary": "One of my notices",
+    "responses": {
+     "200": {
+      "description": "Notification"
+     },
+     "404": {
+      "description": "Not found, or not yours"
+     }
+    }
+   }
+  },
+  "/notifications/{notificationId}/read": {
+   "parameters": [
+    {
+     "name": "notificationId",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "post": {
+    "summary": "Mark one of my notices as read",
+    "responses": {
+     "204": {
+      "description": "Marked"
+     },
+     "404": {
+      "description": "Not found, or not yours"
+     }
+    }
+   }
+  },
+  "/internal/messages": {
+   "post": {
+    "summary": "Deliver one domain message",
+    "description": "Service-to-service only (x-internal-api-key, not routed by Kong). Same code path as the RabbitMQ consumer. Idempotent on message id; one notice per message + recipient + type. A failure is retried 3 times, then the message is FAILED.",
+    "security": [
+     {
+      "internalApiKey": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "id",
+         "type",
+         "payload"
+        ],
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "type": {
+          "type": "string",
+          "example": "RequestApproved"
+         },
+         "aggregateType": {
+          "type": "string"
+         },
+         "aggregateId": {
+          "type": "string"
+         },
+         "payload": {
+          "type": "object"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "{result: processed|ignored|duplicate|failed, notices}"
+     },
+     "403": {
+      "description": "Missing or wrong internal key"
+     },
+     "422": {
+      "description": "Message needs id, type and payload"
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "securitySchemes": {
+   "bearerAuth": {
+    "type": "http",
+    "scheme": "bearer"
+   },
+   "internalApiKey": {
+    "type": "apiKey",
+    "in": "header",
+    "name": "x-internal-api-key"
+   }
+  },
+  "schemas": {
+   "Notification": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "recipientId": {
+      "type": "string"
+     },
+     "type": {
+      "type": "string"
+     },
+     "eventRequestId": {
+      "type": "string"
+     },
+     "eventId": {
+      "type": "string"
+     },
+     "text": {
+      "type": "string"
+     },
+     "link": {
+      "type": "string"
+     },
+     "createdAt": {
+      "type": "string"
+     },
+     "readAt": {
+      "type": "string"
+     },
+     "data": {
+      "type": "object",
+      "description": "eventName, requestId, eventId, oldStatus, newStatus, timestamp (+ coordinator for assignment notices)"
+     }
+    }
+   }
+  }
+ }
+}</script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>const spec=JSON.parse(document.getElementById('openapi-spec').textContent);SwaggerUIBundle({spec,dom_id:'#swagger-ui'});</script>
+</body>
+</html>

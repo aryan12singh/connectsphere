@@ -11,6 +11,7 @@ async function start(app) {
   const server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   return {
+    base,
     async http(path, { method = 'GET', body, headers = {} } = {}) {
       const response = await nativeFetch(base + path, { method, headers: { 'content-type': 'application/json', ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       return { status: response.status, body: await response.json().catch(() => null) };

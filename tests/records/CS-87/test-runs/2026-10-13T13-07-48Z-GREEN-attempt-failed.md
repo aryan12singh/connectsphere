@@ -1,0 +1,31 @@
+# CS-87 Test Execution — 2026-10-13T13:07:48.702Z
+
+Yellow section (IS212 / IEEE 829). Phase: GREEN-attempt-failed. Generated from actual Vitest JSON; missing cases remain Not Executed.
+
+Source: /tmp/connectsphere-s3-20261013-phase4/frontend-full.json. Code revision/fingerprint: c49541b-working / not supplied.
+
+Full frontend regression with real service handlers and independent Safety component projections. Safety component intents do not establish backend role authorization, transitions, durable review/rework or inbox delivery.
+
+| Test Case ID | Actual Result | Pass/Fail/Not Executed/Blocked | Remarks | Date of Execution |
+|---|---|---|---|---|
+| TC-CS87-01 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-01 gives four rooms independent IDs, needs and decisions; readiness requires every room | 2026-10-13T13:07:48.702Z |
+| TC-CS87-02 | No assertion executed | Not Executed |  | 2026-10-13T13:07:48.702Z |
+| TC-CS87-03 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-03 offers venue search from the actual Event page with current needs prefilled | 2026-10-13T13:07:48.702Z |
+| TC-CS87-04 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-04 calendar editing follows the authoritative current assignment and carries the read version; TC-CS87-04 follows current assignment rather than the original requester | 2026-10-13T13:07:48.702Z |
+| TC-CS87-05 | No assertion executed | Not Executed |  | 2026-10-13T13:07:48.702Z |
+| TC-CS87-06 | No assertion executed | Not Executed |  | 2026-10-13T13:07:48.702Z |
+| TC-CS87-07 | No assertion executed | Not Executed |  | 2026-10-13T13:07:48.702Z |
+| TC-CS87-08 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-08 reads authoritative planning needs through a guarded Event contract | 2026-10-13T13:07:48.702Z |
+| TC-CS87-09 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-09 retains virtual-venue booking when physical capacity and layout are not applicable | 2026-10-13T13:07:48.702Z |
+| TC-CS87-10 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-10 a removed rejected venue keeps its booking visible and can be explicitly released | 2026-10-13T13:07:48.702Z |
+| TC-CS87-11 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-11 bridges the existing request form labels and lowercase layout to venue catalogue codes without dropping unknown needs | 2026-10-13T13:07:48.702Z |
+| TC-CS87-12 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-12 server-rendered room actions stay disabled until browser handlers attach | 2026-10-13T13:07:48.702Z |
+| TC-CS87-13 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-13 Coordinator changes one unapproved room from prefilled alternatives while retaining its identity and sibling | 2026-10-13T13:07:48.702Z |
+| TC-CS87-14 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-14 a confirmed room can be assessed for alternatives without an unreviewed change action | 2026-10-13T13:07:48.702Z |
+| TC-CS87-15 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-15 a fresh request after an acknowledged request is released uses a new action key | 2026-10-13T13:07:48.702Z |
+| TC-CS87-16 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-16 a rejected booking from a removed venue can move to a suitable alternative with its history and ID retained | 2026-10-13T13:07:48.702Z |
+| TC-CS87-17 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-17 changing criteria while a search is pending never restores stale actionable results | 2026-10-13T13:07:48.702Z |
+| TC-CS87-18 | No assertion executed | Not Executed |  | 2026-10-13T13:07:48.702Z |
+| TC-CS87-19 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-19 venue history preserves the origin and movement while current assignment controls both timelines | 2026-10-13T13:07:48.702Z |
+| TC-CS87-20 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-20 a failed move refreshes the selected booking version while preserving the edited search criteria | 2026-10-13T13:07:48.702Z |
+| TC-CS87-21 | Assertions passed; see scenario and layer limitations | Pass | TC-CS87-21 a route Event change cannot arrange against the previous Event summary while its new fetch is pending | 2026-10-13T13:07:48.702Z |

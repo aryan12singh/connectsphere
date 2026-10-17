@@ -18,6 +18,23 @@ export interface CalendarBooking {
   timeZone?: string
   requestedById?: string
   eventId?: string | null
+  version?: number
+  currentCoordinatorId?: string
+  setupMinutes?: number
+  turnaroundMinutes?: number
+  occupiedStart?: string
+  occupiedEnd?: string
+  expiresAt?: string | null
+  flags?: string[]
+}
+
+/** Server-computed buffer intervals use the same clipping and timezone path. */
+export function bufferSegmentsForRange(bookings: CalendarBooking[],range:CalendarRange,timeZone='UTC') {
+  return bookings.flatMap(booking=>{
+    const windows=[{kind:'setup' as const,startAt:booking.occupiedStart,endAt:booking.startAt},{kind:'turnaround' as const,startAt:booking.endAt,endAt:booking.occupiedEnd}]
+    return windows.flatMap(window=>window.startAt && window.endAt && Date.parse(window.endAt)>Date.parse(window.startAt)
+      ? intervalSegmentsForRange([{...booking,startAt:window.startAt,endAt:window.endAt}],range,timeZone).map(segment=>({...segment,kind:window.kind,booking})) : [])
+  })
 }
 
 export interface CalendarOperatingHour {

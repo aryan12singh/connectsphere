@@ -2,6 +2,16 @@
 
 Use Docker Desktop, Python 3.9 or newer, curl and Bash (macOS/Linux, or WSL). The commands run the locked dependencies with Node 22 containers. This recipe generates a **new** project with a project-specific PostgreSQL 16 volume and loopback ports. It uses checked-in synthetic development defaults. Choose an unused project/path and free ports; the helper refuses an existing config, running project or occupied port.
 
+For the complete Sprint 3 integration use the maintained single runner from Node 22 with locked dependencies installed:
+
+```bash
+CSE2E_PROJECT=csreview-aryan-ci-unique-review \
+CSE2E_WORK_DIR=/absolute/new/review-directory \
+CSE2E_PORT_BASE=23000 bash scripts/run-event-review-ci.sh
+```
+
+It includes Equipment/Notification/RabbitMQ, actual outage/replay/DLQ and Safety/maintenance acceptance, then the full browser and restart checks. The longer historical manual blocks below describe the earlier baseline and do not replace the current complete runner. See [current integration/handoff](sprint3-integration-handoff.md) for exact boundaries and existing-volume upgrades.
+
 Run the following blocks in the same Bash session, from a clean checkout containing the complete feature branch. The original backend-only checkpoint does not include this recipe or frontend changes. Pick the source revision supplied with the final handoff; an old remote checkpoint is insufficient.
 
 ```bash

@@ -13,6 +13,7 @@ function array(value) {
 
 function validateVenue(body, partial = false) {
   const errors = {};
+  for(const key of ['emergencyAccess','crowdMovement','restrictions'])if(body?.[key]!==undefined && body[key]!==null && (typeof body[key]!=='string'||body[key].length>2000))errors[key]=['Use text of at most 2000 characters'];
   const required = ['name', 'venueType', 'supportedLayouts', 'facilities', 'accessibilityTags', 'timeZone', 'managedById', 'reason', 'operatingHours'];
   if (body?.venueType !== 'VIRTUAL') required.push('address', 'capacity');
   if (!partial) {
@@ -29,9 +30,20 @@ function validateVenue(body, partial = false) {
   if (body?.supportedLayouts !== undefined && (!Array.isArray(body.supportedLayouts) || body.supportedLayouts.some((item) => typeof item !== 'string' || !item.trim() || !LAYOUTS.includes(item.trim())))) errors.supportedLayouts = ['Supported layouts contain an unknown value'];
   if (body?.facilities !== undefined && (!Array.isArray(body.facilities) || body.facilities.some((item) => typeof item !== 'string' || !item.trim()))) errors.facilities = ['Facilities must contain only non-empty strings'];
   if (body?.accessibilityTags !== undefined && (!Array.isArray(body.accessibilityTags) || body.accessibilityTags.some((item) => typeof item !== 'string' || !item.trim()))) errors.accessibilityTags = ['Accessibility tags must contain only non-empty strings'];
-  if (body?.timeZone !== undefined && !text(body.timeZone)) errors.timeZone = ['Time zone is required'];
+  if (body?.timeZone !== undefined) {
+    if (!text(body.timeZone)) errors.timeZone = ['Time zone is required'];
+    else {
+      try { new Intl.DateTimeFormat('en', { timeZone: text(body.timeZone) }); }
+      catch { errors.timeZone = ['Use a valid time zone, such as Asia/Singapore']; }
+    }
+  }
   if (body?.managedById !== undefined && !text(body.managedById)) errors.managedById = ['A venue staff manager is required'];
   if (body?.reason !== undefined && !text(body.reason)) errors.reason = ['Reason is required'];
+  for (const field of ['setupMinutes', 'turnaroundMinutes']) {
+    if (body?.[field] !== undefined && (!Number.isSafeInteger(body[field]) || body[field] < 0 || body[field] > config.maxBufferMinutes)) {
+      errors[field] = [`Use whole minutes from 0 to ${config.maxBufferMinutes}`];
+    }
+  }
   if (body?.operatingHours !== undefined) Object.assign(errors, validateHours(body.operatingHours));
   return errors;
 }
@@ -48,6 +60,7 @@ function normaliseHours(hours) {
 
 function normaliseVenue(body) {
   return {
+    ...Object.fromEntries(['emergencyAccess','crowdMovement','restrictions'].filter(key=>Object.hasOwn(body,key)).map(key=>[key,typeof body[key]==='string'?body[key].trim()||null:null])),
     name: text(body.name),
     address: text(body.address) || null,
     capacity: body.capacity,
@@ -58,6 +71,8 @@ function normaliseVenue(body) {
     timeZone: text(body.timeZone) || 'Asia/Singapore',
     isActive: body.isActive !== false,
     managedById: text(body.managedById),
+    setupMinutes: body.setupMinutes ?? 0,
+    turnaroundMinutes: body.turnaroundMinutes ?? 0,
     reason: text(body.reason),
     operatingHours: normaliseHours(body.operatingHours),
   };
@@ -82,4 +97,12 @@ function validateHours(body) {
   return errors;
 }
 
-module.exports = { VENUE_TYPES, LAYOUTS, WEEKDAYS, text, validateVenue, normaliseVenue, validateHours };
+function validateLegacyBuffers(body){
+  const errors={};
+  if(!Number.isSafeInteger(body?.version)||body.version<1)errors.version=['Current venue version is required'];
+  for(const key of ['setupMinutes','turnaroundMinutes'])if(!Number.isSafeInteger(body?.[key])||body[key]<0||body[key]>config.maxBufferMinutes)errors[key]=[`Use whole minutes from 0 to ${config.maxBufferMinutes}`];
+  if(!text(body?.reason)||text(body.reason).length>1000)errors.reason=['Use a configuration reason of 1–1000 characters'];
+  if(!Array.isArray(body?.communications))errors.communications=['Record communication for affected Events'];
+  return errors;
+}
+module.exports = { VENUE_TYPES, LAYOUTS, WEEKDAYS, text, validateVenue, normaliseVenue, validateHours,validateLegacyBuffers };

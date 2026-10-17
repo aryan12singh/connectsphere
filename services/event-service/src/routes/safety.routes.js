@@ -1,0 +1,17 @@
+const express=require('express');
+const {requireAuth}=require('../auth');
+const safety=require('../safety');
+const router=express.Router();const auth=requireAuth();
+router.get('/events/:id/safety',auth,async(req,res,next)=>{try{res.json(await safety.view(req.params.id,req.actor));}catch(error){next(error);}});
+router.post('/events/:id/safety/submit',auth,async(req,res,next)=>{try{const r=await safety.submit(req,req.params.id);res.status(r.status).json(r.body);}catch(error){next(error);}});
+router.post('/events/:id/safety/rework-review',auth,async(req,res,next)=>{try{res.json(await safety.rework(req,req.params.id));}catch(error){next(error);}});
+router.get('/safety-checks',auth,async(req,res,next)=>{try{res.json(await safety.queue(req.actor));}catch(error){next(error);}});
+router.get('/safety-checks/:id',auth,async(req,res,next)=>{try{res.json(await safety.officerView(req.params.id,req.actor));}catch(error){next(error);}});
+router.post('/safety-checks/:id/decision',auth,async(req,res,next)=>{try{res.json(await safety.decide(req,req.params.id));}catch(error){next(error);}});
+router.post('/events/:id/confirm',auth,async(req,res,next)=>{try{res.json(await safety.advance(req,req.params.id,'CONFIRMED'));}catch(error){next(error);}});
+router.post('/events/:id/preparation',auth,async(req,res,next)=>{try{res.json(await safety.advance(req,req.params.id,'PREPARATION'));}catch(error){next(error);}});
+router.post('/events/:id/preparation-updates',auth,async(req,res,next)=>{try{res.status(201).json(await safety.preparationUpdate(req,req.params.id));}catch(error){next(error);}});
+router.get('/preparation-work',auth,async(req,res)=>res.json(await safety.preparationQueue(req.actor)));
+router.get('/events/:id/preparation',auth,async(req,res)=>res.json(await safety.preparationView(req.actor,req.params.id)));
+router.post('/events/:id/planning-correction',auth,async(req,res)=>res.json(await safety.correctPlanning(req,req.params.id)));
+module.exports=router;

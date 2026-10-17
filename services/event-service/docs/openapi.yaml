@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ConnectSphere event-service — implemented request workflows
-  version: 0.4.0
+  version: 0.5.0
   description: CS-11/29/27/44 persistent implementation. Authentication uses live opaque session
     validation with internal key, never caller identity headers. No competing transition/assignment
     engine. Deliberate draft-contract amendments and pending matrix/limits/history granularity are
@@ -15,6 +15,28 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /events/{id}/safety:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1safety"
+  /events/{id}/safety/submit:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1safety~1submit"
+  /events/{id}/safety/rework-review:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1safety~1rework-review"
+  /events/{id}/planning-correction:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1planning-correction"
+  /safety-checks:
+    $ref: "./safety-openapi.yaml#/paths/~1safety-checks"
+  /safety-checks/{id}:
+    $ref: "./safety-openapi.yaml#/paths/~1safety-checks~1{id}"
+  /safety-checks/{id}/decision:
+    $ref: "./safety-openapi.yaml#/paths/~1safety-checks~1{id}~1decision"
+  /events/{id}/confirm:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1confirm"
+  /events/{id}/preparation:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1preparation"
+  /preparation-work:
+    $ref: "./safety-openapi.yaml#/paths/~1preparation-work"
+  /events/{id}/preparation-updates:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1preparation-updates"
   /event-requests:
     post:
       summary: Create incomplete Draft or directly submit
@@ -1192,8 +1214,69 @@ paths:
               schema:
                 $ref: "#/components/schemas/Health"
       security: []
+  /internal/events/{eventId}/planning-context:
+    get:
+      summary: Read authoritative Event identity, current assignment and planning needs
+      description: Read-only service contract used by Booking. Uses the distinct Event ID,
+        not the request ID. No role, status or lifecycle mutation. Returns current source
+        request version, attendance/minimum capacity, layout/type, accessibility and
+        free-text venue/technical needs. Booking maps known form labels to catalogue
+        codes in its own projection. Internal namespace is not routed by Kong.
+      security:
+        - internalApiKey: []
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current Event planning context; no technical or Safety approval implied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  eventRequestId:
+                    type: string
+                  status:
+                    type: string
+                  currentCoordinatorId:
+                    type: string
+                    nullable: true
+                  requestVersion:
+                    type: integer
+                  expectedAttendance:
+                    type: integer
+                    nullable: true
+                  minimumCapacity:
+                    type: integer
+                    nullable: true
+                  preferredLayout:
+                    type: string
+                    nullable: true
+                  venueType:
+                    type: string
+                    nullable: true
+                  accessibilityNeeds:
+                    type: array
+                    items:
+                      type: string
+                  venueRequirements:
+                    type: string
+        "403":
+          description: Internal credential missing or invalid
+        "404":
+          description: Event or its source request not found
 components:
   securitySchemes:
+    internalApiKey:
+      type: apiKey
+      in: header
+      name: x-internal-api-key
     bearerAuth:
       type: http
       scheme: bearer

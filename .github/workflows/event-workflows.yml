@@ -2,7 +2,7 @@ name: Sprint 2 checks
 on:
   pull_request:
   push:
-    branches: [main, feat/aryan-sprint2-event-workflows]
+    branches: [main, feat/aryan-sprint2-event-workflows, feat/aryan-sprint3-venue-safety]
   workflow_dispatch:
 permissions:
   contents: read
@@ -43,10 +43,16 @@ jobs:
             frontend/package-lock.json
             services/event-service/package-lock.json
             services/venue-service/package-lock.json
+            services/booking-service/package-lock.json
+            services/notification-service/package-lock.json
+            services/equipment-service/package-lock.json
       - name: Install frontend and real boundary fixtures
         run: |
           npm ci --prefix services/event-service
           npm ci --prefix services/venue-service
+          npm ci --prefix services/booking-service
+          npm ci --prefix services/notification-service
+          npm ci --prefix services/equipment-service
           npm ci --prefix frontend
           cd services/event-service
           npx prisma generate
@@ -122,6 +128,10 @@ jobs:
             database: venue_test
           - service: booking-service
             database: booking_test
+          - service: notification-service
+            database: notification_test
+          - service: equipment-service
+            database: equipment_test
     services:
       postgres:
         image: postgres:16
@@ -151,6 +161,12 @@ jobs:
       - run: npm run test:contract 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
       - name: PostgreSQL HTTP integration and source coverage
         run: npm run test:integration | tee "$RUNNER_TEMP/postgres-coverage.txt"
+      - name: Hold expiry PostgreSQL spike
+        if: matrix.service == 'booking-service'
+        env:
+          CS_HOLD_SPIKE_RESULTS: ${{ runner.temp }}/hold-expiry-results.json
+          CS_VERIFY_REVISION: ${{ github.sha }}
+        run: npm run test:hold-spike | tee "$RUNNER_TEMP/hold-expiry.txt"
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
@@ -160,6 +176,8 @@ jobs:
             ${{ runner.temp }}/coverage.txt
             ${{ runner.temp }}/http-contracts.txt
             ${{ runner.temp }}/postgres-coverage.txt
+            ${{ runner.temp }}/hold-expiry.txt
+            ${{ runner.temp }}/hold-expiry-results.json
 
   identity:
     name: ${{ matrix.service }} checks
@@ -224,7 +242,7 @@ jobs:
   live:
     name: Live E2E and restart checks
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.0.0
@@ -237,6 +255,10 @@ jobs:
       - name: Install locked browser and smoke dependencies
         run: |
           npm ci --prefix services/event-service
+          npm ci --prefix services/venue-service
+          npm ci --prefix services/booking-service
+          npm ci --prefix services/notification-service
+          npm ci --prefix services/equipment-service
           npm ci --prefix frontend
           cd frontend
           npx playwright install --with-deps chromium

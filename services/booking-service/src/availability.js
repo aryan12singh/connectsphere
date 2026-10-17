@@ -1,3 +1,6 @@
+const { occupiedWindow, occupiedWindowsOverlap } = require('./occupiedWindow');
+const { holdIsExpired, holdWarningDue, validateHoldDeadline } = require('./holdClock');
+
 function availabilityRange(query) {
   const errors = {};
   const startAt = query?.startAt;
@@ -17,4 +20,4 @@ function filterAvailability(bookings, query) {
   return bookings.filter((booking) => Date.parse(booking.endAt) > start && Date.parse(booking.startAt) < end);
 }
 
-module.exports = { availabilityRange, filterAvailability };
+module.exports = { availabilityRange, filterAvailability, occupiedWindow, occupiedWindowsOverlap, holdIsExpired, holdWarningDue, validateHoldDeadline };

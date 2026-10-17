@@ -13,6 +13,7 @@ export const emails = {
   coordinator: 'aisha.rahman@connectsphere.sg',
   staff: 'ravi.kumar@marinaconvention.sg',
   support: 'hafiz.ismail@connectsphere.sg',
+  officer:'alex.chen@connectsphere.sg',
   multi: 'priya.raman@greenleaf.org.sg',
 }
 
@@ -137,6 +138,10 @@ function reviewCompose() {
 export function eventService(action: 'stop' | 'start') {
   const file = reviewCompose()
   execFileSync('docker', ['compose', '-f', file, action, 'event-service'], { stdio: 'pipe' })
+}
+export function venueService(action:'stop'|'start') {
+  const file=reviewCompose()
+  execFileSync('docker',['compose','-f',file,action,'venue-service'],{stdio:'pipe'})
 }
 
 export function recreateBookingService() {

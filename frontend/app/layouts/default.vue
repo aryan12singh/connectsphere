@@ -3,6 +3,7 @@ import { GalleryVerticalEndIcon } from '@lucide/vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import AppErrorAlert from '@/components/shared/AppErrorAlert.vue'
+import NotificationBell from '@/components/navbar/NotificationBell.vue'
 import UserMenu from '@/components/navbar/UserMenu.vue'
 import { Switch } from '@/components/ui/switch'
 import { roleHome } from '~~/lib/roles'
@@ -52,6 +53,9 @@ watch(isDark, (dark) => {
         </div>
 
         <nav class="hidden items-center gap-5 text-sm lg:flex" aria-label="Primary">
+          <NuxtLink v-if="can('safety.view')" to="/safety-checks" class="text-muted-foreground">Safety checks</NuxtLink>
+          <NuxtLink v-if="can('technical.review')" to="/technical-requests" class="text-muted-foreground">Technical review</NuxtLink>
+            <NuxtLink v-if="can('venue_bookings.decide') || can('technical.review')" to="/preparation" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">Preparation</NuxtLink>
           <NuxtLink :to="roleHome(user?.role ?? '')" class="text-muted-foreground">Home</NuxtLink>
           <NuxtLink
             v-if="isEventRole && can('events.view')"
@@ -88,6 +92,7 @@ watch(isDark, (dark) => {
             New event request
           </NuxtLink>
         </Button>
+        <NotificationBell v-if="user" />
         <UserMenu />
       </div>
     </header>

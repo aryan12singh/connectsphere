@@ -1,0 +1,105 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model EquipmentType {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TechnicalRequest {
+  id                String   @id @default(cuid())
+  eventRequestId    String   @unique
+  planningEventId String?
+  requirementsRevision String?
+  coordinatorId     String
+  version           Int      @default(1)
+  status            String   @default("SUBMITTED")
+  requirements      Json
+  coverageResolution Json?
+  decisionReason    String?
+  decidedById       String?
+  decidedAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  history           TechnicalRequestHistory[]
+}
+
+model TechnicalRequestHistory {
+  id             String           @id @default(cuid())
+  requestId      String
+  version        Int
+  action         String
+  actorId        String
+  actorRole      String
+  details        Json?
+  createdAt      DateTime          @default(now())
+  request        TechnicalRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+}
+
+model OutboxEvent {
+  id          String   @id @default(cuid())
+  actionKey   String   @unique
+  eventType   String
+  payload     Json
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([publishedAt, createdAt])
+}
+
+model IdempotencyRecord {
+  id           String   @id @default(cuid())
+  actorId      String
+  key          String
+  requestHash  String
+  responseBody Json
+  createdAt    DateTime @default(now())
+
+  @@unique([actorId, key])
+}
+
+model TechnicalReadinessFence {
+  token String @id
+  eventId String
+  eventRequestId String
+  active Boolean @default(true)
+  proof Json
+  createdAt DateTime @default(now())
+  @@index([eventRequestId,active])
+  @@map("technical_readiness_fences")
+}
+
+model EquipmentStock {
+ equipmentType String @id
+ total Int @default(0)
+ version Int @default(1)
+ updatedAt DateTime @updatedAt @db.Timestamptz(3)
+ @@map("equipment_stock")
+}
+model EquipmentReservation {
+ id String @id @default(cuid())
+ eventRequestId String
+ eventId String
+ requestVersion Int
+ equipmentType String
+ quantity Int
+ startAt DateTime @db.Timestamptz(3)
+ endAt DateTime @db.Timestamptz(3)
+ active Boolean @default(true)
+ actorId String
+ createdAt DateTime @default(now()) @db.Timestamptz(3)
+ @@index([equipmentType,active,startAt,endAt])
+ @@index([eventRequestId,active])
+ @@map("equipment_reservations")
+}

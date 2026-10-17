@@ -1,0 +1,195 @@
+import { beforeAll,beforeEach,afterAll,afterEach,describe,expect,it,vi } from 'vitest'
+import { createRequire } from 'node:module'
+const require=createRequire(import.meta.url),f=require('../helpers/venue-workflow.cjs'),clock=require('../../services/booking-service/src/clock')
+let api:any
+beforeAll(async()=>{api=await f.stack()})
+beforeEach(()=>f.reset())
+afterEach(()=>vi.restoreAllMocks())
+afterAll(async()=>{await api.close()})
+describe('CS-36 — live venue search',()=>{
+  it('TC-CS36-24 omitted search fields use current Event defaults while malformed explicit criteria fail without writes',async()=>{
+    const {event}=await f.eventFixture(),path=`/venue-bookings/events/${event.id}/venue-search`
+    const defaults=await api.booking.http(path,{headers:f.coordinator})
+    expect(defaults.status).toBe(200);expect(defaults.body.criteria).toMatchObject({startAt:event.startAt,endAt:event.endAt,expectedAttendance:80})
+    for(const query of ['startAt=invalid','endAt=invalid','expectedAttendance=abc','expectedAttendance=0']){
+      const r=await api.booking.http(path+'?'+query,{headers:f.coordinator});expect(r.status).toBe(422);expect(r.body.error.fields).toBeTruthy()
+    }
+    expect(f.bookings.listBookings()).toEqual([])
+  })
+  it('TC-CS36-25 Organisers, Attendees and Venue Staff cannot use the assigned Coordinator search boundary',async()=>{
+    const {event}=await f.eventFixture()
+    for(const role of ['EVENT_ORGANISER','ATTENDEE','VENUE_STAFF'])expect((await api.booking.http(`/venue-bookings/events/${event.id}/venue-search`,{headers:{'x-test-user-id':'other','x-test-role':role}})).status).toBe(403)
+    expect(f.bookings.listBookings()).toEqual([])
+  })
+
+  it('TC-CS36-03 returns an empty result when no room fits attendance, without under-capacity fallback',async()=>{
+    const {event}=await f.eventFixture({expectedAttendance:1000,minimumCapacity:1000})
+    await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({capacity:300,facilities:[]})})
+    const result=await api.booking.http(`/venue-bookings/events/${event.id}/venue-search`,{headers:f.coordinator})
+    expect(result.status).toBe(200);expect(result.body.items).toEqual([]);expect(f.bookings.listBookings()).toEqual([])
+  })
+  it('TC-CS36-10 includes the exact capacity boundary and excludes attendance one above it',async()=>{
+    const {event}=await f.eventFixture({expectedAttendance:300,minimumCapacity:300}),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({capacity:300})})
+    for(const attendance of [299,300,301]){
+      const result=await api.booking.http(`/venue-bookings/events/${event.id}/venue-search?expectedAttendance=${attendance}`,{headers:f.coordinator})
+      expect(result.status).toBe(200);expect(result.body.items.map((room:any)=>room.id)).toEqual(attendance<=300?[v.body.id]:[])
+    }
+    expect(f.bookings.listBookings()).toEqual([])
+  })
+  it('TC-CS36-23 venue maintenance during checked deletion requires a fresh deletion check',async()=>{
+    const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({turnaroundMinutes:0})})
+    const held=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'delete-edit-race'},body:{eventId:event.id,venueId:v.body.id,title:'Retained approval',reason:'Checked removal race',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    expect(held.status).toBe(201);expect((await api.booking.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Verified room'}})).status).toBe(200)
+    vi.spyOn(clock,'now').mockReturnValue(new Date('2026-12-21T04:10:00.000Z'))
+    const native=globalThis.fetch;let reached!:()=>void,release!:()=>void
+    const paused=new Promise<void>(resolve=>{reached=resolve}),gate=new Promise<void>(resolve=>{release=resolve})
+    vi.spyOn(globalThis,'fetch').mockImplementation(async(url:any,options:any)=>{if(String(url)===api.venue.base+'/internal/venues/'+v.body.id && options?.method==='DELETE'){reached();await gate}return native(url,options)})
+    const removing=api.venue.http('/venues/'+v.body.id,{method:'DELETE',headers:f.staff})
+    try{await paused;const updated=await api.venue.http('/venues/'+v.body.id,{method:'PUT',headers:f.staff,body:f.venueInput({version:2,turnaroundMinutes:0,name:'Renamed venue'})});expect(updated.status).toBe(409);expect(updated.body.error.code).toBe('VENUE_MAINTENANCE_PENDING');release();const r=await removing;expect(r.status).toBe(204);expect((await api.venue.http('/venues/'+v.body.id,{headers:f.staff})).status).toBe(404);expect(f.bookings.getBooking(held.body.id).status).toBe('CONFIRMED')}finally{release();await removing}
+  })
+  it('TC-CS36-22 legitimate deletion against a historical shorter-turnaround snapshot ignores the old booking snapshot',async()=>{
+    const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
+    const held=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'shortened-deleted'},body:{eventId:event.id,venueId:v.body.id,title:'Ended conference',reason:'Retain old snapshot',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    expect(held.status).toBe(201)
+    expect((await api.booking.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Room verified'}})).status).toBe(200)
+    vi.spyOn(clock,'now').mockReturnValue(new Date('2026-12-21T04:10:00.000Z'))
+    expect((await api.venue.http('/venues/'+v.body.id,{method:'DELETE',headers:f.staff})).status).toBe(409)
+    // Explicit inherited snapshot fixture; post-confirmation buffer edits are now forbidden.
+    f.venues.state.venues.set(v.body.id,{...f.venues.getVenue(v.body.id),turnaroundMinutes:0})
+    expect((await api.booking.http('/venue-bookings/rechecks',{method:'POST',headers:f.staff,body:{venueId:v.body.id,version:2,reason:'Shorter turnaround is current'}})).status).toBe(200)
+    expect(f.bookings.getBooking(held.body.id).occupiedEnd).toBe('2026-12-21T04:30:00.000Z')
+    expect((await api.venue.http('/venues/'+v.body.id,{method:'DELETE',headers:f.staff})).status).toBe(204)
+    const before=JSON.stringify({bookings:f.bookings.listBookings(),activities:f.bookings.state.activities,outbox:f.bookings.state.outbox})
+    for(const path of ['/venue-bookings/availability?startAt=2026-12-23T00%3A00%3A00.000Z&endAt=2026-12-24T00%3A00%3A00.000Z','/venue-bookings/conflicts']){const r=await api.booking.http(path,{headers:f.staff});expect(r.status).toBe(200);expect(r.body.items).toEqual([])}
+    expect(JSON.stringify({bookings:f.bookings.listBookings(),activities:f.bookings.state.activities,outbox:f.bookings.state.outbox})).toBe(before)
+  })
+  it('TC-CS36-21 a deleted venue with fully ended confirmations cannot break the future availability calendar',async()=>{
+    const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
+    const held=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'past-deleted'},body:{eventId:event.id,venueId:v.body.id,title:'Past room',reason:'Historic conference',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    expect(held.status).toBe(201)
+    expect((await api.booking.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Room verified'}})).status).toBe(200)
+    vi.spyOn(clock,'now').mockReturnValue(new Date('2026-12-22T00:00:00.000Z'))
+    expect((await api.venue.http('/venues/'+v.body.id,{method:'DELETE',headers:f.staff})).status).toBe(204)
+    const before=JSON.stringify({bookings:f.bookings.listBookings(),activities:f.bookings.state.activities,outbox:f.bookings.state.outbox})
+    const r=await api.booking.http('/venue-bookings/availability?startAt=2026-12-23T00%3A00%3A00.000Z&endAt=2026-12-24T00%3A00%3A00.000Z',{headers:f.staff})
+    expect(r.status).toBe(200);expect(r.body.items).toEqual([])
+    expect(JSON.stringify({bookings:f.bookings.listBookings(),activities:f.bookings.state.activities,outbox:f.bookings.state.outbox})).toBe(before)
+  })
+  it('TC-CS36-20 alternative search keeps the individual booking needs and excludes its original venue without writes',async()=>{
+    const {event}=await f.eventFixture({expectedAttendance:200,minimumCapacity:200}),source=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({name:'Original breakout',capacity:60,supportedLayouts:['THEATRE','CLASSROOM']})})
+    const alternate=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({name:'Alternative breakout',capacity:60,supportedLayouts:['CLASSROOM']})})
+    const hold=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'alternative-source'},body:{eventId:event.id,venueId:source.body.id,title:'Breakout',reason:'Small session',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:40,layout:'CLASSROOM',facilities:['PROJECTOR']}})
+    expect(hold.status).toBe(201)
+    const before=JSON.stringify(f.bookings.state),path=`/venue-bookings/events/${event.id}/venue-search?bookingId=${hold.body.id}&bookingVersion=1`
+    const r=await api.booking.http(path,{headers:f.coordinator})
+    expect(r.status).toBe(200)
+    expect(r.body.criteria).toMatchObject({startAt:hold.body.startAt,endAt:hold.body.endAt,expectedAttendance:40,layout:'CLASSROOM',facilities:['PROJECTOR'],accessibilityNeeds:['WHEELCHAIR_ACCESS']})
+    expect(r.body.items.map((venue:any)=>venue.id)).toEqual([alternate.body.id]);expect(r.body.items[0].match).toBe('FULL')
+    expect(r.body.sourceBooking).toMatchObject({id:hold.body.id,version:1,venueId:source.body.id,status:'TENTATIVELY_HELD'})
+    expect(JSON.stringify(f.bookings.state)).toBe(before)
+    expect((await api.booking.http(path.replace('bookingVersion=1','bookingVersion=2'),{headers:f.coordinator})).status).toBe(409)
+    const other=await f.eventFixture()
+    expect((await api.booking.http(path.replace(event.id,other.event.id),{headers:f.coordinator})).status).toBe(404)
+    expect((await api.booking.http(path,{headers:{'x-test-user-id':'former','x-test-role':'EVENT_COORDINATOR'}})).status).toBe(403)
+    expect(JSON.stringify(f.bookings.state)).toBe(before)
+  })
+  it('TC-CS36-19 read projections use the deadline after a slow venue lookup, including calendar, search and Event summary',async()=>{
+    const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
+    const hold=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'read-clock'},body:{eventId:event.id,venueId:v.body.id,title:'Room',reason:'Read deadline check',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    expect(hold.status).toBe(201)
+    const date=vi.spyOn(clock,'now'),config=require('../../services/booking-service/src/config'),express=require('../../services/booking-service/node_modules/express'),{start}=require('../helpers/service-integration.cjs')
+    const remoteApp=express();remoteApp.use(async(_req:any,res:any)=>{await new Promise(r=>setTimeout(r,20));date.mockReturnValue(new Date(hold.body.expiresAt));res.json(_req.path.endsWith('/catalogue')?{items:[v.body]}:v.body)})
+    const remote=await start(remoteApp),old=config.venueServiceUrl;config.venueServiceUrl=remote.base
+    try {
+      date.mockReturnValue(new Date(Date.parse(hold.body.expiresAt)-1000))
+      const availability=await api.booking.http(`/venue-bookings/availability?venueId=${v.body.id}`,{headers:f.coordinator})
+      expect(availability.status).toBe(200);expect(availability.body.items).toEqual([])
+      date.mockReturnValue(new Date(Date.parse(hold.body.expiresAt)-1000))
+      const search=await api.booking.http(`/venue-bookings/events/${event.id}/venue-search?startAt=${encodeURIComponent(hold.body.startAt)}&endAt=${encodeURIComponent(hold.body.endAt)}`,{headers:f.coordinator})
+      expect(search.status).toBe(200);expect(search.body.items.map((room:any)=>room.id)).toContain(v.body.id)
+      date.mockReturnValue(new Date(Date.parse(hold.body.expiresAt)-1000))
+      const summary=await api.booking.http(`/venue-bookings/events/${event.id}/summary`,{headers:f.coordinator})
+      expect(summary.status).toBe(200);expect(summary.body.items[0].effectiveStatus).toBe('EXPIRED')
+      expect(summary.body.checkedAt).toBe(hold.body.expiresAt);expect(f.bookings.getBooking(hold.body.id).status).toBe('TENTATIVELY_HELD')
+    }finally{config.venueServiceUrl=old;await remote.close()}
+  })
+  it('TC-CS36-17 per-room filters cannot silently drop mandatory Event accessibility needs',async()=>{
+    const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({accessibilityTags:[]})})
+    const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'cannot-drop'},body:{eventId:event.id,venueId:v.body.id,title:'Room',reason:'Drop required access attempt',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore',accessibilityNeeds:[]}})
+    expect(r.status).toBe(422);expect(r.body.error.fields.venueId).toContain('ACCESSIBILITY:WHEELCHAIR_ACCESS');expect(f.bookings.listBookings()).toEqual([])
+  })
+  it('TC-CS36-16 preserves the explicit no-accessibility-needs marker without inventing a required facility',async()=>{
+    const {event}=await f.eventFixture({accessibilityNeeds:['NONE']}),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({accessibilityTags:[]})})
+    expect(v.status).toBe(201)
+    const search=await api.booking.http(`/venue-bookings/events/${event.id}/venue-search`,{headers:f.coordinator})
+    expect(search.status).toBe(200);expect(search.body.items[0]).toMatchObject({id:v.body.id,match:'FULL',gaps:[]})
+    const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'none'},body:{eventId:event.id,venueId:v.body.id,title:'Room',reason:'No accessibility facilities requested',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    expect(r.status).toBe(201);expect(r.body.accessibilityNeeds).toEqual([]);expect(r.body.requirements.accessibilityNeeds).toEqual(['NONE'])
+  })
+  it('TC-CS36-15 respects the Event minimum capacity and venue type while a smaller breakout is independently assessed',async()=>{
+    const {event}=await f.eventFixture({minimumCapacity:120}),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({capacity:100})})
+    const wrong=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({capacity:150,venueType:'HYBRID'})})
+    expect(v.status).toBe(201);expect(wrong.status).toBe(201)
+    const path=`/venue-bookings/events/${event.id}/venue-search`
+    expect((await api.booking.http(path,{headers:f.coordinator})).body.items).toEqual([])
+    const breakout=await api.booking.http(path+'?expectedAttendance=40',{headers:f.coordinator})
+    expect(breakout.status).toBe(200);expect(breakout.body.items.map((r:any)=>r.id)).toEqual([v.body.id])
+  })
+  it('TC-CS36-12 sorts full before partial and excludes inactive, small and occupied rooms without reserving',async()=>{
+    const {event}=await f.eventFixture(),ids:any={}
+    for(const [key,extra] of Object.entries({full:{name:'Zulu full'},partial:{name:'Alpha partial',facilities:[]},layout:{name:'Layout gap',supportedLayouts:['CLASSROOM']},access:{name:'Access gap',accessibilityTags:[]},small:{capacity:79},inactive:{isActive:false},busy:{name:'Busy room'},blocked:{name:'Operationally blocked'}}))ids[key]=(await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput(extra)})).body.id
+    const hold=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'busy'},body:{eventId:event.id,venueId:ids.busy,title:'Booked room',reason:'Conference',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    expect(hold.status).toBe(201)
+    const block=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.staff,'idempotency-key':'blocked-search'},body:{venueId:ids.blocked,title:'Operational closure',reason:'Private staff maintenance',status:'BLOCKED',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    expect(block.status).toBe(201)
+    const path=`/venue-bookings/events/${event.id}/venue-search?startAt=2026-12-21T04%3A15%3A00.000Z&endAt=2026-12-21T06%3A00%3A00.000Z&facilities=PROJECTOR`
+    const r=await api.booking.http(path,{headers:f.coordinator})
+    expect(r.status).toBe(200);expect(r.body.items[0].id).toBe(ids.full);expect(r.body.items.slice(1).map((v:any)=>v.id).sort()).toEqual([ids.partial,ids.layout,ids.access].sort())
+    expect(r.body.items[0]).toMatchObject({match:'FULL',gaps:[],expectedAttendance:80,layout:'THEATRE',occupiedStart:'2026-12-21T03:45:00.000Z',occupiedEnd:'2026-12-21T06:30:00.000Z'})
+    expect(r.body.items.find((v:any)=>v.id===ids.partial)).toMatchObject({match:'PARTIAL',gaps:['FACILITY:PROJECTOR'],canRequest:false})
+    expect(r.body.items.find((v:any)=>v.id===ids.layout)).toMatchObject({match:'PARTIAL',gaps:['LAYOUT'],canRequest:false})
+    expect(r.body.items.find((v:any)=>v.id===ids.access)).toMatchObject({match:'PARTIAL',gaps:['ACCESSIBILITY:WHEELCHAIR_ACCESS'],canRequest:false})
+    expect(f.bookings.listBookings()).toHaveLength(2)
+  })
+  it('TC-CS36-13 uses current assignment and refuses a search by another Coordinator',async()=>{
+    const {event}=await f.eventFixture()
+    expect((await api.booking.http(`/venue-bookings/events/${event.id}/venue-search`,{headers:{'x-test-user-id':'other','x-test-role':'EVENT_COORDINATOR'}})).status).toBe(403)
+  })
+  it('TC-CS36-09 expired holds stop occupying the calendar and search at the exact persisted deadline',async()=>{
+    const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
+    const created=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'expiry'},body:{eventId:event.id,venueId:v.body.id,title:'Private launch',reason:'Private notes',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    expect(created.status).toBe(201)
+    vi.spyOn(clock,'now').mockReturnValue(new Date(created.body.expiresAt))
+    const r=await api.booking.http(`/venue-bookings/availability?venueId=${v.body.id}`,{headers:f.coordinator})
+    expect(r.status).toBe(200);expect(r.body.items).toEqual([])
+    const search=await api.booking.http(`/venue-bookings/events/${event.id}/venue-search?startAt=${encodeURIComponent(created.body.startAt)}&endAt=${encodeURIComponent(created.body.endAt)}`,{headers:f.coordinator})
+    expect(search.status).toBe(200);expect(search.body.items.map((v:any)=>v.id)).toContain(v.body.id)
+    expect(f.bookings.getBooking(created.body.id).status).toBe('TENTATIVELY_HELD')
+    expect((await api.booking.http(`/venue-bookings/${created.body.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Too late'}})).status).toBe(409)
+  })
+  it('TC-CS36-14 exposes busy intervals without another customer’s title, notes or internal flags',async()=>{
+    const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
+    expect((await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'privacy'},body:{eventId:event.id,venueId:v.body.id,title:'Private launch',reason:'Private notes',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})).status).toBe(201)
+    const r=await api.booking.http(`/venue-bookings/availability?venueId=${v.body.id}`,{headers:{'x-test-user-id':'other','x-test-role':'EVENT_COORDINATOR'}})
+    expect(r.status).toBe(200);expect(r.body.items).toHaveLength(1)
+    expect(r.body.items[0].title).toBe('Occupied venue');expect(r.body.items[0]).not.toHaveProperty('reason');expect(r.body.items[0]).not.toHaveProperty('eventId');expect(r.body.items[0]).not.toHaveProperty('flags')
+    expect(r.body.items[0]).toMatchObject({startAt:'2026-12-21T02:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:30:00.000Z'})
+    const block=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.staff,'idempotency-key':'organiser-flag'},body:{venueId:v.body.id,title:'Private operational closure',reason:'Private flag reason',status:'BLOCKED',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    expect(block.status).toBe(201);expect(f.bookings.listBookings().some((x:any)=>x.eventId===event.id&&x.flags.includes('BUFFER_CONFLICT'))).toBe(true)
+    const owner={'x-test-user-id':'organiser','x-test-role':'EVENT_ORGANISER'}
+    expect((await api.booking.http('/venue-bookings/availability?venueId='+v.body.id,{headers:owner})).status).toBe(403)
+    const publicEvent=await api.event.http('/events/'+event.id,{headers:owner})
+    expect(publicEvent.status).toBe(200);expect(JSON.stringify(publicEvent.body)).not.toContain('BUFFER_CONFLICT');expect(publicEvent.body).not.toHaveProperty('flags')
+  })
+  it('TC-CS36-18 lets read-only support identify an operational closure without exposing staff notes or write access',async()=>{
+    const v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})
+    const block=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.staff,'idempotency-key':'support-calendar'},body:{venueId:v.body.id,title:'Early Monday maintenance',reason:'Private staff notes',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore',status:'BLOCKED'}})
+    expect(block.status).toBe(201)
+    const support={'x-test-user-id':'support','x-test-role':'TECHNICAL_SUPPORT_STAFF'}
+    const r=await api.booking.http(`/venue-bookings/availability?venueId=${v.body.id}`,{headers:support})
+    expect(r.status).toBe(200);expect(r.body.items).toHaveLength(1)
+    expect(r.body.items[0]).toMatchObject({title:'Early Monday maintenance',status:'BLOCKED',occupiedStart:block.body.startAt,occupiedEnd:block.body.endAt})
+    expect(r.body.items[0]).not.toHaveProperty('reason');expect(r.body.items[0]).not.toHaveProperty('statusChangedById')
+    expect((await api.booking.http(`/venue-bookings/${block.body.id}`,{method:'PUT',headers:support,body:{...block.body,status:'CANCELLED',reason:'Forbidden edit'}})).status).toBe(403)
+  })
+})

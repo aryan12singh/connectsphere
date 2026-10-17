@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { AdminUser } from '@/composables/useAdminApi'
+import NotificationFailures from '@/components/shared/NotificationFailures.vue'
 const { can } = usePermissions()
 useHead({ title: 'Technical Support | ConnectSphere' })
 const { data, error, refresh } = await useFetch<{ users: AdminUser[] }>('/api/admin/users', { immediate: can('users.view') })
@@ -17,5 +18,6 @@ const { data, error, refresh } = await useFetch<{ users: AdminUser[] }>('/api/ad
         <ul v-else class="divide-y divide-border"><li v-for="account in data?.users ?? []" :key="account.id" class="flex flex-wrap justify-between gap-2 py-3"><span>{{ account.firstName }} {{ account.lastName }} — {{ account.email }}</span><span class="text-sm text-muted-foreground">{{ account.isActive ? 'Active' : 'Disabled' }}</span></li></ul>
       </CardContent>
     </Card>
+    <NotificationFailures v-if="can('audit.view')" />
   </main>
 </template>

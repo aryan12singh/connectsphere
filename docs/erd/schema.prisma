@@ -4,6 +4,8 @@
 // logical data model — every entity and every relation between them AS A DRAFT.
 //
 // It is NOT what actually runs.
+// Current venue/booking baseline: docs/venue-data-model.md and the service schemas.
+// Week 7 extensions require the reviewed CS-77 contract before implementation.
 // To render an ERD from this file: npx prisma-erd-generator, or paste into
 // dbdiagram.io / a mermaid erDiagram converter.
 

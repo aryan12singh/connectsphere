@@ -8,7 +8,9 @@ import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { applyOperatingSchedule, createVenueForm, OPERATING_WEEKDAYS, operatingSchedule, type VenueFormState } from './venue-form-state'
 
 interface Option { value: string, label: string }
+interface Communication {eventId:string,title:string,coordinatorId:string,organiserId:string,bookings:{id:string,version:number}[],staffInformedCoordinator?:boolean,coordinatorInformedOrganiser?:boolean,note?:string}
 interface VenueOptions {
+  maxBufferMinutes?: number
   venueTypes?: Option[]
   supportedLayouts?: Option[]
   facilities?: Option[]
@@ -16,18 +18,27 @@ interface VenueOptions {
 }
 
 const props = withDefaults(defineProps<{
-  venue?: Partial<VenueFormState> | null
+  venue?: (Partial<VenueFormState> & {buffersLockedAt?:string | null,legacyBufferConfigurationPending?:boolean}) | null
+  legacyContext?: {venueId:string,version:number,affectedEvents:Communication[]} | null
+  legacyError?: string | null
+  buffersEditable?: boolean
   options?: VenueOptions | null
   saving?: boolean
   submitLabel?: string
   errors?: Record<string, string[]> | null
 }>(), { venue: null, options: null, saving: false, submitLabel: 'Save changes', errors: null })
 
-const emit = defineEmits<{ submit: [form: VenueFormState] }>()
+const emit = defineEmits<{ submit: [form: VenueFormState],configureLegacy:[payload:{version:number,setupMinutes:number,turnaroundMinutes:number,reason:string,communications:Communication[]}] }>()
 const form = reactive(createVenueForm(props.venue ?? {}))
 const schedule = computed(() => operatingSchedule(form.operatingHours))
 const reasonPopoverOpen = ref(false)
 const ready = ref(false)
+const legacy=reactive({setupMinutes:0 as number|string,turnaroundMinutes:0 as number|string,reason:'',communications:[] as Communication[]})
+watch(()=>[props.legacyContext,props.venue] as const,()=>{legacy.setupMinutes=props.venue?.setupMinutes??0;legacy.turnaroundMinutes=props.venue?.turnaroundMinutes??0;legacy.reason='';legacy.communications=(props.legacyContext?.affectedEvents??[]).map(e=>({...e,staffInformedCoordinator:false,coordinatorInformedOrganiser:false,note:''}))},{immediate:true})
+watch(()=>[Number(legacy.setupMinutes),Number(legacy.turnaroundMinutes)],()=>{for(const c of legacy.communications){c.staffInformedCoordinator=false;c.coordinatorInformedOrganiser=false;c.note=''}})
+const buffersLocked=computed(()=>Boolean(props.venue?.buffersLockedAt)&&props.buffersEditable!==true)
+const legacyValid=computed(()=>ready.value && !props.saving && props.venue?.legacyBufferConfigurationPending===true && props.legacyContext?.version===props.venue?.version && legacy.reason.trim().length>0 && legacy.reason.trim().length<=1000 && [legacy.setupMinutes,legacy.turnaroundMinutes].every(v=>String(v).trim()!=='' && Number.isSafeInteger(Number(v)) && Number(v)>=0 && Number(v)<=(props.options?.maxBufferMinutes??480)) && legacy.communications.every(c=>c.staffInformedCoordinator===true && c.coordinatorInformedOrganiser===true && (c.note??'').trim().length>0 && (c.note??'').trim().length<=1000))
+function configureLegacy(){if(!legacyValid.value)return;emit('configureLegacy',{version:props.legacyContext!.version,setupMinutes:Number(legacy.setupMinutes),turnaroundMinutes:Number(legacy.turnaroundMinutes),reason:legacy.reason.trim(),communications:legacy.communications.map(c=>({...c,note:c.note!.trim()}))})}
 onMounted(() => { ready.value = true })
 
 watch(() => props.venue, (venue) => Object.assign(form, createVenueForm(venue ?? {})), { deep: true })
@@ -46,6 +57,10 @@ function submit() {
 function errorFor(field: string) {
   return props.errors?.[field]?.[0]
 }
+
+const inlineErrorFields = new Set(['address', 'capacity', 'setupMinutes', 'turnaroundMinutes', 'timeZone', 'operatingHours', 'form'])
+const errorSummary = computed(() => Object.entries(props.errors ?? {})
+  .flatMap(([field, messages]) => inlineErrorFields.has(field) ? messages.slice(1) : messages))
 
 function toggle(values: string[], value: string, checked: boolean | 'indeterminate') {
   const index = values.indexOf(value)
@@ -72,6 +87,11 @@ function updateOperatingTime(type: 'opensAt' | 'closesAt', value: string | numbe
       <slot name="title" />
     </div>
 
+    <div v-if="errorSummary.length" role="alert" class="rounded-xl border border-destructive p-4 text-sm text-destructive">
+      <p class="font-medium">Please correct these venue details.</p>
+      <ul class="mt-2 list-disc space-y-1 pl-5"><li v-for="(message, index) in errorSummary" :key="index">{{ message }}</li></ul>
+    </div>
+
     <fieldset :disabled="!ready || saving" class="grid min-w-0 gap-6 border-0 p-0" aria-label="Venue details form">
     <section aria-labelledby="venue-details" class="grid gap-5">
       <h2 id="venue-details" class="text-xl font-semibold">Venue details</h2>
@@ -85,6 +105,35 @@ function updateOperatingTime(type: 'opensAt' | 'closesAt', value: string | numbe
       </FieldGroup>
     </section>
 
+    <section aria-labelledby="venue-preparation" class="grid gap-5">
+      <h2 id="venue-preparation" class="text-xl font-semibold">Preparation and turnaround</h2>
+      <p class="text-sm text-muted-foreground">These times apply to every booking at this venue. Changes also recheck existing commitments.</p>
+      <div class="grid gap-5 sm:grid-cols-2">
+        <p v-if="buffersLocked" class="text-sm text-muted-foreground">Setup and turnaround are locked for this venue. Other details remain editable.</p>
+        <Field class="gap-2"><FieldLabel for="venue-setup-minutes">Setup time (minutes)</FieldLabel><Input id="venue-setup-minutes" :disabled="buffersLocked" v-model="form.setupMinutes" type="number" min="0" :max="options?.maxBufferMinutes" step="1" required :aria-invalid="Boolean(errorFor('setupMinutes'))" /><p v-if="errorFor('setupMinutes')" role="alert" class="text-sm text-destructive">{{ errorFor('setupMinutes') }}</p></Field>
+        <Field class="gap-2"><FieldLabel for="venue-turnaround-minutes">Turnaround time (minutes)</FieldLabel><Input id="venue-turnaround-minutes" :disabled="buffersLocked" v-model="form.turnaroundMinutes" type="number" min="0" :max="options?.maxBufferMinutes" step="1" required :aria-invalid="Boolean(errorFor('turnaroundMinutes'))" /><p v-if="errorFor('turnaroundMinutes')" role="alert" class="text-sm text-destructive">{{ errorFor('turnaroundMinutes') }}</p></Field>
+      </div>
+      <section v-if="props.venue?.legacyBufferConfigurationPending" class="grid gap-3 rounded-xl border p-4" aria-label="Coordinated initial buffer configuration">
+        <h3 class="font-semibold">Initial buffers for existing bookings</h3>
+        <p class="text-sm">This one-time configuration requires Venue Staff to inform every affected Event Coordinator, and each Coordinator to inform their Organiser. Record those conversations below. Existing approvals are retained and conflicts will be rechecked.</p>
+        <p v-if="legacyError" role="alert">{{ legacyError }}</p>
+        <p v-else-if="!legacyContext">Loading current affected Events…</p>
+        <template v-else>
+          <Field><FieldLabel for="legacy-setup-minutes">Initial setup time (minutes)</FieldLabel><Input id="legacy-setup-minutes" v-model="legacy.setupMinutes" type="number" min="0" :max="options?.maxBufferMinutes??480" step="1" /></Field>
+          <Field><FieldLabel for="legacy-turnaround-minutes">Initial turnaround time (minutes)</FieldLabel><Input id="legacy-turnaround-minutes" v-model="legacy.turnaroundMinutes" type="number" min="0" :max="options?.maxBufferMinutes??480" step="1" /></Field>
+          <div v-for="contact in legacy.communications" :key="contact.eventId" class="grid gap-2 rounded-lg border p-3">
+            <h4 class="font-medium">{{ contact.title }}</h4>
+            <label class="flex items-start gap-2"><Checkbox :id="`legacy-staff-${contact.eventId}`" v-model="contact.staffInformedCoordinator" />I informed the current Coordinator about these buffer values.</label>
+            <label class="flex items-start gap-2"><Checkbox :id="`legacy-organiser-${contact.eventId}`" v-model="contact.coordinatorInformedOrganiser" />The Coordinator confirmed they informed the Organiser.</label>
+            <Field><FieldLabel :for="`legacy-note-${contact.eventId}`">Communication note for {{ contact.title }}</FieldLabel><Input :id="`legacy-note-${contact.eventId}`" v-model="contact.note" maxlength="1000" placeholder="When, how and with whom the change was discussed" /></Field>
+          </div>
+          <p v-if="!legacy.communications.length" class="text-sm">No current or future Event commitments require communication.</p>
+          <Field><FieldLabel for="legacy-buffer-reason">Initial buffer configuration reason</FieldLabel><Input id="legacy-buffer-reason" v-model="legacy.reason" maxlength="1000" /></Field>
+          <Button type="button" :disabled="!legacyValid" @click="configureLegacy">Save initial buffers</Button>
+        </template>
+      </section>
+    </section>
+
     <section aria-labelledby="amenity-details" class="grid gap-5">
       <h2 id="amenity-details" class="text-xl font-semibold">Amenity details</h2>
       <div class="grid gap-6 md:grid-cols-3">
@@ -95,14 +144,16 @@ function updateOperatingTime(type: 'opensAt' | 'closesAt', value: string | numbe
     </section>
 
     <section aria-labelledby="operating-hours" class="grid gap-5">
+      <fieldset class="grid gap-3 rounded-xl border border-border p-4"><legend class="px-1 font-medium">Operational Safety facts</legend><label class="grid gap-1 text-sm">Emergency access<textarea v-model="form.emergencyAccess" maxlength="2000" class="rounded-xl border border-border bg-background p-3" /></label><label class="grid gap-1 text-sm">Crowd movement<textarea v-model="form.crowdMovement" maxlength="2000" class="rounded-xl border border-border bg-background p-3" /></label><label class="grid gap-1 text-sm">Venue restrictions<textarea v-model="form.restrictions" maxlength="2000" class="rounded-xl border border-border bg-background p-3" /></label></fieldset>
       <h2 id="operating-hours" class="text-xl font-semibold">Operating hours</h2>
       <Field class="w-[143px] gap-1.5"><FieldLabel>Operating days</FieldLabel><FieldGroup class="gap-1.5"><label v-for="weekday in OPERATING_WEEKDAYS" :key="weekday" class="flex items-center gap-2 whitespace-nowrap text-sm"><Checkbox :model-value="schedule.weekdays.includes(weekday)" @update:model-value="updateOperatingDay(weekday, $event)" />Every {{ weekday[0] + weekday.slice(1).toLowerCase() }}</label></FieldGroup></Field>
       <div class="grid gap-4 sm:grid-cols-2"><Field class="gap-1.5"><FieldLabel for="venue-opening-time">Opening time <span aria-hidden="true">*</span></FieldLabel><Input id="venue-opening-time" :model-value="schedule.opensAt" required placeholder="HH:MM" inputmode="numeric" @update:model-value="updateOperatingTime('opensAt', $event)" /></Field><Field class="gap-1.5"><FieldLabel for="venue-closing-time">Closing time <span aria-hidden="true">*</span></FieldLabel><Input id="venue-closing-time" :model-value="schedule.closesAt" required placeholder="HH:MM" inputmode="numeric" @update:model-value="updateOperatingTime('closesAt', $event)" /></Field></div>
-      <Field class="gap-1.5"><FieldLabel for="venue-time-zone">Time zone <span aria-hidden="true">*</span></FieldLabel><Input id="venue-time-zone" v-model="form.timeZone" required placeholder="e.g. Asia/Singapore" /></Field>
+      <Field class="gap-1.5"><FieldLabel for="venue-time-zone">Time zone <span aria-hidden="true">*</span></FieldLabel><Input id="venue-time-zone" v-model="form.timeZone" required placeholder="e.g. Asia/Singapore" :aria-invalid="Boolean(errorFor('timeZone'))" :aria-describedby="errorFor('timeZone') ? 'venue-time-zone-error' : undefined" /><p v-if="errorFor('timeZone')" id="venue-time-zone-error" role="alert" class="text-sm text-destructive">{{ errorFor('timeZone') }}</p></Field>
     </section>
 
     <label class="flex items-center gap-2.5 text-sm"><Checkbox v-model="form.isActive" />Venue is active</label>
     <p v-if="errorFor('operatingHours')" role="alert" class="text-sm text-destructive">{{ errorFor('operatingHours') }}</p>
+    <p v-if="errorFor('form')" role="alert" class="text-sm text-destructive">{{ errorFor('form') }}</p>
     <Popover v-model:open="reasonPopoverOpen">
       <PopoverAnchor as-child>
         <Button type="submit" :disabled="!ready || saving" class="w-full">{{ saving ? 'Saving…' : submitLabel }}</Button>

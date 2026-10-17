@@ -2,7 +2,7 @@
 # Start everything that is built:   docker compose -f infra/docker-compose.yml up --build
 #
 # Services that don't have code yet (attendance,
-# messaging, notification, orchestrator) are listed at the bottom with
+# messaging, orchestrator) are listed at the bottom with
 # `profiles: ["not-built-yet"]`, so a normal `up` skips them. When a service
 # gets its Dockerfile and code:
 #   1. delete its `profiles:` line
@@ -45,9 +45,19 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-connectsphere}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-connectsphere-dev-only}
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
     ports:
-      - "5672:5672" # AMQP (services connect here)
-      - "15672:15672" # management UI: http://localhost:15672 (guest / guest)
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672" # management: local development credentials above
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   # Keycloak checks passwords and locks accounts after repeated failures.
   # It stores everything in Postgres (keycloak_db), so accounts created at
@@ -100,6 +110,8 @@ services:
       - venue-service
       - booking-service
       - event-service
+      - notification-service
+      - equipment-service
 
   # ── Built services ────────────────────────────────────────────────────
 
@@ -155,9 +167,11 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-connectsphere}:${RABBITMQ_PASSWORD:-connectsphere-dev-only}@rabbitmq:5672
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/event_db
       AUTH_SERVICE_URL: http://auth-service:3000
       BOOKING_SERVICE_URL: http://booking-service:3000
+      EQUIPMENT_SERVICE_URL: http://equipment-service:3000
       USER_SERVICE_URL: http://user-service:3000 # Coordinator list (CS-30)
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
       DATA_MODE: prisma
@@ -177,6 +191,8 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/venue_db
       MAX_VENUE_CAPACITY: ${MAX_VENUE_CAPACITY:-10000}
+      MAX_VENUE_BUFFER_MINUTES: ${MAX_VENUE_BUFFER_MINUTES:-480}
+      BOOKING_SERVICE_URL: http://booking-service:3000
       AUTH_SERVICE_URL: http://auth-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
       DATA_MODE: prisma
@@ -194,12 +210,35 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-connectsphere}:${RABBITMQ_PASSWORD:-connectsphere-dev-only}@rabbitmq:5672
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/booking_db
       AUTH_SERVICE_URL: http://auth-service:3000
       EVENT_SERVICE_URL: http://event-service:3000
+      VENUE_SERVICE_URL: http://venue-service:3000
+      VENUE_HOLD_HOURS: ${VENUE_HOLD_HOURS:-72}
+      VENUE_ALLOW_TOUCHING: ${VENUE_ALLOW_TOUCHING:-true}
+      VENUE_ALLOW_EXPIRY_AT_SETUP: ${VENUE_ALLOW_EXPIRY_AT_SETUP:-true}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
       DATA_MODE: prisma
       ROLE_PERMISSIONS_PATH: /app/utils/role-permissions.js
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+
+  equipment-service:
+    build:
+      context: ../services
+      dockerfile: equipment-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/equipment_db
+      DATA_MODE: prisma
+      AUTH_SERVICE_URL: http://auth-service:3000
+      EVENT_SERVICE_URL: http://event-service:3000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     depends_on:
       postgres:
         condition: service_healthy
@@ -261,20 +300,25 @@ services:
 
   # Consumes domain events from RabbitMQ and records/sends notifications.
   notification-service:
-    profiles: ["not-built-yet"]
-    build: ../services/notification-service
+    build:
+      context: ../services
+      dockerfile: notification-service/Dockerfile
     restart: unless-stopped
     environment:
       PORT: 3000
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/notification_db
-      RABBITMQ_URL: amqp://rabbitmq:5672
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-connectsphere}:${RABBITMQ_PASSWORD:-connectsphere-dev-only}@rabbitmq:5672
+      DATA_MODE: prisma
+      USER_SERVICE_URL: http://user-service:3000
+      EVENT_SERVICE_URL: http://event-service:3000
+      BOOKING_SERVICE_URL: http://booking-service:3000
       AUTH_SERVICE_URL: http://auth-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
 
   # Runs the multi-service flows (sagas): event approval, venue booking,
   # event confirmation. Calls each domain service's API over HTTP.
@@ -309,4 +353,5 @@ services:
         condition: service_started
 
 volumes:
+  rabbitdata:
   pgdata:

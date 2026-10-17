@@ -60,6 +60,9 @@ UPDATE "users" SET "organisationId" = 'b1000000-0000-4000-8000-000000000003'
 UPDATE "users" SET "roles" = ARRAY['EVENT_ORGANISER', 'ATTENDEE']::"UserRole"[]
   WHERE "id" = 'a1000000-0000-4000-8000-000000000003';
 
+-- Controlled internal Safety Officer fixture; public registration cannot select it.
+INSERT INTO users (id,email,"passwordHash","firstName","lastName",role,roles,"createdAt","updatedAt") VALUES
+ ('a1000000-0000-4000-8000-000000000031','alex.chen@connectsphere.sg',crypt('Alex@CS31!',gen_salt('bf',10)),'Alex','Chen','SAFETY_OFFICER',ARRAY['SAFETY_OFFICER']::"UserRole"[],now(),now()) ON CONFLICT (id) DO NOTHING;
 COMMIT;
 
 -- Sanity check (optional): should return 1 row

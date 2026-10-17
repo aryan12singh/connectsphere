@@ -9,3 +9,11 @@ const server = app.listen(config.port, (error) => {
   }
   console.log(`booking-service listening on port ${server.address().port}`);
 });
+
+const relay=require('./notificationOutbox').start();
+const holdNotices=require('./holdNotifications').start();
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,async()=>{
+  await holdNotices?.stop();
+  await relay?.stop();
+  process.exit(0);
+});

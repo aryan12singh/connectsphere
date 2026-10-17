@@ -13,6 +13,9 @@ opaque bearer token held in the sealed session cookie.
 | `GET /api/venues?search=` | `GET /venues?search=` | Manage-venues list |
 | `GET /api/venues/:venueId` | `GET /venues/:venueId` | Venue detail/edit form |
 | `PUT /api/venues/:venueId` | `PUT /venues/:venueId` | Replace venue details and operating hours |
+| `GET /api/venues/:venueId/buffer-status` | `GET /venues/:venueId/buffer-status` | Staff reads current versioned buffer-edit permission, including proof that a provisional confirmation fence is recoverable |
+| `GET /api/venues/:venueId/legacy-buffer-context` | `GET /venues/:venueId/legacy-buffer-context` | Staff reads the affected Event/current Coordinator/Organiser and booking versions before one-time existing-venue configuration |
+| `PUT /api/venues/:venueId/legacy-buffers` | `PUT /venues/:venueId/legacy-buffers` | Staff records communication attestation and performs the guarded one-time existing-venue configuration |
 | `DELETE /api/venues/:venueId` | `DELETE /venues/:venueId` | Delete any venue when no current/future tentative or confirmed booking is linked |
 | `GET /api/venues/:venueId/operating-hours` | `GET /venues/:venueId/operating-hours` | Operating-hours editor |
 | `PUT /api/venues/:venueId/operating-hours` | `PUT /venues/:venueId/operating-hours` | Save hours with a reason |
@@ -20,8 +23,16 @@ opaque bearer token held in the sealed session cookie.
 | `GET /api/bookings?...` | `GET /venue-bookings?...` | Booking queue/list |
 | `POST /api/bookings` | `POST /venue-bookings` | Create booking; forwards `Idempotency-Key` |
 | `GET /api/bookings/:bookingId` | `GET /venue-bookings/:bookingId` | Booking detail |
+| `DELETE /api/bookings/:bookingId` | `DELETE /venue-bookings/:bookingId` | Protected-method denial405 after authentication/current access; bookings and history retained |
 | `PUT /api/bookings/:bookingId` | `PUT /venue-bookings/:bookingId` | Booking/status change |
-| `GET /api/bookings/availability?venueId=` | `GET /venue-bookings/availability?venueId=` | Client-side conflict indication |
+| `PUT /api/bookings/:bookingId/decision` | `PUT /venue-bookings/:bookingId/decision` | Versioned Venue Staff approve/reject with reason |
+| `PUT /api/bookings/:bookingId/hold-extension` | `PUT /venue-bookings/:bookingId/hold-extension` | Versioned active-hold extension with future deadline/reason |
+| `PUT /api/bookings/events/:eventId/primary-venue` | `PUT /venue-bookings/events/:eventId/primary-venue` | Assigned Coordinator selects primary location with bookingId, bookingVersion and selection version; no publication or approval change |
+| `GET /api/bookings/events/:eventId/summary` | `GET /venue-bookings/events/:eventId/summary` | Independent rooms, current assignment, authoritative Venue type/capacity, expiry, flags and venue readiness |
+| `GET /api/bookings/events/:eventId/venue-search` | `GET /venue-bookings/events/:eventId/venue-search` | Current Coordinator's requirement-aware room search |
+| `GET /api/bookings/conflicts?venueId=` | `GET /venue-bookings/conflicts?venueId=` | Venue Staff current conflict review, both occupied windows and assignment |
+| `POST /api/bookings/rechecks` | `POST /venue-bookings/rechecks` | Initial buffer rollout recheck, authenticated Staff actor, current venue version and reason |
+| `GET /api/bookings/availability?venueId=` | `GET /venue-bookings/availability?venueId=` | Server-derived occupied intervals; client preflight uses the returned timing policy |
 
 The BFF does not rename or normalize service fields. Venue form values remain
 `supportedLayouts`, `facilities`, `accessibilityTags`, `timeZone`,
@@ -37,6 +48,64 @@ first; it does not write either history store.
 
 The frontend contract is intentionally named `/api/bookings/*`; only the Kong
 and booking-service contract retains the `/venue-bookings/*` path.
+
+## Sprint 3 venue integration — 12 October 2026
+
+The Event page adds room search/request/release using the current interface while
+the Sprint 3 Figma work is pending. It uses the distinct approved Event ID, not
+the request ID. Defaults come from current Event requirements; the Booking
+projection maps known request-form labels to catalogue codes. Search lists
+full/partial matches and occupied intervals without reserving. Each request
+retains its idempotency key for the same payload, creates an independent hold,
+and displays its persisted deadline/countdown and read version.
+
+Venue create/edit carries `setupMinutes`, `turnaroundMinutes` and `version`.
+Calendar shows separate buffers and hides a fetched hold at its deadline without
+navigation. Read-only viewers retain operational closure labels but cannot see
+another Event's private title/reason or mutate it. Coordinator editing follows
+current assignment rather than the original requester.
+
+The Staff queue uses versioned decision/extension routes with an entered reason,
+current needs, occupied timing, flags and deadline. Ordinary creation cannot
+confirm a booking; unrestricted Staff status changes are superseded by guarded
+active-hold decisions. Stale/conflicting/expired attempts have no history or
+intent effect. BFF error status/body remain preserved; refresh/retry are explicit.
+
+All remaining required rooms must be approved for current needs for venue
+readiness. That projection is not full Event readiness, technical approval or a
+Safety decision. [Policy register](venue-policy-decisions.md) and
+[phase delivery](devlogs/2026-10-12-venue-workflows.md) identify the pending gates.
+
+## Sprint 3 continuation — 13 October 2026
+
+The Staff Buffer conflicts tab compares preserved commitments side by side using
+current Venue settings and occupied-window ends. Staff can run an explicit initial
+rollout recheck with a reason and the Venue version they read. It cannot delete,
+force-confirm or cancel an approved arrangement. Stale configuration returns409;
+repeated successful rechecks do not duplicate booking history or notice intent.
+
+Find alternatives prefills the selected room's attendance, times, layout and needs
+and sends `bookingId` plus `bookingVersion`. The search excludes the original venue
+and remains read-only. An assigned Coordinator can move an unapproved room with a
+versioned PUT; siblings and the booking ID/history remain unchanged. Approved-room
+alternative assessment has no direct replacement mutation within this phase.
+Changing criteria, source identity or Event invalidates pending search results.
+A stale move refreshes the selected booking version while preserving edited criteria;
+arranging actions require the displayed Event to match the route. A new
+request after an acknowledged request was released uses a new action key; an
+ambiguous failed retry retains its key.
+
+The Staff queue disables decisions/extensions at the deadline while open. An
+imported hold whose Event is missing remains visible with `EVENT_NOT_FOUND` and no
+action controls; one orphan does not block healthy requests. Real Event dependency
+outages still fail closed. The calendar recognizes an authorized secondary Staff
+role, offers only operational-window transitions, and keeps approved arrangements
+read-only. Historical removed venues do not break future availability. Movement
+appears in both involved venue timelines while creation stays at its origin;
+current-assignment filtering protects both timelines.
+
+See [dated delivery and evidence](devlogs/2026-10-13-venue-workflows.md). The
+independent audit and automation do not replace team review or PO acceptance.
 
 ## Authentication and errors
 
@@ -62,3 +131,27 @@ Coordinator, Venue Staff and Technical Support may read venue details and availa
 An open operating-hours row requires `closesAt > opensAt`; equality/reversed hours return422 on create, full replacement and the hours-only endpoint without changing venue/history. Calendar day/week boundaries use the venue's IANA zone; each civil midnight is converted independently so DST days have 23 or 25 hours. Intervals split at local midnight and clip to the selected view. Cleared/invalid or ambiguous local booking inputs disable save and show field guidance.
 
 Ordinary Coordinator bookings require the caller's create grant and the current assignment of the actual Event ID. Booking-service asks `GET /events/:eventId/booking-access` on Event service using the same verified bearer token; it never reads event_db or trusts an assignment field in the browser. Detail, edit, list and history recheck current assignment as well as booking ownership. Foreign/removed assignment returns 403; dependency failure returns 503 before writes, with safe retry guidance. Venue Staff with the decision grant may act on existing bookings and create operational windows without an Event link.
+
+## Agreed hold/allocation additions — 14 October 2026
+
+- `POST /api/bookings/:id/hold-extension/request` forwards the current Coordinator's version, requested expiry and reason to Booking. It does not extend the hold.
+- Staff `PUT /api/bookings/:id/hold-extension` approves the persisted request only. The UI displays the exact requested deadline and requires an approval reason. One extension of at most 24 hours is allowed, capped at setup; current assignment, expiry and version are rechecked server-side.
+- Event summary `attendancePlan` contains expected attendance and per-interval allocations. The Coordinator sees shortages/over-allocation, and these reasons feed the existing Safety preparation readiness display. It does not set a registration limit or bypass technical/Safety approval.
+
+## PO buffer direction and communication record — 14 October 2026
+
+Venue Staff may maintain setup/turnaround defaults until the first confirmed venue booking. Once confirmed, ordinary buffer edits remain denied; unrelated catalogue fields stay editable. Pre-policy existing venues marked `legacyBufferConfigurationPending` have one guarded initial configuration opportunity after the Staff → current Coordinator → Organiser communication chain. This resolves buffer question 1. The Coordinator confirmation action remains question 2, pending the PO/customer reply.
+
+For a locked venue, `GET /api/venues/:id/buffer-status` returns `{venueId,version,canEdit}`. The form enables normal buffer edits only when the permission matches the displayed Venue version and `canEdit` is true; absent, stale or failed proof keeps controls disabled. The normal `PUT /api/venues/:id` can recover a provisional pre-confirmation fence under Booking's shared venue lock, with a fresh check of all current/past confirmations, including moved/cancelled arrangements. Recovery also requires an actual recorded provisional fence, no pending legacy allowance and no unknown/post-confirmation legacy receipt. Any retained legacy receipts must all explicitly record `configuredAfterConfirmation:false`; a pre-confirmation configuration alone does not block later failed-confirmation recovery. Venue then atomically saves the changes, clears the provisional lock, records `BUFFER_FENCE_RECOVERED` and queues recheck. A current or historical confirmation denies recovery, and an uncertain earlier failure does not automatically unlock anything.
+
+`GET /api/venues/:id/legacy-buffer-context` returns `{venueId, version, affectedEvents}`. Each affected Event contains `eventId`, `title`, `coordinatorId`, `organiserId` and `bookings:[{id,version}]`. Staff record both communication attestations and a note for every returned Event. They do not select their own affected recipients or supply an actor identity. The owning services check current Event identities and the exact booking set under Booking's venue lock before committing; the BFF only forwards the contract.
+
+`PUT /api/venues/:id/legacy-buffers` forwards mandatory `version`, `setupMinutes`, `turnaroundMinutes`, `reason` and `communications`. Each communication entry includes its displayed Event/current Coordinator/Organiser and booking versions, `staffInformedCoordinator:true`, `coordinatorInformedOrganiser:true` and a nonblank `note`. Values must remain independently within the agreed 0–480 whole-minute maximum. A current request with no affected Event commitments uses an empty communication list; the server still checks that no commitment appeared concurrently. Stale/foreign/incomplete records fail without consuming the allowance. Unavailable Event/Booking proof fails closed.
+
+The successful save consumes the Venue's one-time legacy allowance and preserves an immutable authenticated Staff/time/reason/before-after/communication record. Booking derives whether a booking has ever been confirmed under its venue lock, including immutable moved/cancelled confirmation history. A prior confirmation retains the buffer lock; no confirmation clears the blanket legacy lock and normal edits stay allowed until the first confirmed booking. The public caller cannot choose this outcome: Booking overrides any supplied `retainLock`, and only the private Venue contract accepts and validates the server-derived boolean. The history records `changes.configuredAfterConfirmation` so a subsequent failed first-confirmation fence can be safely assessed.
+
+This records Staff attestation; the application does not independently verify external conversations. Existing booking approvals are retained. The normal durable recheck updates occupied intervals/conflict flags for review rather than automatically cancelling or reconfirming Events. The UI refreshes after stale responses so the communication record must match current identities/versions. The consumed one-time allowance is never replenished by ordinary pre-confirmation edits or fence recovery.
+
+Only venues that existed at the recorded completion of the original blanket-freeze migration receive the legacy flag; venues created later do not gain an allowance merely because a confirmation attempt fenced them. The additive migration preserves their buffers, versions, lock timestamps and history.
+
+Internal prospective tests also follow two reconciled rules: hard physical/hybrid capacity exclusion, including partial search results, and a 72-hour hold default capped at setup when `expiresAt` is omitted. Explicitly invalid/past deadline values are rejected. These changes do not resolve question 2 or change Event confirmation/Safety ownership.

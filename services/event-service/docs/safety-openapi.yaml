@@ -1,0 +1,527 @@
+---
+openapi: 3.0.3
+info:
+  title: ConnectSphere Safety lifecycle
+  version: 1.0.0
+  description: 17 October 2026 implemented integration. See docs/sprint3-integration-handoff.md
+    for assumptions, source ownership and pending Q2.
+servers:
+- url: http://localhost:8000
+security:
+- bearerAuth: []
+paths:
+  "/events/{id}/safety":
+    get:
+      summary: Current Safety and readiness
+      description: Planning Event ID. Current Coordinator gets proof/blockers/actions;
+        owner gets actionable feedback only.
+      responses:
+        '200':
+          description: Current or saved/replayed result
+        '401':
+          description: Authentication required
+        '403':
+          description: Role, capability or current relationship denied
+        '409':
+          description: Stale proof/version, incomplete readiness or invalid lifecycle
+        '422':
+          description: Validation failure
+        '503':
+          description: Required source/storage unavailable
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  "/events/{id}/safety/submit":
+    post:
+      summary: Submit current arrangements
+      description: Current assigned Coordinator only. Durable token operation; every
+        required current venue and approved reserved technical proof or approved NOT_REQUIRED.
+        Same original key/body resumes uncertainty. No confirmation side effect.
+      responses:
+        '200':
+          description: Current or saved/replayed result
+        '401':
+          description: Authentication required
+        '403':
+          description: Role, capability or current relationship denied
+        '409':
+          description: Stale proof/version, incomplete readiness or invalid lifecycle
+        '422':
+          description: Validation failure
+        '503':
+          description: Required source/storage unavailable
+        '201':
+          description: Durable record created
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/Version"
+  "/events/{id}/safety/rework-review":
+    post:
+      summary: Record Coordinator next action
+      description: Current round/revision; explicit replacement booking IDs. Retain
+        unaffected approvals.
+      responses:
+        '200':
+          description: Current or saved/replayed result
+        '401':
+          description: Authentication required
+        '403':
+          description: Role, capability or current relationship denied
+        '409':
+          description: Stale proof/version, incomplete readiness or invalid lifecycle
+        '422':
+          description: Validation failure
+        '503':
+          description: Required source/storage unavailable
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/Rework"
+  "/events/{id}/planning-correction":
+    post:
+      summary: Accept reviewed Event correction
+      description: Assigned Coordinator after recorded rework. Atomic normal source
+        validation; changed facts invalidate old technical revision, retain history.
+      responses:
+        '200':
+          description: Current or saved/replayed result
+        '401':
+          description: Authentication required
+        '403':
+          description: Role, capability or current relationship denied
+        '409':
+          description: Stale proof/version, incomplete readiness or invalid lifecycle
+        '422':
+          description: Validation failure
+        '503':
+          description: Required source/storage unavailable
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/Correction"
+  "/safety-checks":
+    get:
+      summary: Pending Officer queue
+      description: Safety Officer with safety.view; soonest Event first; closed/superseded
+        work excluded.
+      responses:
+        '200':
+          description: Current or saved/replayed result
+        '401':
+          description: Authentication required
+        '403':
+          description: Role, capability or current relationship denied
+        '409':
+          description: Stale proof/version, incomplete readiness or invalid lifecycle
+        '422':
+          description: Validation failure
+        '503':
+          description: Required source/storage unavailable
+  "/safety-checks/{id}":
+    get:
+      summary: Immutable submitted review and history
+      description: Safety round ID; Officer only. Current submitted seven-factor snapshot,
+        technical reservations, private decision and changes.
+      responses:
+        '200':
+          description: Current or saved/replayed result
+        '401':
+          description: Authentication required
+        '403':
+          description: Role, capability or current relationship denied
+        '409':
+          description: Stale proof/version, incomplete readiness or invalid lifecycle
+        '422':
+          description: Validation failure
+        '503':
+          description: Required source/storage unavailable
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  "/safety-checks/{id}/decision":
+    post:
+      summary: Record immutable Officer decision
+      description: Safety Officer with safety.decide. Complete all seven factors.
+        Changes need affected areas and reason. Rejection selects specific venues.
+        Durable replay; no overwrite.
+      responses:
+        '200':
+          description: Current or saved/replayed result
+        '401':
+          description: Authentication required
+        '403':
+          description: Role, capability or current relationship denied
+        '409':
+          description: Stale proof/version, incomplete readiness or invalid lifecycle
+        '422':
+          description: Validation failure
+        '503':
+          description: Required source/storage unavailable
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/Decision"
+  "/events/{id}/confirm":
+    post:
+      summary: Confirm after Safety approval
+      description: Assigned Coordinator and events.confirm. Current approved token,
+        round and source revision required.
+      responses:
+        '200':
+          description: Current or saved/replayed result
+        '401':
+          description: Authentication required
+        '403':
+          description: Role, capability or current relationship denied
+        '409':
+          description: Stale proof/version, incomplete readiness or invalid lifecycle
+        '422':
+          description: Validation failure
+        '503':
+          description: Required source/storage unavailable
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/Version"
+  "/events/{id}/preparation":
+    post:
+      summary: Start Preparation separately
+      description: Current Confirmed Event and approved Safety required.
+      responses:
+        '200':
+          description: Current or saved/replayed result
+        '401':
+          description: Authentication required
+        '403':
+          description: Role, capability or current relationship denied
+        '409':
+          description: Stale proof/version, incomplete readiness or invalid lifecycle
+        '422':
+          description: Validation failure
+        '503':
+          description: Required source/storage unavailable
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/Version"
+    get:
+      summary: Current and historical staff notes
+      description: Current approved round notes; previous round explicitly historical.
+      responses:
+        '200':
+          description: Current or saved/replayed result
+        '401':
+          description: Authentication required
+        '403':
+          description: Role, capability or current relationship denied
+        '409':
+          description: Stale proof/version, incomplete readiness or invalid lifecycle
+        '422':
+          description: Validation failure
+        '503':
+          description: Required source/storage unavailable
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  "/preparation-work":
+    get:
+      summary: Staff preparation work
+      description: Venue/Technical staff scoped projection; no private Officer notes.
+      responses:
+        '200':
+          description: Current or saved/replayed result
+        '401':
+          description: Authentication required
+        '403':
+          description: Role, capability or current relationship denied
+        '409':
+          description: Stale proof/version, incomplete readiness or invalid lifecycle
+        '422':
+          description: Validation failure
+        '503':
+          description: Required source/storage unavailable
+  "/events/{id}/preparation-updates":
+    post:
+      summary: Save current-round preparation note
+      description: Only after Preparation. Venue updates identify current approved
+        required booking.
+      responses:
+        '200':
+          description: Current or saved/replayed result
+        '401':
+          description: Authentication required
+        '403':
+          description: Role, capability or current relationship denied
+        '409':
+          description: Stale proof/version, incomplete readiness or invalid lifecycle
+        '422':
+          description: Validation failure
+        '503':
+          description: Required source/storage unavailable
+        '201':
+          description: Durable record created
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/Preparation"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Version:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+      required:
+      - version
+    Decision:
+      type: object
+      properties:
+        roundId:
+          type: string
+        round:
+          type: integer
+          minimum: 1
+        requirementsRevision:
+          type: string
+        decision:
+          type: string
+          enum:
+          - APPROVE
+          - REJECT
+          - REQUEST_CHANGES
+        checklist:
+          type: object
+          properties:
+            attendance:
+              type: boolean
+              enum:
+              - true
+            layout:
+              type: boolean
+              enum:
+              - true
+            emergencyAccess:
+              type: boolean
+              enum:
+              - true
+            accessibility:
+              type: boolean
+              enum:
+              - true
+            equipmentPlacement:
+              type: boolean
+              enum:
+              - true
+            crowdMovement:
+              type: boolean
+              enum:
+              - true
+            restrictions:
+              type: boolean
+              enum:
+              - true
+          required:
+          - attendance
+          - layout
+          - emergencyAccess
+          - accessibility
+          - equipmentPlacement
+          - crowdMovement
+          - restrictions
+        reason:
+          type: string
+          maxLength: 2000
+          description: Actionable reason required on reject/changes; Organiser-visible.
+        privateNotes:
+          type: string
+          maxLength: 2000
+          description: Officer/Coordinator only; never public/history/domain messages.
+        areas:
+          type: array
+          items:
+            type: string
+            enum:
+            - VENUE
+            - TECHNICAL
+            - EVENT_DETAILS
+        rejectedBookingIds:
+          type: array
+          items:
+            type: string
+      required:
+      - roundId
+      - round
+      - requirementsRevision
+      - decision
+      - checklist
+    Rework:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        roundId:
+          type: string
+        requirementsRevision:
+          type: string
+        note:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        bookingIds:
+          type: array
+          items:
+            type: string
+      required:
+      - version
+      - roundId
+      - requirementsRevision
+      - note
+      - bookingIds
+    Correction:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        requestVersion:
+          type: integer
+          minimum: 1
+        changes:
+          type: object
+          description: Normal Event-request fields and validation apply.
+      required:
+      - version
+      - requestVersion
+      - changes
+    Preparation:
+      type: object
+      properties:
+        area:
+          type: string
+          enum:
+          - VENUE
+          - TECHNICAL
+        bookingId:
+          type: string
+          description: Required for Venue; identifies current required approved booking.
+        note:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required:
+      - area
+      - note

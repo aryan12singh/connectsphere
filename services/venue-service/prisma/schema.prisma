@@ -31,9 +31,13 @@ enum VenueWeekday {
 }
 
 model Venue {
+  maintenance Json?
   id                 String              @id @default(uuid())
   name               String
   address            String?
+  emergencyAccess String?
+  crowdMovement String?
+  restrictions String?
   capacity           Int?
   venueType          VenueType           @default(PHYSICAL)
   supportedLayouts   VenueLayout[]
@@ -42,13 +46,54 @@ model Venue {
   timeZone           String              @default("Asia/Singapore")
   isActive            Boolean             @default(true)
   managedById        String
+  setupMinutes      Int                 @default(0)
+  turnaroundMinutes Int                 @default(0)
+  buffersLockedAt   DateTime?
+  legacyBufferConfigurationPending Boolean @default(false)
+  version           Int                 @default(1)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   operatingHours     VenueOperatingHour[]
   history            VenueHistory[]
+  rechecks           VenueRecheckOutbox[]
+  bufferRollout      VenueBufferRollout?
 
   @@index([isActive])
   @@map("venues")
+}
+
+// One initial buffer evaluation per venue. The receipt also retains a durable
+// retry until Booking has acknowledged the captured or a newer configuration.
+model VenueBufferRollout {
+  id          String   @id @default(uuid())
+  venueId     String   @unique
+  venue       Venue    @relation(fields:[venueId],references:[id],onDelete:Cascade)
+  version     Int
+  payload     Json
+  attempts    Int      @default(0)
+  lastError   String?
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+  completionReason String?
+
+  @@index([completedAt,attempts,createdAt])
+  @@map("venue_buffer_rollouts")
+}
+
+model VenueRecheckOutbox {
+  id          String   @id @default(uuid())
+  venueId     String
+  venue       Venue    @relation(fields:[venueId],references:[id],onDelete:Cascade)
+  version     Int
+  payload     Json
+  attempts    Int      @default(0)
+  lastError   String?
+  createdAt   DateTime @default(now())
+  deliveredAt DateTime?
+
+  @@unique([venueId,version])
+  @@index([deliveredAt,createdAt])
+  @@map("venue_recheck_outbox")
 }
 
 model VenueOperatingHour {

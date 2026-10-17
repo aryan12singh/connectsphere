@@ -3,6 +3,8 @@
 // Mirrors the tracked reference (docs/erd/schema.prisma) for CS-10/CS-11/CS-30
 // review. This file is documentation, not a deployable schema, and NOT what
 // actually runs. Promote agreed changes back into schema.prisma.
+// Current venue/booking baseline: docs/venue-data-model.md and the service schemas.
+// Week 7 extensions require the reviewed CS-77 contract before implementation.
 // To render an ERD from this file: npx prisma-erd-generator, or paste into
 // dbdiagram.io / a mermaid erDiagram converter.
 

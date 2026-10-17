@@ -186,8 +186,13 @@ The existing auth routes keep their paths. What changes in the **session / role 
 |---|---|---|
 | `/auth/*`, `/admin/*` | auth-service | login rate-limited 10/min, register 5/min |
 | `GET /users/*` | user-service | read-only; `/internal/*` never routed |
-| `/event-requests/*`, `/events/*` | event-service | `POST /events/{id}/confirm` → orchestrator (CS-31) |
+| `/event-requests/*`, `/events/*` | event-service | `POST /events/{id}/confirm` → Event, gated by current approved Safety proof |
 | `/venues/*` | venue-service | |
 | `/venue-bookings/*` | booking-service | Coordinator owner + current Event assignment; Venue Staff decisions; internal read-only availability |
 
 Booking-service forwards the verified caller token to `GET /events/{id}/booking-access` before Coordinator creation/detail/edit/list/history. Event-service returns only the actual Event ID for its current Coordinator. Wrong/removed assignment denies 403; unavailable assignment validation returns 503 without writes. Venue Staff operational windows retain decision-only handling. CS-30 reassignment and confirmation remain separate workflows.
+
+
+## 17 October 2026 integration amendment
+
+Event owns Safety review, current-proof confirmation and separate Preparation. Kong additionally routes `/safety-checks`, `/preparation-work`, `/equipment-inventory`, `/technical-requests` and request-scoped technical decisions/reservations. No `/internal/*` route is public. [Integration handoff](sprint3-integration-handoff.md) documents the stable RabbitMQ contract, maintenance/readiness fencing, inventory defaults, source ownership and pending Q2. Existing request/owner privacy and fixed role-plus-capability checks still apply.

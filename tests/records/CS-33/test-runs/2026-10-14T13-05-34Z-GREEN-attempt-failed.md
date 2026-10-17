@@ -1,0 +1,26 @@
+# CS-33 Test Execution — 2026-10-14T13:05:34.084Z
+
+Yellow section (IS212 / IEEE 829). Phase: GREEN-attempt-failed. Generated from actual Vitest JSON; missing cases remain Not Executed.
+
+Source: /tmp/connectsphere-cs33-validation-green.json. Code revision/fingerprint: see outside run metadata; early diagnostic not fingerprinted / not supplied.
+
+Component tests use Nuxt fixtures. BFF tests use real H3/Express/Prisma/PostgreSQL with a deterministic identity service and a forwarding fixture at the Kong boundary. These are not live Keycloak or browser proof. See separate live evidence.
+
+| Test Case ID | Actual Result | Pass/Fail/Not Executed/Blocked | Remarks | Date of Execution |
+|---|---|---|---|---|
+| TC-CS33-01 | skipped | Not Executed | TC-CS33-01 creates a complete physical-venue payload with the existing Reason or note field | 2026-10-14T13:05:34.084Z |
+| TC-CS33-02 | skipped | Not Executed | TC-CS33-02 preserves a Venue Staff capacity replacement for another authorised viewer | 2026-10-14T13:05:34.084Z |
+| TC-CS33-03 | skipped | Not Executed | TC-CS33-03 gives a Coordinator venue visibility but not venue-management authority | 2026-10-14T13:05:34.084Z |
+| TC-CS33-04 | skipped | Not Executed | TC-CS33-04 rejects a non-numeric capacity with field-level guidance | 2026-10-14T13:05:34.084Z |
+| TC-CS33-05 | skipped | Not Executed | TC-CS33-05 identifies a linked blocking booking before a venue deletion is allowed | 2026-10-14T13:05:34.084Z |
+| TC-CS33-06 | skipped | Not Executed | TC-CS33-06 permits deletion eligibility when the booking link reports no blockers | 2026-10-14T13:05:34.084Z |
+| TC-CS33-07 | skipped | Not Executed | TC-CS33-07 enforces the externalised capacity boundaries | 2026-10-14T13:05:34.084Z |
+| TC-CS33-08 | skipped | Not Executed | TC-CS33-08 fails closed when the booking lookup is unavailable | 2026-10-14T13:05:34.084Z |
+| TC-CS33-09 | skipped | Not Executed | TC-CS33-09 rejects closing at or before opening without accepting an overnight schedule | 2026-10-14T13:05:34.084Z |
+| TC-CS33-10 | No assertion executed | Not Executed |  | 2026-10-14T13:05:34.084Z |
+| TC-CS33-11 | skipped | Not Executed | SSR disables the native form and submit until handlers attach | 2026-10-14T13:05:34.084Z |
+| TC-CS33-12 | skipped | Not Executed | TC-CS33-12 rejects an invalid time zone on create and replacement without changing the venue or history | 2026-10-14T13:05:34.084Z |
+| TC-CS33-13 | skipped | Not Executed | TC-CS33-13 displays accessible time-zone field guidance without discarding the entered value | 2026-10-14T13:05:34.084Z |
+| TC-CS33-14 | skipped | Not Executed | TC-CS33-14 pages actual venue results, bounds navigation and resets or clamps after search/data changes without changing the selected room | 2026-10-14T13:05:34.084Z |
+| TC-CS33-15 | skipped | Not Executed | TC-CS33-15 expands and collapses actual venue history, resets on venue change and omits controls for a short history; TC-CS33-15 keeps expandable history controls disabled in server HTML until handlers attach | 2026-10-14T13:05:34.084Z |
+| TC-CS33-16 | AssertionError: expected { …(2) } to deeply equal { …(2) } | Fail | TC-CS33-16 keeps usable 422 field guidance in the form without a duplicate blocking toast ({"statusCode":422,"data":{"data":{"error":{"fields":{"timeZone":["Use a valid time zone"]}}}}}); TC-CS33-16 keeps usable 422 field guidance in the form without a duplicate blocking toast ({"status":422,"data":{"error":{"fields":{"timeZone":["Use a valid time zone"]}}}}); TC-CS33-16 keeps usable 422 field guidance in the form without a duplicate blocking toast ({"data":{"statusCode":422,"error":{"fields":{"timeZone":["Use a valid time zone"]}}}}); TC-CS33-16 keeps usable 422 field guidance in the form without a duplicate blocking toast ({"statusCode":422,"error":{"fields":{"timeZone":["Use a valid time zone"]}}}); TC-CS33-16 ignores unusable field messages and keeps malformed validation and generic failures visible; TC-CS33-16 shows all uncovered field guidance in an in-flow alert after the reason popover closes without losing entered values | 2026-10-14T13:05:34.084Z |

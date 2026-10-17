@@ -34,14 +34,50 @@ model VenueBookingRequest {
   statusChangedRole String?
   statusChangedAt   DateTime?
   statusReason      String?
+  version           Int                @default(1)
+  expiresAt         DateTime?
+  extensionCount    Int                @default(0)
+  extensionRequest  Json?
+  expectedAttendance Int?
+  layout            String?
+  facilities        String[]           @default([])
+  accessibilityNeeds String[]          @default([])
+  required          Boolean            @default(true)
+  setupMinutes      Int                @default(0)
+  turnaroundMinutes Int                @default(0)
+  occupiedStart     DateTime?
+  occupiedEnd       DateTime?
+  venueVersion      Int                @default(0)
+  requirements      Json?
+  requirementsFingerprint String?
+  requestFingerprint String?
+  flags             String[]           @default([])
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   activity          VenueBookingActivity[]
+  primarySelections EventPrimaryVenue[]
 
   @@unique([requestedById, idempotencyKey])
   @@index([venueId, requestedStart, requestedEnd])
   @@index([venueId, status])
   @@map("venue_booking_requests")
+}
+
+model BookingOutbox {
+  id          String   @id @default(uuid())
+  actionKey   String   @unique
+  aggregateId String
+  kind        String
+  payload     Json
+  createdAt   DateTime @default(now())
+  deliveredAt DateTime?
+  attempts    Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  lastError   String?
+  suppressedAt DateTime?
+
+  @@index([deliveredAt, createdAt])
+  @@map("booking_outbox")
 }
 
 model VenueBookingActivity {
@@ -60,4 +96,29 @@ model VenueBookingActivity {
   @@index([bookingId, occurredAt])
   @@index([actorId, occurredAt])
   @@map("venue_booking_activity")
+}
+
+// Cross-service Event identity is retained as an ID; Booking owns this selection.
+model EventPrimaryVenue {
+  eventId   String   @id
+  bookingId String
+  booking   VenueBookingRequest @relation(fields: [bookingId], references: [id], onDelete: Restrict, map: "event_primary_venues_booking_fkey")
+  version   Int      @default(1)
+  actorId   String
+  updatedAt DateTime @updatedAt
+
+  @@map("event_primary_venues")
+}
+
+model EventReadinessFence {
+  token String @id
+  eventId String
+  generation Int
+  fingerprint String
+  venueIds String[]
+  snapshot Json
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  @@index([eventId,active])
+  @@map("event_readiness_fences")
 }

@@ -15,6 +15,33 @@ from urllib.request import Request, urlopen
 class FakeBookingLinkHandler(BaseHTTPRequestHandler):
     blocking_ids = set()
     unavailable = False
+    venue_base = ''
+
+    def do_POST(self):
+        # Explicit remote boundary fixture for the shared-lock removal protocol;
+        # real booking/deletion interleaving is covered by the story HTTP suite.
+        if not self.path.startswith('/internal/venue-removals/') or self.unavailable:
+            self.send_response(503);self.end_headers();return
+        command=json.loads(self.rfile.read(int(self.headers.get('content-length','0'))))
+        venue_id=self.path.rstrip('/').split('/')[-1]
+        blocking=venue_id in self.blocking_ids
+        if not blocking:
+            current=json.load(urlopen(Request(self.venue_base+'/venues/'+venue_id+'/internal',headers={'x-internal-api-key':'change-me-dev-internal-key'}),timeout=3))
+            response=urlopen(Request(self.venue_base+'/internal/venues/'+venue_id,method='DELETE',data=json.dumps({'version':current['version'],'operationId':command['operationId'],'actor':command['actor']}).encode(),headers={'x-internal-api-key':'change-me-dev-internal-key','content-type':'application/json'}),timeout=3)
+            response.close()
+        encoded=json.dumps({'venueId':venue_id,'blockingCount':1 if blocking else 0,'deleted':not blocking}).encode()
+        self.send_response(409 if blocking else 200);self.send_header('content-type','application/json');self.end_headers();self.wfile.write(encoded)
+
+    def do_PUT(self):
+        body=self.rfile.read(int(self.headers.get('content-length','0')))
+        if self.unavailable:
+            self.send_response(503);self.send_header('content-type','application/json');self.end_headers();self.wfile.write(b'{"error":{"code":"UNAVAILABLE","message":"Boundary unavailable"}}');return
+        venue_id=self.path.rstrip('/').split('/')[-1]
+        try:
+            response=urlopen(Request(self.venue_base+'/internal/venues/'+venue_id+'/maintenance',method='PUT',data=body,headers={'x-internal-api-key':'change-me-dev-internal-key','content-type':'application/json'}),timeout=3)
+        except HTTPError as error:
+            response=error
+        encoded=response.read();self.send_response(response.status);self.send_header('content-type','application/json');self.end_headers();self.wfile.write(encoded)
 
     def do_GET(self):
         if self.unavailable:
@@ -95,6 +122,7 @@ class VenueServiceContractTest(unittest.TestCase):
                 if not match:
                     continue
                 cls.port = int(match.group(1))
+                FakeBookingLinkHandler.venue_base = f'http://127.0.0.1:{cls.port}'
                 listening = cls.port > 0
             if listening:
                 try:
