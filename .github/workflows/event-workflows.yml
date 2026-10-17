@@ -44,11 +44,15 @@ jobs:
             services/event-service/package-lock.json
             services/venue-service/package-lock.json
             services/booking-service/package-lock.json
+            services/notification-service/package-lock.json
+            services/equipment-service/package-lock.json
       - name: Install frontend and real boundary fixtures
         run: |
           npm ci --prefix services/event-service
           npm ci --prefix services/venue-service
           npm ci --prefix services/booking-service
+          npm ci --prefix services/notification-service
+          npm ci --prefix services/equipment-service
           npm ci --prefix frontend
           cd services/event-service
           npx prisma generate
@@ -124,6 +128,10 @@ jobs:
             database: venue_test
           - service: booking-service
             database: booking_test
+          - service: notification-service
+            database: notification_test
+          - service: equipment-service
+            database: equipment_test
     services:
       postgres:
         image: postgres:16
@@ -234,7 +242,7 @@ jobs:
   live:
     name: Live E2E and restart checks
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.0.0
@@ -247,6 +255,10 @@ jobs:
       - name: Install locked browser and smoke dependencies
         run: |
           npm ci --prefix services/event-service
+          npm ci --prefix services/venue-service
+          npm ci --prefix services/booking-service
+          npm ci --prefix services/notification-service
+          npm ci --prefix services/equipment-service
           npm ci --prefix frontend
           cd frontend
           npx playwright install --with-deps chromium
