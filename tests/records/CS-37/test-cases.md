@@ -8,7 +8,7 @@ Blue section. Date of Creation: 2026-10-12T19:13:47+08:00. Reconciled 12 October
 
 Source: [CS-37](https://spmg8.atlassian.net/browse/CS-37), live acceptance criteria and PM supplemental tables. Source cases retain their IDs and intent. Additional cases below cover observed integration regressions. These are specifications, not execution results; dated yellow records report only the assertions and layers actually run. Passing a related check does not execute the source's browser, message-delivery, parent transition or manual/PO steps.
 
-Contract alignment, reconciled 14 October 2026: requests use the distinct Planning Event ID; pending venue status is `TENTATIVELY_HELD`, approval is `CONFIRMED` for that venue only. Validation uses422 `error.fields`; decisions/extensions carry the read version and reason. Session 3 and the later PO buffer direction are recorded in CS-76/77 and the [policy register](../../../docs/venue-policy-decisions.md). Team policies 3–6 are agreed; only the Coordinator confirmation action remains pending. The original case creation dates remain unchanged; dated execution records retain their actual assertions/results.
+Contract alignment, reconciled 14 October 2026: requests use the distinct Planning Event ID; pending venue status is `TENTATIVELY_HELD`, approval is `CONFIRMED` for that venue only. Validation uses422 `error.fields`; decisions/extensions carry the read version and reason. Session 3 and the later PO buffer direction are recorded in CS-76/77 and the [policy register](../../../docs/venue-policy-decisions.md). Team policies 3–6 are agreed. Q2 follow-up, 17 October: Coordinator tentative request → Staff approval confirms that venue booking; no additional Coordinator confirmation action. Parent Event confirmation remains separate. The original case creation dates remain unchanged; dated execution records retain their actual assertions/results.
 
 | Test Case ID | Scenario / AC | Pre-conditions | Test steps / data | Expected result / assertions | Required layer | Date of Creation |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -30,9 +30,19 @@ Contract alignment, reconciled 14 October 2026: requests use the distinct Planni
 | TC-CS37-16 | Default capped at event start (AC2, AC3) | clock T; occupied window starts T + 47 h, T + 72 h, T + 73 h (3 events) | • Create a booking request for each; — | Expiry T + 47 h, T + 72 h, T + 72 h; A1 assertEqual(exp_47, T + timedelta(hours=47)) A2 assertEqual(exp_72, T + timedelta(hours=72)) A3 assertEqual(exp_73, T + timedelta(hours=72)) | Boundary · Integration | 2026-10-12T19:13:47+08:00 |
 | TC-CS37-17 | Hold shows expiry (CS-34 AC1 (+W7); 34-07 (New)) | H1 expires T + 24 h | 1) GET calendar; — | TENTATIVE with expiresAt; A1 assertEqual(seg("H1")["status"], "TENTATIVE") A2 assertEqual(seg("H1")["expiresAt"], iso(T + timedelta(hours=24))) | Happy path · Integration | 2026-10-12T19:13:47+08:00 |
 
+## Q2 confirmation policy — 17 October 2026
+
+Coordinator request creates the soft hold. Venue Staff approval is the second
+action and confirms only that booking; no additional Coordinator confirmation
+button is required. TC-CS38-01/23/30 verify the request/decision sequence,
+readiness metadata, immutable activity and unchanged Planning Event across
+HTTP, PostgreSQL and desktop/mobile browser layers. Creation alone still has
+an expiry and never satisfies confirmed-venue readiness. Historical runs below
+retain their actual execution dates and assertions.
+
 ## Superseded source expectation — reconciled 14 October 2026
 
-Under Aryan's authorization to settle internal PO/team decisions, TC-CS37-14 now distinguishes an omitted deadline from a caller-supplied invalid deadline. Omission uses the agreed 72-hour default capped at setup start; explicit null, malformed or past values are rejected. The current Booking contract uses422 and error.fields, not the old illustrative 400/fieldErrors shape. This aligns the case with TC-CS37-10/16 and the live service; it does not answer the separate Coordinator confirmation question.
+Under Aryan's authorization to settle internal PO/team decisions, TC-CS37-14 now distinguishes an omitted deadline from a caller-supplied invalid deadline. Omission uses the agreed 72-hour default capped at setup start; explicit null, malformed or past values are rejected. The current Booking contract uses422 and error.fields, not the old illustrative 400/fieldErrors shape. This aligns the case with TC-CS37-10/16 and the live service; it was independent of the Q2 clarification subsequently recorded on 17 October.
 
 Original TC-CS37-14 proposal: “Missing or past expiry rejected”; steps “POST /venues/V1/holds without expiry 2) with past expiry; expiresAt null; now − 1 h”; expected “400 both; A1 assertEqual(r1.status_code, 400) A2 assertIn("expiresAt", r1.json()["fieldErrors"]) A3 assertEqual(r2.status_code, 400)”. It is retained here as superseded, not deleted from the source. Historical execution records are unchanged and must not be relabelled as Pass for the new cases.
 

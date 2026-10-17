@@ -1,5 +1,9 @@
 # Integrated Venue, Safety and notification delivery — 17 October 2026
 
+Later clarification: Q2 was resolved on 17 October after this checkpoint. See
+[the venue-confirmation follow-up](2026-10-17-venue-confirmation.md). The results
+and pending decisions below describe the earlier execution time.
+
 Branch `feat/aryan-sprint3-venue-safety`; [PR #11](https://github.com/aryan12singh/connectsphere/pull/11). This entry supersedes older statements that the integration consists only of UI scaffolds or outbox intents. It does not imply merge, human acceptance or closure.
 
 ## Delivered

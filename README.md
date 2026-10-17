@@ -13,7 +13,7 @@ Event Planning and Venue Booking System for ConnectSphere Event Services. IS212 
 - [Event workflow decisions](docs/event-workflow-decisions.md) — contract choices requiring team/customer review.
 - [Venue data model](docs/venue-data-model.md) — authoritative running tables, consultation review and remaining schema gaps.
 - [Venue policy decisions](docs/venue-policy-decisions.md) — pending Week 7 choices and affected stories.
-- [Sprint 3 integration and RabbitMQ handoff](docs/sprint3-integration-handoff.md) — current Venue/Safety/Equipment boundaries, Marcus's queue contract, existing-volume upgrades and remaining Q2.
+- [Sprint 3 integration and RabbitMQ handoff](docs/sprint3-integration-handoff.md) — current Venue/Safety/Equipment boundaries, Marcus's queue contract, existing-volume upgrades and the resolved venue-confirmation policy.
 - [Operational Safety UI](docs/safety-ui.md) — current Coordinator preparation, independent review/rework validation and the exact remaining integration handoff.
 - [Hold expiry and occupied windows](docs/hold-expiry.md) — reusable timing code, isolated PostgreSQL spike and its integration limits.
 - [Development log](docs/devlogs/DEVLOG.md) — decisions, verified progress and next dependencies, newest first.
@@ -54,7 +54,7 @@ npm run test:integration
 npm run test:contract
 ```
 
-Auth requires the same Keycloak/User/internal-key environment names as `.env.example`; its isolated API suite fixtures the external identity services while testing real PostgreSQL sessions/grants. User integration needs `INTERNAL_API_KEY`. Event `test:coverage` already includes its PostgreSQL API suite. For Venue/Booking unit and Python contract fixtures use their checked-in default private test key; hosted credentials must not be used.
+Auth requires the same Keycloak/User/internal-key environment names as `.env.example`; its isolated API suite fixtures the external identity services while testing real PostgreSQL sessions/grants. User integration needs `INTERNAL_API_KEY`. Event unit/source coverage and its PostgreSQL API suite run separately and both enforce thresholds. For Venue/Booking unit and Python contract fixtures use their checked-in default private test key; hosted credentials must not be used.
 
 Frontend checks use an isolated migrated event database plus explicit fixture authentication. From `frontend/`:
 
@@ -67,6 +67,6 @@ NUXT_AUTH_MODE=mock npm run test:coverage
 NUXT_AUTH_MODE=live npm run build
 ```
 
-The [full browser runner](docs/event-review-run.md) builds a fresh Keycloak/User/Auth/Kong/PostgreSQL stack, exercises desktop/mobile and restarts without reseeding. JSON/HTML/coverage output belongs in CI artifacts or outside the checkout; selected dated Markdown records remain in `tests/records`. No numerical coverage gate is invented before the planned Sprint 3 threshold.
+The [full browser runner](docs/event-review-run.md) builds a fresh Keycloak/User/Auth/Kong/PostgreSQL stack, exercises desktop/mobile and restarts without reseeding. JSON/HTML/coverage output belongs in CI artifacts or outside the checkout; selected dated Markdown records remain in `tests/records`. The [Sprint 3 coverage policy](docs/coverage-policy.md) records the measured baseline, per-app/service floors and source scopes. Frontend floors are 65% statements/lines/functions and 60% branches; service unit and PostgreSQL floors are enforced independently. A below-threshold command fails locally and in CI.
 
 [The workflow](.github/workflows/event-workflows.yml) has separate frontend and seven service checks, real PostgreSQL migrations/API tests, per-app source coverage artifacts and a live E2E job. Booking also runs the isolated CS-78 expiry/concurrency spike. Its required aggregate `Sprint 2 checks` rejects failed or skipped prerequisites. Explicit Bash/pipefail preserves test exit statuses through `tee`. It runs for PRs and pushes to `feat/aryan-sprint2-event-workflows`, `feat/aryan-sprint3-venue-safety` and `main`; a main run requires the reviewed PR to be merged. Independent approval, squash merge and green CI on that merge remain delivery gates.

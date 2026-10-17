@@ -6,7 +6,7 @@ Date of Creation: 2026-10-13T21:11:00+08:00. TC-CS93-30 covers current coordinat
 
 Blue section. Date of Creation: 2026-10-13T20:47:00+08:00.
 
-Source: [CS-93](https://spmg8.atlassian.net/browse/CS-93), reconciled with the [Session 3 customer answers](../../../docs/session3-decisions.md), rows2–3/17/45–51, on 14 October 2026. The current acceptance criteria below supersede contradictory historical examples. CS-77 still owns the reviewed API/state mapping; no mock represents a delivered role, API, reservation, notice or Safety transition. These specifications do not establish execution or acceptance. The remaining Coordinator venue-confirmation question concerns the hold workflow, not the resolved ordering of Safety before Confirmed and separate Preparation.
+Source: [CS-93](https://spmg8.atlassian.net/browse/CS-93), reconciled with the [Session 3 customer answers](../../../docs/session3-decisions.md), rows2–3/17/45–51, on 14 October 2026. The current acceptance criteria below supersede contradictory historical examples. CS-77 owns the reviewed API/state mapping; execution records identify actual services versus isolated fixtures. Specifications alone do not establish execution or acceptance. Q2 was resolved on 17 October: the Coordinator requests a tentative hold and Venue Staff approval confirms that venue booking, without an extra Coordinator action. Whole-Event Safety approval, Confirmed and separate Preparation retain their existing ordering.
 
 ## Acceptance criteria
 

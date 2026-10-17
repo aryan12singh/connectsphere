@@ -80,6 +80,45 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 17 October 2026 — Aryan — PR #14 main reconciliation
+
+Merged main `344bcd3` (PR #14) into the existing PR #13 branch. Resolved the
+DEVLOG conflict by retaining both owners' complete dated entries; Marc's three
+Event PostgreSQL assertions and CS-50/51 records remain intact. Coverage floors,
+Q2's two-action flow, the CS-85 correction and the existing UI/database evidence
+are retained. [Combined-source verification](2026-10-17-pr14-reconciliation.md).
+PR #13 remains a draft with auto-merge off; peer review, its own main merge/CI
+and the recorded human acceptance/process gates still apply.
+
+### 17 October 2026 — Aryan — CS-85 operating-hours and shared-case audit
+
+Fixed a reproduced repeated-hour opening-hours bypass in the shared venue
+validator; added native, HTTP, PostgreSQL and live desktop/mobile proof. Local
+Booking43/43 unit,19/19 PostgreSQL and14/14 contracts; frontend387/387 and
+unchanged floors pass. Audited the77 owned Drive scenarios and supplemental
+AC evidence; reconciled stale Q2/source wording. [Audit and review boundaries](2026-10-17-completion-audit.md).
+PR #13 stays on merge hold until Marcus's work reaches main and the combined
+revision is verified. Actual human review/acceptance/process records remain open.
+
+### 17 October 2026 — Aryan — CS-37/38/76 venue confirmation resolved
+
+[Q2 decision and verification](2026-10-17-venue-confirmation.md): Coordinator
+tentative request → Staff approval confirms only that venue booking, with no
+additional Coordinator confirmation button. Existing behavior retained; stale
+pending-policy metadata cleared. Frontend 386/386, Booking unit 35/35,
+PostgreSQL 18/18, contracts 14/14, both typechecks and build pass. PR #13 tracks
+hosted browser/merge checks; CS-37/38 human acceptance remains unconfirmed.
+
+### 17 October 2026 — Aryan — CS-79 measured coverage gates
+
+[Coverage gate delivery](2026-10-17-coverage-gates.md): baseline-derived frontend
+and seven service unit/PostgreSQL thresholds, production-only Event reporting,
+and actual Node/Vitest failure controls. Local frontend 386/386, all 14 service
+coverage suites, contracts, typechecks and build pass. PR #11 is already approved
+and merged as main `7867f24`; this follow-up needs its own review, merge and green
+main CI to clear the nine accepted stories' shared coverage blocker. Q2 and the
+unconfirmed model/spike/adoption gates remain separate.
+
 ### 17 October 2026 — Marc — CS-50/51 notification verification on main
 
 Checked `main` at `7867f24` against Marc's CS-50/51 branch. Main already

@@ -309,7 +309,7 @@ async function summary(req,eventId,{allowMissingEvent=false,transaction}={}) {
     for(const session of allocations.sessions)if(session.reason)outstanding.push({bookingId:null,reasons:[session.reason],startAt:session.startAt,endAt:session.endAt,allocated:session.allocated,expectedAttendance:allocations.expectedAttendance});
     const primaryVenue=await store.primaryVenue(eventId,tx);
     const primary=items.find(row=>row.id===primaryVenue.bookingId);
-    return {event:context,items,attendancePlan:allocations,primaryVenue:{...primaryVenue,available:Boolean(primary && ['TENTATIVELY_HELD','CONFIRMED'].includes(primary.effectiveStatus) && !primary.flags.length)},venueReady:outstanding.length===0,outstanding,checkedAt:at.toISOString(),policy:{allowTouching:config.allowTouching,holdHours:config.holdHours,allowExpiryAtSetup:config.allowExpiryAtSetup,extensionHours:24,maxExtensions:1,warningHours:24,status:'TEAM_AGREED',pendingClarifications:['COORDINATOR_CONFIRMATION_ACTION']}};
+    return {event:context,items,attendancePlan:allocations,primaryVenue:{...primaryVenue,available:Boolean(primary && ['TENTATIVELY_HELD','CONFIRMED'].includes(primary.effectiveStatus) && !primary.flags.length)},venueReady:outstanding.length===0,outstanding,checkedAt:at.toISOString(),policy:{allowTouching:config.allowTouching,holdHours:config.holdHours,allowExpiryAtSetup:config.allowExpiryAtSetup,extensionHours:24,maxExtensions:1,warningHours:24,status:'TEAM_AGREED',pendingClarifications:[]}};
   };
   // The memory adapter represents an already-held transaction with null.
   return transaction!==undefined?project(transaction):store.withLocks([eventLock(eventId)],project);

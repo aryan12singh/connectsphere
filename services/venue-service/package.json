@@ -8,11 +8,11 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test:unit": "DATA_MODE=memory NODE_ENV=test node --test tests/unit/*.test.js",
-    "test:coverage": "DATA_MODE=memory NODE_ENV=test node --experimental-test-coverage --test --test-coverage-include='src/**/*.js' tests/unit/*.test.js",
+    "test:coverage": "DATA_MODE=memory NODE_ENV=test node --experimental-test-coverage --test-coverage-lines=50 --test-coverage-branches=70 --test-coverage-functions=45 --test --test-coverage-include='src/**/*.js' tests/unit/*.test.js",
     "test:contract": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "test:integration": "node --experimental-test-coverage --test --test-coverage-include='src/**/*.js' tests/integration/*.test.js"
+    "test:integration": "node --experimental-test-coverage --test-coverage-lines=65 --test-coverage-branches=55 --test-coverage-functions=65 --test --test-coverage-include='src/**/*.js' tests/integration/*.test.js"
   },
   "engines": {
     "node": ">=20"
