@@ -3,6 +3,7 @@ import { GalleryVerticalEndIcon } from '@lucide/vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import AppErrorAlert from '@/components/shared/AppErrorAlert.vue'
+import NotificationBell from '@/components/navbar/NotificationBell.vue'
 import UserMenu from '@/components/navbar/UserMenu.vue'
 import { Switch } from '@/components/ui/switch'
 import { roleHome } from '~~/lib/roles'
@@ -88,6 +89,7 @@ watch(isDark, (dark) => {
             New event request
           </NuxtLink>
         </Button>
+        <NotificationBell v-if="user" />
         <UserMenu />
       </div>
     </header>

@@ -1,0 +1,50 @@
+// notification_db (CS-50). Owned only by notification-service.
+// Ids of users, requests and events are plain UUIDs from other services
+// (no cross-database foreign keys).
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// One in-app notice for one person. The in-app inbox is the channel of
+// record; email is optional and not built.
+model Notification {
+  id              String    @id @default(uuid())
+  recipientId     String // ref: user-service users.id
+  type            String // EVENT_APPROVED, ASSIGNED_TO_YOU, ... (see src/templates.js)
+  eventRequestId  String? // ref: event-service event_requests.id
+  eventId         String? // ref: event-service events.id
+  text            String
+  link            String? // page inside the app; null when the reader has no access
+  data            Json // standard fields: eventName, requestId, oldStatus, newStatus, timestamp
+  sourceMessageId String // the domain message (outbox row) that caused it
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  readAt          DateTime? @db.Timestamptz(3)
+
+  // One notice per message + recipient + type: a redelivered message never
+  // creates a second notice (CS-50 AC4).
+  @@unique([sourceMessageId, recipientId, type])
+  @@index([recipientId, createdAt])
+  @@map("notifications")
+}
+
+// What happened to each domain message. Used to skip duplicates and to show
+// Technical Support the messages that failed after 3 retries.
+model MessageReceipt {
+  messageId   String   @id // outbox row id from the producing service
+  messageType String // e.g. RequestApproved
+  aggregateId String? // e.g. the event request id
+  status      String // PROCESSED | IGNORED | RETRYING | FAILED
+  attempts    Int      @default(0)
+  lastError   String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([status, updatedAt])
+  @@map("message_receipts")
+}
