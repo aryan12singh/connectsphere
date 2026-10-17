@@ -80,6 +80,34 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 17 October 2026 — Marc — CS-50/51 notification verification on main
+
+Checked `main` at `7867f24` against Marc's CS-50/51 branch. Main already
+contains that branch's notification-service, bell, BFF routes and tests,
+plus the RabbitMQ relays/consumer (exchange `connectsphere.events`, queue
+`notification-service.domain-events`). So the branch is **not merged**;
+these follow-ups go on a new branch from main:
+- event-service PG tests: TC-CS50-06 (refused action → no outbox message),
+  TC-CS50-01e (assignment/approval messages carry organiser, event name, ids),
+  TC-CS51-08e (return message carries the Coordinator comment).
+- Test records: CS-50 updated with live results; CS-51 added for main.
+
+Verification on main: notification unit 21 / HTTP 12 / PostgreSQL 4; event
+unit 124 / PostgreSQL 26 (23 + 3 new); booking unit 35 / HTTP 14 /
+PostgreSQL 17; venue unit 43 / HTTP 11. **Live RabbitMQ 3.12:** real
+event-service relay → broker → real consumer. Submit, approve, return with
+comment and reassign each produced exactly the expected notices (first after
+~0.65 s). A refused decision produced none; an unrelated user got none. With
+the broker stopped, the request saved and its 2 messages waited in the outbox,
+then delivered on restart. Republishing a delivered message added no second
+notice. Booking/Safety live paths were not re-run here; use
+`scripts/run-event-review-ci.sh`.
+
+Open: TC-CS51-02 expects a `NEEDS_REPLACEMENT` flag; main flags a booking under
+a Staff block as `BUFFER_CONFLICT`. Agree with Aryan/PO. No `/venue-bookings/:id`
+(review) page exists for notice links (CS-38). Technical-request and
+cancellation/replacement notices are not built.
+
 ### 17 October 2026 — integrated Venue, Safety and notification delivery
 
 [Current phase report](2026-10-17-integrated-venue-safety.md): real RabbitMQ relays/inbox, Equipment stock reservations and complete Safety/rework/Preparation APIs and UI; durable cross-service maintenance/readiness recovery. Contains verification results, evidence boundaries, peer handoff and pending Q2. PR #11 remains subject to actual required checks and human approval.
