@@ -61,3 +61,19 @@ Source: `docs/session3-decisions.md`, rows26/17/46/47/49/51. Earlier expected au
 | Test ID | Scenario | Preconditions | Steps | Expected result | Layer |
 | --- | --- | --- | --- | --- | --- |
 | TC-CS94-30 | Structured Safety decision | Permitted current round and known rooms | Try approval without checklist; review seven factors; add public and private comments | No intent until all factors reviewed; separate trimmed comments and current round | Nuxt component |
+
+| TC-CS94-41 | Source operational Safety facts | Venue Staff save emergency access, crowd-movement notes and restrictions through the actual Venue API | Fields persist and are supplied separately from general Event requirements | Real HTTP / isolated repositories; production PG acceptance follows | 2026-10-17T11:05:00+08:00 |
+
+### TC-CS94-42 — Complete decision intent before an enabled submit control
+Date of Creation: 2026-10-17T03:38:00Z
+Steps: complete seven review factors, select Request Changes and enter a reason; then select an affected area.
+Expected: the actual decision button is disabled until the reason and area are complete; backend validation remains authoritative.
+
+
+## Integrated acceptance additions — 2026-10-17T03:53:21+00:00
+
+These cases supplement the preserved earlier specifications. Current contracts and the Session 3/PO precedence remain authoritative. Browser IDs can cover several linked story assertions; matching numeric suffixes in the shared sheet do not imply identical scenarios.
+
+| Test Case ID | Requirement / expected result | Execution layer and precondition |
+|---|---|---|
+| TC-CS94-43 | Officer UI requires seven checked factors, an actionable comment and an affected area before saving changes; round2 approval/history persists. | Production desktop/mobile browser + real role authentication, Event database and immutable history. |

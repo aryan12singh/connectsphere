@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ConnectSphere event-service — implemented request workflows
-  version: 0.4.0
+  version: 0.5.0
   description: CS-11/29/27/44 persistent implementation. Authentication uses live opaque session
     validation with internal key, never caller identity headers. No competing transition/assignment
     engine. Deliberate draft-contract amendments and pending matrix/limits/history granularity are
@@ -15,6 +15,28 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /events/{id}/safety:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1safety"
+  /events/{id}/safety/submit:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1safety~1submit"
+  /events/{id}/safety/rework-review:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1safety~1rework-review"
+  /events/{id}/planning-correction:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1planning-correction"
+  /safety-checks:
+    $ref: "./safety-openapi.yaml#/paths/~1safety-checks"
+  /safety-checks/{id}:
+    $ref: "./safety-openapi.yaml#/paths/~1safety-checks~1{id}"
+  /safety-checks/{id}/decision:
+    $ref: "./safety-openapi.yaml#/paths/~1safety-checks~1{id}~1decision"
+  /events/{id}/confirm:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1confirm"
+  /events/{id}/preparation:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1preparation"
+  /preparation-work:
+    $ref: "./safety-openapi.yaml#/paths/~1preparation-work"
+  /events/{id}/preparation-updates:
+    $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1preparation-updates"
   /event-requests:
     post:
       summary: Create incomplete Draft or directly submit

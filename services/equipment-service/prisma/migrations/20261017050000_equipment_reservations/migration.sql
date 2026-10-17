@@ -1,0 +1,4 @@
+CREATE TABLE equipment_stock ("equipmentType" TEXT PRIMARY KEY,total INTEGER NOT NULL DEFAULT 0,version INTEGER NOT NULL DEFAULT 1,"updatedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CHECK(total>=0),CHECK(version>0));
+CREATE TABLE equipment_reservations (id TEXT PRIMARY KEY,"eventRequestId" TEXT NOT NULL,"eventId" TEXT NOT NULL,"requestVersion" INTEGER NOT NULL,"equipmentType" TEXT NOT NULL REFERENCES equipment_stock("equipmentType"),quantity INTEGER NOT NULL,"startAt" TIMESTAMPTZ(3) NOT NULL,"endAt" TIMESTAMPTZ(3) NOT NULL,active BOOLEAN NOT NULL DEFAULT true,"actorId" TEXT NOT NULL,"createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CHECK(quantity>0),CHECK("startAt"<"endAt"));
+CREATE UNIQUE INDEX equipment_reservations_current ON equipment_reservations("eventRequestId","equipmentType") WHERE active;
+CREATE INDEX equipment_reservations_overlap ON equipment_reservations("equipmentType","startAt","endAt") WHERE active;

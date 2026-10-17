@@ -4,8 +4,9 @@ const config = require('./config');
 const isMemory = config.dataMode !== 'prisma';
 const prisma = isMemory ? null : require('./db');
 
-const state = { venues: new Map(), history: [], outbox: [], rollouts: [] };
+const state = { maintenance:new Map(), venues: new Map(), history: [], outbox: [], rollouts: [] };
 
+const safetyFields=(input,current={})=>Object.fromEntries(['emergencyAccess','crowdMovement','restrictions'].map(key=>[key,input[key]===undefined?(current[key]??null):input[key]]));
 function id() { return crypto.randomUUID(); }
 function now() { return new Date().toISOString(); }
 function iso(value) { return value instanceof Date ? value.toISOString() : value; }
@@ -27,6 +28,8 @@ function toApiVenue(venue) {
   return {
     id: venue.id,
     name: venue.name,
+    ...safetyFields(venue),
+    maintenancePending:venue.maintenance?.status==='PENDING',
     address: venue.address,
     capacity: venue.capacity,
     venueType: venue.venueType,
@@ -63,6 +66,7 @@ function toApiHistory(entry) {
 }
 
 function reset() {
+  if(isMemory)state.maintenance.clear();
   if (isMemory) {
     state.venues.clear();
     state.history.length = 0;
@@ -84,7 +88,7 @@ function createVenue(input, actor) {
   if (isMemory) {
     const timestamp = now();
     const venue = {
-      id: id(), name: input.name, address: input.address, capacity: input.capacity,
+      id: id(), name: input.name, address: input.address, capacity: input.capacity,...safetyFields(input),
       venueType: input.venueType, supportedLayouts: [...input.supportedLayouts],
       facilities: [...input.facilities], accessibilityTags: [...input.accessibilityTags],
       timeZone: input.timeZone, isActive: input.isActive ?? true,
@@ -103,7 +107,7 @@ function createVenue(input, actor) {
   return prisma.$transaction(async (tx) => {
     const created = await tx.venue.create({
       data: {
-        name: input.name, address: input.address, capacity: input.capacity,
+        name: input.name, address: input.address, capacity: input.capacity,...safetyFields(input),
         venueType: input.venueType, supportedLayouts: input.supportedLayouts,
         facilities: input.facilities, accessibilityTags: input.accessibilityTags,
         timeZone: input.timeZone, isActive: input.isActive ?? true, managedById: input.managedById,
@@ -155,7 +159,7 @@ async function lockBuffers(idValue,version,actor) {
   return prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM venues WHERE id=${idValue} FOR UPDATE`;return locked(await tx.venue.findUnique({where:{id:idValue},include:{operatingHours:true}}),tx);});
 }
 
-async function configureLegacyBuffers(idValue,input,actor){
+async function configureLegacyBuffers(idValue,input,actor,options={}){
   async function save(current,tx){
     if(!current)return null;
     checkVersion(current,input.version);
@@ -169,7 +173,7 @@ async function configureLegacyBuffers(idValue,input,actor){
     return toApiVenue(saved);
   }
   if(isMemory)return save(state.venues.get(idValue),null);
-  return prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM venues WHERE id=${idValue} FOR UPDATE`;return save(await tx.venue.findUnique({where:{id:idValue},include:{operatingHours:true}}),tx);});
+  const change=async tx=>{await tx.$queryRaw`SELECT id FROM venues WHERE id=${idValue} FOR UPDATE`;return save(await tx.venue.findUnique({where:{id:idValue},include:{operatingHours:true}}),tx);};return options.transaction?change(options.transaction):prisma.$transaction(change);
 }
 
 function recoverableFence(current,history){return Boolean(current.buffersLockedAt && !current.legacyBufferConfigurationPending && history.some(h=>h.action==='VENUE_BUFFERS_LOCKED') && !history.some(h=>h.action==='LEGACY_BUFFERS_CONFIGURED' && h.changes?.configuredAfterConfirmation!==false));}
@@ -182,7 +186,7 @@ function replaceVenue(idValue, input, actor,options={}) {
     if(options.recoverFence && !recover)throw Object.assign(new Error('This venue does not have an uncommitted confirmation fence'),{status:409,code:'VENUE_BUFFERS_LOCKED'});
     if(!recover)checkBufferLock(current,input);
     const updated = {
-      ...current, name: input.name, address: input.address, capacity: input.capacity,
+      ...current, name: input.name, address: input.address, capacity: input.capacity,...safetyFields(input,current),
       venueType: input.venueType, supportedLayouts: [...input.supportedLayouts],
       facilities: [...input.facilities], accessibilityTags: [...input.accessibilityTags],
       timeZone: input.timeZone, isActive: input.isActive, managedById: input.managedById, updatedAt: now(),
@@ -197,7 +201,7 @@ function replaceVenue(idValue, input, actor,options={}) {
     enqueueRecheck(updated,actor,input.reason || 'Venue updated');
     return updated;
   }
-  return prisma.$transaction(async (tx) => {
+  const change=async (tx) => {
     await tx.$queryRaw`SELECT id FROM venues WHERE id = ${idValue} FOR UPDATE`;
     const current = await tx.venue.findUnique({ where: { id: idValue }, include: { operatingHours: true } });
     if (!current) return null;
@@ -208,7 +212,7 @@ function replaceVenue(idValue, input, actor,options={}) {
     await tx.venue.update({
       where: { id: idValue },
       data: {
-        name: input.name, address: input.address, capacity: input.capacity,
+        name: input.name, address: input.address, capacity: input.capacity,...safetyFields(input,current),
         venueType: input.venueType, supportedLayouts: input.supportedLayouts,
         facilities: input.facilities, accessibilityTags: input.accessibilityTags,
         timeZone: input.timeZone, isActive: input.isActive, managedById: input.managedById,
@@ -241,10 +245,11 @@ function replaceVenue(idValue, input, actor,options={}) {
     });
     await enqueueRecheck(after,actor,input.reason || 'Venue updated',tx);
     return after;
-  });
+  };
+  return options.transaction?change(options.transaction):prisma.$transaction(change);
 }
 
-function setOperatingHours(venueId, hours, actor, reason, version) {
+function setOperatingHours(venueId, hours, actor, reason, version,options={}) {
   if (isMemory) {
     const venue = state.venues.get(venueId);
     if (!venue) return null;
@@ -257,7 +262,7 @@ function setOperatingHours(venueId, hours, actor, reason, version) {
     enqueueRecheck(venue,actor,reason);
     return venue.operatingHours;
   }
-  return prisma.$transaction(async (tx) => {
+  const change=async (tx) => {
     await tx.$queryRaw`SELECT id FROM venues WHERE id = ${venueId} FOR UPDATE`;
     const venue = await tx.venue.findUnique({ where: { id: venueId }, include: { operatingHours: true } });
     if (!venue) return null;
@@ -280,7 +285,8 @@ function setOperatingHours(venueId, hours, actor, reason, version) {
     });
     await enqueueRecheck(toApiVenue(updated),actor,reason,tx);
     return after;
-  });
+  };
+  return options.transaction?change(options.transaction):prisma.$transaction(change);
 }
 
 function checkVersion(current,version) {
@@ -343,17 +349,17 @@ function listHistory(venueId) {
 }
 
 function getVenue(idValue) {
-  if (isMemory) return state.venues.get(idValue) || null;
+  if (isMemory) {const row=state.venues.get(idValue);return row?{...row,...(state.maintenance.get(idValue)?.status==='PENDING'?{maintenancePending:true}:{})}:null;}
   return prisma.venue.findUnique({ where: { id: idValue }, include: { operatingHours: true } }).then(toApiVenue);
 }
 
 function listVenues() {
-  if (isMemory) return [...state.venues.values()];
+  if (isMemory) return [...state.venues.values()].map(row=>({...row,...(state.maintenance.get(row.id)?.status==='PENDING'?{maintenancePending:true}:{})}));
   return prisma.venue.findMany({ include: { operatingHours: true }, orderBy: { createdAt: 'asc' } })
     .then((items) => items.map(toApiVenue));
 }
 
-function deleteVenue(idValue,version) {
+function deleteVenue(idValue,version,options={}) {
   if (isMemory) {
     if (!state.venues.has(idValue)) return false;
     checkVersion(state.venues.get(idValue),version);
@@ -363,13 +369,13 @@ function deleteVenue(idValue,version) {
     state.rollouts = state.rollouts.filter(row=>row.venueId!==idValue);
     return true;
   }
-  return prisma.$transaction(async tx=>{
+  const change=async tx=>{
     const [current]=await tx.$queryRaw`SELECT version FROM venues WHERE id=${idValue} FOR UPDATE`;
     if(!current)return false;
     checkVersion(current,version);
     await tx.venue.delete({where:{id:idValue}});
     return true;
-  });
+  };return options.transaction?change(options.transaction):prisma.$transaction(change);
 }
 
 module.exports = {

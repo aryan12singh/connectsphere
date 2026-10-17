@@ -71,6 +71,10 @@ model BookingOutbox {
   payload     Json
   createdAt   DateTime @default(now())
   deliveredAt DateTime?
+  attempts    Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  lastError   String?
+  suppressedAt DateTime?
 
   @@index([deliveredAt, createdAt])
   @@map("booking_outbox")
@@ -104,4 +108,17 @@ model EventPrimaryVenue {
   updatedAt DateTime @updatedAt
 
   @@map("event_primary_venues")
+}
+
+model EventReadinessFence {
+  token String @id
+  eventId String
+  generation Int
+  fingerprint String
+  venueIds String[]
+  snapshot Json
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  @@index([eventId,active])
+  @@map("event_readiness_fences")
 }

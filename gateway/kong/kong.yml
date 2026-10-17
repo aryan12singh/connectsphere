@@ -108,21 +108,18 @@ services:
         paths: ["~/venue-bookings/[^/]+/decision$"]
         methods: ["POST", "OPTIONS"]
         strip_path: false
-      - name: confirm-event
-        paths: ["~/events/[^/]+/confirm$"]
-        methods: ["POST", "OPTIONS"]
-        strip_path: false
 
   # ── Domain services (no `methods` = all methods, incl. OPTIONS) ───────
   # Sprint 2 contract: services/event-service/docs/openapi.yaml
   #   /event-requests, /event-requests/review-queue, /event-requests/{id}, …/submit,
   #   …/resubmit, …/decision, …/reassign, …/activity, and /events, /events/{id}.
-  #   (/events/{id}/confirm is routed to the orchestrator above — CS-31.)
+  #   Current Safety-gated confirmation is committed by Event; resource proofs
+  #   are prepared before that local transaction.
   - name: event-service
     url: http://event-service:3000
     routes:
       - name: event-routes
-        paths: ["/event-requests", "/events"]
+        paths: ["/event-requests", "/events", "/safety-checks", "/preparation-work"]
         strip_path: false
 
   # Venue contract: services/venue-service/swagger.html (venue epic)
@@ -161,3 +158,11 @@ services:
       - name: notification-routes
         paths: ["/notifications"]
         strip_path: false
+
+  - name: equipment-service
+    url: http://equipment-service:3000
+    routes:
+      - name: technical-requests
+        paths: ["/equipment-types", "/equipment-inventory", "/technical-requests", "~/event-requests/[^/]+/technical-request(?:/decision|/reservations)?$"]
+        strip_path: false
+        regex_priority: 200

@@ -37,6 +37,7 @@ async function configure(venueId,body){
       if(entry.staffInformedCoordinator!==true || entry.coordinatorInformedOrganiser!==true || typeof entry.note!=='string' || !entry.note.trim() || entry.note.trim().length>1000)error(422,'COMMUNICATION_REQUIRED','Record Staff-to-Coordinator and Coordinator-to-Organiser communication with a note for every Event');
       return {...event,staffInformedCoordinator:true,coordinatorInformedOrganiser:true,note:entry.note.trim()};
     });
+    await require('./readiness').invalidateVenue(venueId,tx,'Initial venue buffer configuration changed');
     const retainLock=await confirmedAtVenue(venueId,tx);
     const result=await callVenue(venueId,'legacy-buffers',{...body,communications,retainLock});
     if(result.id!==venueId || result.version!==body.version+1 || result.legacyBufferConfigurationPending!==false || (retainLock?!result.buffersLockedAt:result.buffersLockedAt!==null))error(503,'VENUE_UNAVAILABLE','Invalid configuration acknowledgement. Reload before retrying');
@@ -54,6 +55,7 @@ async function recoverFence(venueId,body){
     if(venue.version!==body.input.version)error(409,'STALE_VENUE','Venue changed. Reload before editing');
     const confirmed=await confirmedAtVenue(venueId,tx);
     if(confirmed || venue.legacyBufferConfigurationPending)error(409,'VENUE_BUFFERS_LOCKED','Buffers are locked after the first confirmed booking; use coordinated initial configuration only where available');
+    await require('./readiness').invalidateVenue(venueId,tx,'Venue buffer configuration changed');
     const result=await callVenue(venueId,'buffer-fence-recovery',body);
     if(result.id!==venueId || result.version!==venue.version+1 || result.buffersLockedAt!==null)error(503,'VENUE_UNAVAILABLE','Invalid recovery acknowledgement. Reload before retrying');
     return result;

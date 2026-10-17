@@ -1,17 +1,17 @@
 import {beforeAll,afterAll,beforeEach,describe,expect,it,vi} from 'vitest'
-import {mockNuxtImport,mountSuspended} from '@nuxt/test-utils/runtime'
+import {mockNuxtImport,mountSuspended,registerEndpoint} from '@nuxt/test-utils/runtime'
 import {ref} from 'vue'
-const ui=vi.hoisted(()=>({summary:null as any,send:vi.fn()}))
+const ui=vi.hoisted(()=>({summary:null as any,safety:null as any,send:vi.fn()}))
 mockNuxtImport('useUserSession',()=>()=>({user:ref({id:'coordinator',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR'],permissions:['venue_bookings.create']})}))
 mockNuxtImport('useRequestFetch',()=>()=>ui.send)
-mockNuxtImport('useFetch',()=>async(path:any)=>({data:ref(String(typeof path==='function'?path():path).includes('/summary')?ui.summary:{}),error:ref(null),refresh:vi.fn()}))
+mockNuxtImport('useFetch',()=>async(path:any)=>({data:ref(String(typeof path==='function'?path():path).includes('/summary')?ui.summary:String(typeof path==='function'?path():path).includes('/api/safety/')?ui.safety:{}),error:ref(null),refresh:vi.fn()}))
 import EventVenueArrangements from '../../frontend/app/components/venue/EventVenueArrangements.vue'
 import {createRequire} from 'node:module'
 const require=createRequire(import.meta.url),venueFixture=require('../helpers/venue-workflow.cjs')
 let api:any
 beforeAll(async()=>{api=await venueFixture.stack()})
 afterAll(async()=>{await api.close()})
-beforeEach(()=>{ui.send.mockReset();ui.summary={event:{id:'event-1',title:'Conference',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',startAt:'2028-11-20T02:00:00Z',endAt:'2028-11-20T04:00:00Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',accessibilityNeeds:[]},items:[],venueReady:false,outstanding:[{bookingId:null,reasons:['NO_VENUE_BOOKING']}]}})
+beforeEach(()=>{ui.safety=null;ui.send.mockReset();ui.summary={event:{id:'event-1',title:'Conference',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',startAt:'2028-11-20T02:00:00Z',endAt:'2028-11-20T04:00:00Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',accessibilityNeeds:[]},items:[],venueReady:false,outstanding:[{bookingId:null,reasons:['NO_VENUE_BOOKING']}]}})
 describe('CS-93 independent Coordinator preparation UI',()=>{
   it('TC-CS93-23 current Venue type and capacity override a Virtual booking snapshot in Safety factors',async()=>{
     venueFixture.reset()
@@ -58,4 +58,46 @@ describe('CS-93 independent Coordinator preparation UI',()=>{
     expect(moved.find('[aria-label="Safety preparation"]').exists()).toBe(false)
     moved.unmount()
   })
+})
+
+// Real authenticated, service-owned database and message-boundary acceptance.
+if(process.env.CS_SAFETY_ACCEPTANCE==='1') it('TC-CS93-40 complete current venue/technical proof gates a durable Safety review, decision, rework, confirmation and Preparation',async()=>{
+  const {createRequire}=await import('node:module'),require=createRequire(import.meta.url)
+  const {safetyAcceptance}=require('../helpers/safety-live.cjs')
+  const evidence=await safetyAcceptance()
+  expect(evidence.finalEventStage).toBe('PREPARATION')
+},240000)
+
+it('TC-CS93-41 live Safety readiness enables the real versioned submit command',async()=>{
+  const posts:any[]=[]
+  const proof={event:{id:'event-1',title:'Live planning',status:'ARRANGEMENT_PENDING',version:4},state:'NOT_SUBMITTED',canSubmit:true,requirementsRevision:'review-1',technical:{status:'NOT_REQUIRED'},outstanding:[],snapshot:{eventId:'event-1',eventTitle:'Live planning',venues:[],equipmentStatus:'NOT_REQUIRED',equipment:[]}}
+  registerEndpoint('/api/safety/events/event-1',()=>proof)
+  registerEndpoint('/api/safety/events/event-1/submit',{method:'POST',handler:async(event:any)=>{const {readBody}=await import('h3');posts.push(await readBody(event));return {state:'PENDING'}}})
+  ui.safety=proof
+  const w=await mountSuspended(EventVenueArrangements,{props:{eventId:'event-1'}})
+  await vi.waitFor(()=>expect(w.get('button[data-safety-submit]').attributes('disabled')).toBeUndefined())
+  await w.get('button[data-safety-submit]').trigger('click')
+  await vi.waitFor(()=>expect(posts).toEqual([{version:4}]))
+  w.unmount()
+})
+
+if(process.env.CS_SAFETY_ACCEPTANCE==='1') it('TC-CS93-42 per-room preparation, operational moves and terminal Events preserve current Safety gates',async()=>{
+  const {safetyAcceptance}=require('../helpers/safety-live.cjs')
+  await safetyAcceptance({exerciseInvalidation:true})
+},240000)
+
+if(process.env.CS_SAFETY_ACCEPTANCE==='1') it('TC-CS93-43 actual approved equipment reservations complete the Safety proof atomically',async()=>{
+  const {equipmentAcceptance}=require('../helpers/safety-live.cjs')
+  await equipmentAcceptance()
+},240000)
+
+it('TC-CS93-44 current source facts and terminal status gate confirmation while handover metadata preserves approvals',async()=>{
+ const {execFileSync}=await import('node:child_process')
+ const output=execFileSync(process.execPath,[require.resolve('../helpers/safety-guards.cjs')],{encoding:'utf8'})
+ const observations=output.trim().split('\n').map(line=>JSON.parse(line)).filter(row=>row.case)
+ expect(observations).toHaveLength(4)
+ expect(observations[0]).toMatchObject({result:'REJECTED',status:409})
+ expect(observations[1]).toMatchObject({result:'REJECTED',status:409})
+ expect(observations[2]).toMatchObject({result:'ACCEPTED',eventStatus:'CONFIRMED',activityTransitions:[['ARRANGEMENT_PENDING','CONFIRMED']]})
+ expect(observations[3]).toMatchObject({result:'ACCEPTED',eventStatus:'CONFIRMED'})
 })

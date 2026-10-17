@@ -31,9 +31,13 @@ enum VenueWeekday {
 }
 
 model Venue {
+  maintenance Json?
   id                 String              @id @default(uuid())
   name               String
   address            String?
+  emergencyAccess String?
+  crowdMovement String?
+  restrictions String?
   capacity           Int?
   venueType          VenueType           @default(PHYSICAL)
   supportedLayouts   VenueLayout[]

@@ -1,6 +1,7 @@
 const config = require('./config');
 const path = require('node:path');
 const { authenticate } = require('./identity');
+const {hasPermission,rolesForUser}=require(path.resolve(process.env.SERVICE_UTILS_PATH||path.resolve(__dirname,'../../utils'),'role-policy'));
 const ROLE_PERMISSIONS = require(process.env.ROLE_PERMISSIONS_PATH || path.resolve(__dirname, '../../utils/role-permissions'));
 
 function testActor(req) {
@@ -32,8 +33,7 @@ function requireAuth() {
 // Caller must hold EVERY listed permission (missing one => 403).
 function requirePermission(...permissions) {
   return (req, res, next) => {
-    const held = req.actor?.permissions || [];
-    if (!permissions.every((permission) => held.includes(permission))) {
+    if (!permissions.every((permission) => hasPermission(req.actor,permission))) {
       return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You do not have permission to do this' } });
     }
     return next();
@@ -42,14 +42,14 @@ function requirePermission(...permissions) {
 
 function requireRole(...roles) {
   return (req, res, next) => {
-    if (!roles.includes(req.actor?.role)) return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You do not have permission to do this' } });
+    if (!roles.some(role=>rolesForUser(req.actor).includes(role))) return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You do not have permission to do this' } });
     return next();
   };
 }
 
 function requireAnyPermission(...permissions) {
   return (req, res, next) => {
-    if (!permissions.some((permission) => req.actor?.permissions?.includes(permission))) {
+    if (!permissions.some((permission) => hasPermission(req.actor,permission))) {
       return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You do not have permission to do this' } });
     }
     return next();

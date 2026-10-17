@@ -38,7 +38,15 @@ async function activity(db,r,action,actor,fromStatus,toStatus,details={}){
  // headers, tokens or contact profiles. Actor ID is the required identity evidence.
  await db.activityLog.create({data:{eventRequestId:r.id,action,actorType:system?'SYSTEM':'USER',actorId:system?null:actor.id,fromStatus,toStatus,details:{...safe,actorName:!system?[actor.firstName,actor.lastName].filter(x=>typeof x==='string').join(' ')||actor.id:'System'}}});
 }
-async function outbox(db,r,eventType,actor,extra={}){await db.outbox.create({data:{aggregateType:'EventRequest',aggregateId:r.id,eventType,payload:{eventRequestId:r.id,actorId:actor?.id??null,occurredAt:new Date().toISOString(),...extra}}});}
+async function outbox(db,r,eventType,actor,extra={}){await db.outbox.create({data:{aggregateType:'EventRequest',aggregateId:r.id,eventType,payload:{eventRequestId:r.id,organiserId:r.organiserId,coordinatorId:r.currentCoordinatorId,eventName:r.eventName,requestVersion:r.version,newStatus:r.status,comment:eventType==='RequestReturned'?r.decisionReason:null,actorId:actor?.id??null,occurredAt:new Date().toISOString(),...extra}}});}
+async function invalidateSafety(db,r,reason){
+ if(!r.event)return;
+ const event=r.event;
+ await db.$queryRaw`SELECT id FROM events WHERE id=${event.id} FOR UPDATE`;
+ await db.event.update({where:{id:event.id},data:{safetyToken:null,safetyGeneration:{increment:1},safetyState:event.safetyRoundId?'STALE':'NOT_SUBMITTED',safetyOperation:require('@prisma/client').Prisma.DbNull,safetyRework:require('@prisma/client').Prisma.DbNull,status:['CONFIRMED','PREPARATION'].includes(event.status)?'ARRANGEMENT_PENDING':event.status,version:{increment:1}}});
+ await db.safetyRound.updateMany({where:{eventId:event.id,status:'PENDING'},data:{status:'SUPERSEDED'}});
+ await activity(db,r,'SAFETY_SOURCE_CHANGED',null,event.status,['CONFIRMED','PREPARATION'].includes(event.status)?'ARRANGEMENT_PENDING':event.status,{eventId:event.id,note:reason});
+}
 function version(body,r){if(!Number.isInteger(body.version)||body.version<1)throw fail(422,'VALIDATION_FAILED','A version is required',{version:['Reopen the record to obtain its version']});if(r.version!==body.version)throw fail(409,'STALE_VERSION','This request changed. Reopen it before saving; your entered values have been kept.');}
 async function mutation(req,mode,id){
  const actor=req.actor,body=req.body;if(!body||typeof body!=='object'||Array.isArray(body))throw fail(400,'BAD_REQUEST','A JSON object is required');
@@ -101,7 +109,7 @@ async function mutation(req,mode,id){
   if(mode==='reassign'){
    const target=typeof body.coordinatorId==='string'?body.coordinatorId.trim():'';
    if(!target)throw fail(422,'VALIDATION_FAILED','Choose a Coordinator',{coordinatorId:['Choose a Coordinator']});
-   const open=['SUBMITTED','RETURNED_FOR_AMENDMENT'].includes(r.status)||(r.status==='APPROVED'&&['ARRANGEMENT_PENDING','CONFIRMED'].includes(r.event?.status));
+   const open=['SUBMITTED','RETURNED_FOR_AMENDMENT'].includes(r.status)||(r.status==='APPROVED'&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(r.event?.status));
    if(!open)throw fail(409,'INVALID_TRANSITION','This request is closed and can no longer be reassigned');
    if(target===r.currentCoordinatorId)throw fail(422,'VALIDATION_FAILED','Choose a different Coordinator',{coordinatorId:['Choose a different Coordinator']});
    if(target===r.organiserId)throw fail(422,'VALIDATION_FAILED','An Organiser cannot coordinate their own request',{coordinatorId:['An Organiser cannot coordinate their own request']});
@@ -112,6 +120,12 @@ async function mutation(req,mode,id){
    const from=r.currentCoordinatorId;
    await db.coordinatorAssignment.updateMany({where:{eventRequestId:r.id,revokedAt:null},data:{revokedAt:new Date(),revokedById:actor.id}});
    await db.coordinatorAssignment.create({data:{eventRequestId:r.id,coordinatorId:target,assignedById:actor.id,reason:'REASSIGNED'}});
+   if(r.event){
+    await db.$queryRaw`SELECT id FROM events WHERE id=${r.event.id} FOR UPDATE`;
+    // Handover preserves approvals and reservations. Only an unfinished operation
+    // tied to the previous actor is cancelled; the new Coordinator reviews anew.
+    await db.event.update({where:{id:r.event.id},data:{safetyRework:require('@prisma/client').Prisma.DbNull,...(r.event.safetyState==='PREPARING'?{safetyOperation:require('@prisma/client').Prisma.DbNull,safetyToken:null,safetyState:r.event.safetyRoundId?'STALE':'NOT_SUBMITTED',safetyGeneration:{increment:1}}:{}),version:{increment:1}}});
+   }
    r=await db.eventRequest.update({where:{id:r.id},data:{currentCoordinatorId:target,version:{increment:1}},include:{event:true}});
    await activity(db,r,'COORDINATOR_REASSIGNED',actor,r.status,r.status,{changes:{currentCoordinatorId:{old:from,new:target}}});
    await outbox(db,r,'CoordinatorReassigned',actor,{fromCoordinatorId:from,coordinatorId:target});
@@ -121,6 +135,7 @@ async function mutation(req,mode,id){
    const entity=action==='REJECT'&&r.status==='APPROVED'&&r.event?{scope:'EVENT',status:r.event.status}:{scope:'REQUEST',status:r.status};
    const result=decide({action,entity,actor,context:{...r,now:new Date()},text:body.text});
    const before=r;
+   if(action==='REJECT')await invalidateSafety(db,r,'Event rejected');
    if(result.scope==='EVENT')await db.event.update({where:{id:r.event.id},data:{status:result.to,version:{increment:1}}});
    r=await db.eventRequest.update({where:{id:r.id},data:{status:result.scope==='EVENT'?'REJECTED':result.to,decidedById:actor.id,decidedAt:new Date(),decisionReason:result.activity.note,version:{increment:1},...(action==='RETURN'?{returnedBaseline:snapshot(r)}:{})},include:{event:true}});
    if(result.createsEvent){await db.event.create({data:{eventRequestId:r.id,organiserId:r.organiserId,organisationId:r.organisationId,title:r.eventName,description:r.description,startAt:r.startAt,endAt:r.endAt,timeZone:r.timeZone,status:result.eventStatusAfter}});r=await load(db,r.id);}

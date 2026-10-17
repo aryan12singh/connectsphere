@@ -10,7 +10,7 @@
 function countsAsActive({ requestStatus, eventStatus }) {
   if (requestStatus === 'SUBMITTED' || requestStatus === 'RETURNED_FOR_AMENDMENT') return true;
   if (requestStatus === 'APPROVED') {
-    return eventStatus === 'ARRANGEMENT_PENDING' || eventStatus === 'CONFIRMED';
+    return eventStatus === 'ARRANGEMENT_PENDING' || eventStatus === 'CONFIRMED' || eventStatus === 'PREPARATION';
   }
   return false;
 }

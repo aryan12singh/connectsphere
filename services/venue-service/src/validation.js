@@ -13,6 +13,7 @@ function array(value) {
 
 function validateVenue(body, partial = false) {
   const errors = {};
+  for(const key of ['emergencyAccess','crowdMovement','restrictions'])if(body?.[key]!==undefined && body[key]!==null && (typeof body[key]!=='string'||body[key].length>2000))errors[key]=['Use text of at most 2000 characters'];
   const required = ['name', 'venueType', 'supportedLayouts', 'facilities', 'accessibilityTags', 'timeZone', 'managedById', 'reason', 'operatingHours'];
   if (body?.venueType !== 'VIRTUAL') required.push('address', 'capacity');
   if (!partial) {
@@ -59,6 +60,7 @@ function normaliseHours(hours) {
 
 function normaliseVenue(body) {
   return {
+    ...Object.fromEntries(['emergencyAccess','crowdMovement','restrictions'].filter(key=>Object.hasOwn(body,key)).map(key=>[key,typeof body[key]==='string'?body[key].trim()||null:null])),
     name: text(body.name),
     address: text(body.address) || null,
     capacity: body.capacity,

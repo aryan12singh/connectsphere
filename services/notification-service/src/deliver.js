@@ -9,6 +9,7 @@
 // to 3 times, then marks the message FAILED for Technical Support. It never
 // re-runs the business action and never reports success it did not have.
 const config = require('./config');
+const {validEnvelope}=require('../../utils/domain-bus');
 const store = require('./store');
 const { HANDLED, noticesFor } = require('./templates');
 const { displayName, activeUsersWithRole } = require('./userClient');
@@ -16,16 +17,12 @@ const { displayName, activeUsersWithRole } = require('./userClient');
 const DONE = ['PROCESSED', 'IGNORED', 'FAILED'];
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function validMessage(message) {
-  return message && typeof message.id === 'string' && message.id
-    && typeof message.type === 'string' && message.type
-    && message.payload && typeof message.payload === 'object';
-}
+const validMessage=validEnvelope;
 
 /**
  * @returns {Promise<{ result: 'processed'|'ignored'|'duplicate'|'failed', notices: number }>}
  */
-async function deliver(message, { names = displayName, usersWithRole = activeUsersWithRole } = {}) {
+async function deliver(message, { names = displayName, usersWithRole = activeUsersWithRole, currentContext = async value => value } = {}) {
   if (!validMessage(message)) throw Object.assign(new Error('Invalid message'), { status: 422 });
   const receipt = await store.getReceipt(message.id);
   if (receipt && DONE.includes(receipt.status)) return { result: 'duplicate', notices: 0 };
@@ -41,8 +38,14 @@ async function deliver(message, { names = displayName, usersWithRole = activeUse
   for (;;) {
     try {
       // Leave out recipients the message does not name (e.g. no Coordinator yet).
-      const notices = (await noticesFor(message, { names, usersWithRole })).filter((notice) => notice.recipientId);
-      await store.saveDelivered(message, notices);
+      const current = await currentContext(message);
+      if (!current) {
+        await store.saveDelivered(message, [], 'IGNORED');
+        return { result:'ignored', notices:0 };
+      }
+      const notices = (await noticesFor(current, { names, usersWithRole })).filter((notice) => notice.recipientId);
+      const saved=await store.saveDelivered(message, notices);
+      if(saved===false)return {result:'duplicate',notices:0};
       return { result: 'processed', notices: notices.length };
     } catch (error) {
       // A parallel redelivery of the same message may have just finished it
@@ -51,6 +54,8 @@ async function deliver(message, { names = displayName, usersWithRole = activeUse
       if (latest && ['PROCESSED', 'IGNORED'].includes(latest.status)) return { result: 'duplicate', notices: 0 };
       attempt = await store.recordAttempt(message, attempt + 1 >= totalAttempts ? 'FAILED' : 'RETRYING', error);
       console.error(`Notification delivery for message ${message.id} failed (attempt ${attempt}/${totalAttempts}):`, error.message);
+      const terminal=await store.getReceipt(message.id);
+      if(terminal&&['PROCESSED','IGNORED'].includes(terminal.status))return {result:'duplicate',notices:0};
       if (attempt >= totalAttempts) return { result: 'failed', notices: 0 };
       await sleep(config.retryDelayMs);
     }

@@ -70,3 +70,21 @@ describe('CS-95 independent rework presentation and validation',()=>{
     expect(p.feedback).toEqual(original);expect(w.text()).not.toContain('Resubmitted successfully');w.unmount()
   })
 })
+
+if(process.env.CS_SAFETY_ACCEPTANCE==='1') it('TC-CS95-40 recorded Coordinator Event-detail corrections invalidate old technical proof and can complete a fresh Safety round',async()=>{
+ const {createRequire}=await import('node:module'),require=createRequire(import.meta.url)
+ await require('../helpers/safety-live.cjs').safetyAcceptance({exerciseCorrection:true})
+},240000)
+
+if(process.env.CS_SAFETY_ACCEPTANCE==='1') it('TC-CS95-42 a specifically rejected venue needs revised evidence before the next immutable review round',async()=>{
+ const {createRequire}=await import('node:module'),require=createRequire(import.meta.url)
+ await require('../helpers/safety-live.cjs').safetyAcceptance({exerciseRejection:true})
+},240000)
+
+
+it('TC-CS95-43 unchanged rejected room facts cannot be hidden by metadata, recreated sessions or set ordering',async()=>{
+ const {execFileSync}=await import('node:child_process')
+ const {createRequire}=await import('node:module'),require=createRequire(import.meta.url)
+ const observations=execFileSync(process.execPath,[require.resolve('../helpers/rejected-venue-guards.cjs')],{encoding:'utf8'}).trim().split('\n').map(line=>JSON.parse(line)).filter(row=>row.case)
+ expect(observations.map(row=>row.canSubmit)).toEqual([false,false,true,false,true,false,false,false])
+})

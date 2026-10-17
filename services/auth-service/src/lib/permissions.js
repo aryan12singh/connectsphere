@@ -9,6 +9,13 @@
 // Naming: "<area>.<action>". Keep descriptions short; the admin screen shows them.
 
 const PERMISSIONS = Object.freeze({
+  'safety.view':'View permitted Safety review rounds',
+  'safety.decide':'Record a Safety decision',
+  'safety.submit':'Submit current arrangements for Safety review',
+  'safety.rework':'Review and direct Safety rework',
+  'technical.view':'View current technical requests',
+  'technical.submit':'Submit technical requirements',
+  'technical.review':'Review technical requirements',
   // Admin (tech support)
   'users.view': 'See the list of users',
   'users.manage': 'Manage public accounts and disable or re-enable accounts',

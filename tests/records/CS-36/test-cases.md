@@ -77,3 +77,15 @@ The cases below preserve current scope and original source assertions. Date of C
 ## Session 3 fixture reconciliation — 14 October 2026
 
 Customer rows4/6 prohibit later buffer edits. Regression fixtures requiring old inconsistent buffer/booking snapshots now seed explicit isolated historical data; they do not exercise or endorse a public post-confirmation buffer edit. Recheck, conflict, immutability and deletion assertions remain. CS-36-23 now verifies deletion CAS using permitted name maintenance. The new buffer denial/fence cases are TC-CS84-31 through34. Dated earlier execution records are unchanged.
+
+17 October integration refinement for TC-CS36-23: correctness-sensitive Venue mutations now have a durable exact-operation fence. A concurrent edit during a checked deletion is rejected with 409 VENUE_MAINTENANCE_PENDING; the deletion completes after its locked commitment check. This strengthens the original no-orphan/no-stale-delete requirement by serializing edits instead of allowing a racing rename to invalidate the deletion check. Retained ended booking/history is still asserted.
+
+
+## 17 October shared-Sheet evidence reconciliation
+
+Existing customer intent is preserved. Logical draft fields/statuses are reconciled with the operative contract; examples do not create a second reservation or acceptance claim. Date of Creation: 2026-10-17T12:24:00+08:00.
+
+| Test Case ID | Scenario / AC | Preconditions | Steps | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS36-24 | Search AC1/5: required/current criteria | Current Planning Event and assigned Coordinator | Omit query fields; repeat with invalid start/end, non-numeric/zero attendance | 200 with current Event defaults; explicit invalid criteria422 field errors; no booking write | Actual service HTTP with isolated repository fixtures | 2026-10-17T12:24:00+08:00 |
+| TC-CS36-25 | Search AC5: internal role boundary | Same Planning Event | Search as Organiser, Attendee, Venue Staff | 403 for each role; no booking write | Actual service HTTP with isolated repository fixtures | 2026-10-17T12:24:00+08:00 |

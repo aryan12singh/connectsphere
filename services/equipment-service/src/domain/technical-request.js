@@ -13,10 +13,11 @@ function validateRequirements(input, equipmentTypes, previous) {
     if (!knownTypes.has(line?.equipmentType)) errors[`equipment.${index}.equipmentType`] = ['Choose a known equipment type.'];
     if (!Number.isInteger(line?.quantity) || line.quantity < 1) errors[`equipment.${index}.quantity`] = ['Quantity must be a whole number of at least 1.'];
   });
+  if (new Set(equipment.map(line=>line.equipmentType)).size!==equipment.length) errors.equipment=['Use one quantity line per equipment type.'];
   if (input?.supportRequired && (typeof input.supportDetails !== 'string' || !input.supportDetails.trim())) errors.supportDetails = ['Describe the requested support.'];
   if (typeof input?.placementDetails !== 'string' || !input.placementDetails.trim()) errors.placementDetails = ['Describe the required placement or preparation.'];
   if (equipment.length === 0 && !input?.supportRequired && !input?.notRequired) errors.requirements = ['Specify equipment or support, or explicitly mark both as not required.'];
-  if (equipment.length > 0 && input?.notRequired) errors.notRequired = ['A request with equipment cannot be marked not required.'];
+  if ((equipment.length > 0 || input?.supportRequired) && input?.notRequired) errors.notRequired = ['A request with equipment cannot be marked not required.'];
   if (Object.keys(errors).length) return { valid: false, errors };
 
   const normalized = {
@@ -44,7 +45,7 @@ function validateRequirements(input, equipmentTypes, previous) {
 }
 
 function decideRequirements(request, actor, decision, reason = '', expectedVersion = request?.version) {
-  if (actor?.role !== TECHNICAL_SUPPORT) throw Object.assign(new Error('Technical Support permission is required.'), { status: 403 });
+  if (!((actor?.roles||[actor?.role]).includes(TECHNICAL_SUPPORT))) throw Object.assign(new Error('Technical Support permission is required.'), { status: 403 });
   if (!['APPROVED', 'REJECTED'].includes(decision)) throw Object.assign(new Error('Decision must be APPROVED or REJECTED.'), { status: 422 });
   if (decision === 'REJECTED' && !reason.trim()) throw Object.assign(new Error('A reason is required to reject.'), { status: 422 });
   if (expectedVersion !== request?.version) throw Object.assign(new Error('This request changed. Reload before deciding.'), { status: 409 });

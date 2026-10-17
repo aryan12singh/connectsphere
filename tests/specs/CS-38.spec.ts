@@ -13,6 +13,17 @@ afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();vi.useRealTimers()})
 afterAll(async()=>{await api.close()})
 async function hold(){const {event,request}=await f.eventFixture();const v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()});const r=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'decision'},body:{eventId:event.id,venueId:v.body.id,title:'Conference room',reason:'Client conference',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}});expect(r.status).toBe(201);return {booking:r.body,event,request,venue:v.body}}
 describe('CS-38 — guarded independent decisions',()=>{
+  it('TC-CS38-21 only Venue Staff can decide and unauthorized attempts leave the held booking intact',async()=>{
+    const {booking}=await hold()
+    for(const role of ['EVENT_ORGANISER','EVENT_COORDINATOR','ATTENDEE','TECHNICAL_SUPPORT_STAFF'])expect((await api.booking.http(`/venue-bookings/${booking.id}/decision`,{method:'PUT',headers:{'x-test-user-id':'other','x-test-role':role},body:{version:1,status:'CONFIRMED',reason:'Unauthorized decision'}})).status).toBe(403)
+    expect(f.bookings.getBooking(booking.id)).toMatchObject({status:'TENTATIVELY_HELD',version:1})
+  })
+  it('TC-CS38-22 an already rejected request cannot be approved with a fresh current version',async()=>{
+    const {booking}=await hold(),path=`/venue-bookings/${booking.id}/decision`
+    expect((await api.booking.http(path,{method:'PUT',headers:f.staff,body:{version:1,status:'REJECTED',reason:'Unavailable room'}})).status).toBe(200)
+    expect((await api.booking.http(path,{method:'PUT',headers:f.staff,body:{version:2,status:'CONFIRMED',reason:'Attempt to reopen a terminal request'}})).status).toBe(409)
+    expect(f.bookings.getBooking(booking.id)).toMatchObject({status:'REJECTED',version:2})
+  })
   it('TC-CS38-18 Staff approves only the displayed Coordinator-requested extension deadline',async()=>{
     actions.extensionRequest={requestedById:'current-coordinator',reason:'Awaiting review',expiresAt:'2027-01-01T01:00:00.000Z'}
     const c=(await import('../../frontend/app/components/venue/VenueBookingRequests.vue')).default,w=await mountSuspended(c,{props:{canDecide:true}})
@@ -129,4 +140,13 @@ describe('CS-38 — guarded independent decisions',()=>{
     expect(r.status).toBe(409);expect(r.body.error.code).toBe('REQUIREMENTS_CHANGED')
     expect(f.bookings.getBooking(booking.id).status).toBe('TENTATIVELY_HELD');expect(f.bookings.state.activities).toHaveLength(1)
   })
+})
+
+it.each([{reason:'   ',status:422},{reason:'x',status:200},{reason:'x'.repeat(500),status:200},{reason:'x'.repeat(501),status:422}])('TC-CS38-20 decision reasons use trimmed 1..500 characters (%j)',async({reason,status})=>{
+ const {booking}=await hold()
+ const result=await api.booking.http('/venue-bookings/'+booking.id+'/decision',{method:'PUT',headers:f.staff,body:{version:1,status:'REJECTED',reason}})
+ expect(result.status).toBe(status)
+ const row=await api.booking.http('/venue-bookings/'+booking.id,{headers:f.staff})
+ expect(row.body.status).toBe(status===200?'REJECTED':'TENTATIVELY_HELD')
+ expect(row.body.version).toBe(status===200?2:1)
 })

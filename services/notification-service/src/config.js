@@ -11,6 +11,8 @@ module.exports = {
   // Production uses notification_db. Unit and contract tests use memory.
   dataMode,
   databaseUrl,
+  eventServiceUrl: process.env.EVENT_SERVICE_URL || 'http://localhost:3003',
+  bookingServiceUrl: process.env.BOOKING_SERVICE_URL || 'http://localhost:3006',
   authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3002',
   userServiceUrl: process.env.USER_SERVICE_URL || 'http://localhost:3001',
   internalApiKey: process.env.INTERNAL_API_KEY || 'change-me-dev-internal-key',
@@ -19,8 +21,7 @@ module.exports = {
   retryDelayMs: Number(process.env.RETRY_DELAY_MS ?? 500),
   // Read notices stay in the inbox for 30 days after they were read.
   readRetentionDays: 30,
-  // RabbitMQ settings. CS-39 owns the broker; these names are placeholders
-  // until CS-39 publishes the agreed exchange/queue (see dev log 2026-10-17).
+  // Durable topic and consumer names shared with the domain outbox relays.
   rabbitmqUrl: process.env.RABBITMQ_URL || '',
   rabbitmqExchange: process.env.RABBITMQ_EXCHANGE || 'connectsphere.events',
   rabbitmqQueue: process.env.RABBITMQ_QUEUE || 'notification-service.domain-events',

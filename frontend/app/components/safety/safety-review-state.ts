@@ -18,10 +18,13 @@ export interface SafetyDecisionIntent {
 export interface SafetyVenue {
   bookingId:string; venueName:string; venueType?:string
   expectedAttendance:number | null; capacity:number | null; layout:string | null
+  accessibilityDetails?:string | null;venueRequirements?:string | null;bookingStartAt?:string;bookingEndAt?:string;occupiedStartAt?:string;occupiedEndAt?:string;
   emergencyAccess:string | null; accessibilityNeeds:string[] | null
   equipmentPlacement:string | null; crowdMovement:string | null; restrictions:string | null
 }
 export interface SafetySnapshot {
+  eventStartAt?:string;eventEndAt?:string;timeZone?:string;
+  technicalProof?:{supportRequired?:boolean;supportDetails?:string;coverageResolution?:{entries:{need:string;mode:string;note:string;equipmentTypes:string[]}[]}|null};
   eventId:string; eventTitle:string; requirementsRevision?:string
   venues:SafetyVenue[]; equipmentStatus:'UNVERIFIED' | 'APPROVED' | 'NOT_REQUIRED'
   equipment:Array<{label:string; quantity:number}> | null

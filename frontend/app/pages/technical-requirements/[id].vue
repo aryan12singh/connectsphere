@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 type EquipmentLine = { equipmentType: string, quantity: number }
 type TechnicalRequest = {
   eventRequestId: string
+  canEdit?: boolean
   coordinatorId?: string
   version: number
   status: 'SUBMITTED' | 'APPROVED' | 'REJECTED'
@@ -18,7 +19,7 @@ type TechnicalRequest = {
 const route = useRoute()
 const eventRequestId = computed(() => String(route.params.id ?? ''))
 const { user } = useUserSession()
-const canEdit = computed(() => user.value?.role === 'EVENT_COORDINATOR')
+const canEdit = computed(() => (user.value?.roles ?? [user.value?.role]).includes('EVENT_COORDINATOR'))
 const { data: typesData, error: typesError } = await useFetch<{ equipmentTypes: { id: string, name: string }[] }>('/api/technical-equipment-types')
 const { data: existing, error: requestError, refresh } = await useFetch<TechnicalRequest | null>(
   () => `/api/events/${encodeURIComponent(eventRequestId.value)}/technical-request`,
@@ -41,7 +42,7 @@ const errorMessage = ref('')
 const fieldError = ref('')
 const saved = ref(false)
 onMounted(() => { pageReady.value = true })
-const readOnly = computed(() => !canEdit.value || (existing.value?.coordinatorId && existing.value.coordinatorId !== user.value?.id))
+const readOnly = computed(() => !canEdit.value || existing.value?.canEdit===false)
 const statusLabel = computed(() => ({ SUBMITTED: 'Pending Technical Support review', APPROVED: 'Approved', REJECTED: 'Rejected' }[existing.value?.status ?? 'SUBMITTED']))
 
 watch(existing, (request) => {

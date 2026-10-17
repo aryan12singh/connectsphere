@@ -53,3 +53,33 @@ These added component cases deliberately cover only the available UI/validation 
 | TC-CS93-21 | AC1: venue readiness alone cannot enable submission | All venue arrangements approved; technical readiness unavailable | Technical verification blocker remains; no invented NOT_REQUIRED or Safety success |
 | TC-CS93-22 | AC1/2: current Event/assignment visibility | Change Event ID or current Coordinator after loading its venue summary | Safety preparation hides stale/private content |
 | TC-CS93-23 | AC2: current Venue type | Hold a Virtual venue, then change the actual Venue to Physical/capacity20 without changing the booking's stored Virtual requirements | Current80/20 and over-capacity warning; no false virtual-capacity exemption |
+
+## 17 October complete service integration
+
+| Test Case ID | Scenario | Preconditions / steps | Expected result | Required layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- |
+| TC-CS93-40 | Durable Safety lifecycle and Coordinator-directed rework | Fresh isolated real stack; actual Keycloak accounts; approve venue, submit explicit technical NOT_REQUIRED and obtain Technical Support approval; submit/review/request changes; record Coordinator follow-up; resubmit/approve; confirm, then enter Preparation | Incomplete proof blocked; authorized Officer queue and immutable rounds; no automatic booking reset; Organiser/history contain no private notes; duplicate decision one action; Safety before Confirmed; separate Preparation gates staff updates | Real Kong/auth/PG16/AMQP | 2026-10-17T10:50:00+08:00 |
+
+| TC-CS93-41 | Live readiness and versioned UI command | Mount live preparation with an authorized readiness response and a recording BFF endpoint; click submit | Enabled only for ready proof; sends the displayed Event version once | Component/BFF adapter, not actual persistence | 2026-10-17T11:03:00+08:00 |
+
+### TC-CS93-42 — Safety lifecycle boundary regressions
+Date of Creation: 2026-10-17T03:10:00Z
+Preconditions: isolated authenticated production-mode services, real PostgreSQL and RabbitMQ; required room and current Technical Support not-required approval.
+Steps: complete Safety review and Preparation; omit room identity; record identified room preparation; move an operational closure from another room into the approved room; try confirmation; reject the Event; attempt Coordinator rework.
+Expected: unidentified preparation rejected; identified room recorded; destination Safety proof invalidated before closure change, confirmed booking retained; confirmation blocked; rejected Event cannot reopen and is absent from the Officer queue.
+
+### TC-CS93-43 — Required equipment readiness
+Date of Creation: 2026-10-17T03:17:00Z
+Preconditions: real authenticated disposable production stack with approved required room; Event requires equipment/support.
+Steps: approve two-line technical requirements; attempt reserve with insufficient inventory; provide actual stock; concurrently retry reservation using the same action key; inspect readiness; submit Safety; read persisted snapshot.
+Expected: approval alone cannot infer equipment readiness; shortfall creates no partial reservation; retry creates exactly one full set; current source-bound reservations and placement appear in Safety proof.
+
+
+## Integrated acceptance additions — 2026-10-17T03:53:21+00:00
+
+These cases supplement the preserved earlier specifications. Current contracts and the Session 3/PO precedence remain authoritative. Browser IDs can cover several linked story assertions; matching numeric suffixes in the shared sheet do not imply identical scenarios.
+
+| Test Case ID | Requirement / expected result | Execution layer and precondition |
+|---|---|---|
+| TC-CS93-44 | Terminal/source-stale Safety confirmation is denied; current approved facts permit confirmation; handover metadata preserves sign-offs. | Actual Event module with isolated adapters; no live-locking claim. |
+| TC-CS93-45 | With two of three required rooms approved the UI blocks submit; the last approval enables the real current-proof submission. | Production desktop/mobile browser + actual PG; current source needs explicitly require no equipment. |

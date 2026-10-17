@@ -164,7 +164,7 @@ collection defaults to the mock BFF credentials (`organiser@example.com` and
 | Swagger UI (auth-service API) | http://localhost:3002/docs | — |
 | Keycloak admin console | http://localhost:8080 | admin / admin |
 | pgAdmin4 | http://localhost:5050 | admin@connectsphere.dev / admin |
-| RabbitMQ console | http://localhost:15672 | guest / guest |
+| RabbitMQ console | http://localhost:15672 | `connectsphere` / `connectsphere-dev-only` (local development only) |
 | Kong (the API the frontend uses) | http://localhost:8000 | — |
 
 To connect pgAdmin4 to the database: Add New Server → Connection tab → host
@@ -340,3 +340,12 @@ and every signed-up or admin-created account is gone (redo B2 for the seed users
 ## Persistent CS-11/29/27/44 branch
 
 Follow [the isolated review recipe](event-review-run.md) for real-database/API/live-auth/browser checks. It uses Node22, PostgreSQL16, a unique project/volume, loopback ports and locked installs. Existing destructive reset commands in older instructions are **not** required for this implementation verification. The active event BFF has no mock fallback; registration capture, same-record drafts/resubmissions and authorised history are described in [event workflows](event-workflows.md).
+
+
+## Sprint 3 integrated Venue, Safety and notifications — 17 October 2026
+
+The normal Compose stack now starts Equipment and Notification with their own migrated databases and RabbitMQ. [Integration/handoff](sprint3-integration-handoff.md) contains the exchange/queue/bindings, durable outbox/receipt semantics, complete isolated verification command and non-destructive existing-volume upgrade procedure. Follow that procedure when a realm predates the Officer fixture; restarting Keycloak alone does not import a missing user into an existing realm.
+
+The current assigned Coordinator opens the Planning Event to request independent rooms and provide technical requirements. Venue Staff review `/venue`; Technical Support uses `/technical-requests` to review actual inventory, approve and reserve. Approved NOT_REQUIRED is explicit. The Coordinator can send complete current proof for Safety; the Officer uses `/safety-checks`. Record a seven-factor decision, review/correct affected facts through the Coordinator, and create a new round. After current approval, the Coordinator separately confirms and starts Preparation. Venue/Technical staff use `/preparation` to record current-round updates. No actor acquires Officer access through public signup.
+
+All fixture passwords are local synthetic examples. Use configured private credentials in shared environments. Preserve existing volumes and records during upgrades. Q2 remains pending; current request-to-Staff-decision behavior is the documented interim flow.

@@ -11,6 +11,7 @@
     "CONFIRMED": "Confirmed",
     "CANCELLED": "Cancelled",
     "COMPLETED": "Completed",
-    "REJECTED": "Rejected"
+    "REJECTED": "Rejected",
+    "PREPARATION": "Preparation"
   }
 }

@@ -28,7 +28,7 @@ const LIFECYCLE_TYPES = [
 // The expected payload of each type is listed in docs/api-contract.md.
 const PLANNING_TYPES = [
   'BookingRequested', 'BookingDecided', 'VenueUnavailable', 'BufferConflictFlagged',
-  'HoldExpiring', 'HoldExpired', 'SafetyChangesRequested',
+  'HoldExpiring', 'HoldExpired', 'HoldExtensionRequested', 'HoldExtended', 'SafetySubmitted', 'SafetyApproved', 'SafetyEvidenceInvalidated', 'SafetyChangesRequested',
 ];
 const HANDLED = [...LIFECYCLE_TYPES, ...PLANNING_TYPES];
 
@@ -164,6 +164,16 @@ async function planningNotices(message, { notice, name, usersWithRole }) {
     case 'HoldExpired':
       return [notice(p.coordinatorId, 'HOLD_EXPIRED', `Your tentative hold${venue} for ${name} has expired and the slot was released. Check availability and request the venue again.`, VENUE_WORKSPACE, extra)];
 
+    case 'HoldExtensionRequested':
+      return toStaff('VENUE_STAFF','HOLD_EXTENSION_REQUESTED',`An extension was requested for the tentative hold${venue} for ${name}. Please review the active hold.`,VENUE_WORKSPACE);
+    case 'HoldExtended':
+      return [notice(p.coordinatorId,'HOLD_EXTENDED',`Venue Staff extended the tentative hold${venue} for ${name} to ${p.expiresAt}.`,VENUE_WORKSPACE,{...extra,expiresAt:p.expiresAt})];
+    case 'SafetySubmitted':
+      return toStaff('SAFETY_OFFICER','SAFETY_REVIEW_PENDING',`${name} has current arrangements ready for your Safety review.`,p.roundId?`/safety-checks/${p.roundId}`:'/safety-checks');
+    case 'SafetyApproved':
+      return [notice(p.coordinatorId,'SAFETY_APPROVED',`Safety review for ${name} is approved. Confirm the Event when the current arrangements are ready.`,eventLink),notice(p.organiserId,'SAFETY_APPROVED',`Safety review for ${name} is approved. Your Coordinator will confirm the next stage.`,eventLink)];
+    case 'SafetyEvidenceInvalidated':
+      return [notice(p.coordinatorId,'SAFETY_REVIEW_REQUIRED',`Arrangements for ${name} changed. Review the current arrangements before a new Safety submission.`,eventLink)];
     case 'SafetyChangesRequested': {
       // TC-CS51-06: only the areas named in the decision are alerted.
       const areas = Array.isArray(p.areas) ? p.areas : [];
@@ -173,7 +183,7 @@ async function planningNotices(message, { notice, name, usersWithRole }) {
         // Session 3: the Organiser may see the actionable comment, never private notes.
         notice(p.organiserId, 'SAFETY_CHANGES_REQUESTED', `The safety check for ${name} asks for changes. Your Coordinator will follow up.${comment}`, eventLink),
       ];
-      if (areas.includes('EQUIPMENT')) notices.push(...await toStaff('TECHNICAL_SUPPORT_STAFF', 'SAFETY_CHANGES_REQUESTED', `Safety check for ${name} asks for equipment changes.${comment}`, null));
+      if ((areas.includes('EQUIPMENT')||areas.includes('TECHNICAL'))) notices.push(...await toStaff('TECHNICAL_SUPPORT_STAFF', 'SAFETY_CHANGES_REQUESTED', `Safety check for ${name} asks for equipment changes.${comment}`, null));
       if (areas.includes('VENUE')) notices.push(...await toStaff('VENUE_STAFF', 'SAFETY_CHANGES_REQUESTED', `Safety check for ${name} asks for venue changes.${comment}`, VENUE_WORKSPACE));
       return notices;
     }

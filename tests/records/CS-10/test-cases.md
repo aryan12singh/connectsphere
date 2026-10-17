@@ -47,3 +47,8 @@ TC05 additionally validates loss of all recognised roles on the internal session
 | Test Case ID | Scenario | Steps | Expected result | Layer | Date of Creation |
 |---|---|---|---|---|---|
 | TC-CS10-17 | Login cannot natively submit before handlers attach | Render SSR/login with JavaScript disabled, inspect email/password/submit; exercise normal login after hydration | Credentials and submit disabled before mount, normal login works afterward; no native GET of credentials | SSR component + production desktop/mobile | 2026-10-07T02:50:32+00:00 |
+
+
+## Safety Officer login regression — 17 October 2026, 04:11 UTC
+
+TC-CS10-18: a trusted recognized Safety Officer role with safety.view/safety.decide can obtain a sealed BFF session; no backend token appears in the response. Preserve denial of unknown/missing roles and the public signup restriction. The production browser found the omitted BFF role allowlist entry; this H3 regression reproduces the boundary independently.

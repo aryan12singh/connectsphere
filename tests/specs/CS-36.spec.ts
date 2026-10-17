@@ -7,6 +7,21 @@ beforeEach(()=>f.reset())
 afterEach(()=>vi.restoreAllMocks())
 afterAll(async()=>{await api.close()})
 describe('CS-36 — live venue search',()=>{
+  it('TC-CS36-24 omitted search fields use current Event defaults while malformed explicit criteria fail without writes',async()=>{
+    const {event}=await f.eventFixture(),path=`/venue-bookings/events/${event.id}/venue-search`
+    const defaults=await api.booking.http(path,{headers:f.coordinator})
+    expect(defaults.status).toBe(200);expect(defaults.body.criteria).toMatchObject({startAt:event.startAt,endAt:event.endAt,expectedAttendance:80})
+    for(const query of ['startAt=invalid','endAt=invalid','expectedAttendance=abc','expectedAttendance=0']){
+      const r=await api.booking.http(path+'?'+query,{headers:f.coordinator});expect(r.status).toBe(422);expect(r.body.error.fields).toBeTruthy()
+    }
+    expect(f.bookings.listBookings()).toEqual([])
+  })
+  it('TC-CS36-25 Organisers, Attendees and Venue Staff cannot use the assigned Coordinator search boundary',async()=>{
+    const {event}=await f.eventFixture()
+    for(const role of ['EVENT_ORGANISER','ATTENDEE','VENUE_STAFF'])expect((await api.booking.http(`/venue-bookings/events/${event.id}/venue-search`,{headers:{'x-test-user-id':'other','x-test-role':role}})).status).toBe(403)
+    expect(f.bookings.listBookings()).toEqual([])
+  })
+
   it('TC-CS36-03 returns an empty result when no room fits attendance, without under-capacity fallback',async()=>{
     const {event}=await f.eventFixture({expectedAttendance:1000,minimumCapacity:1000})
     await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({capacity:300,facilities:[]})})
@@ -30,7 +45,7 @@ describe('CS-36 — live venue search',()=>{
     const paused=new Promise<void>(resolve=>{reached=resolve}),gate=new Promise<void>(resolve=>{release=resolve})
     vi.spyOn(globalThis,'fetch').mockImplementation(async(url:any,options:any)=>{if(String(url)===api.venue.base+'/internal/venues/'+v.body.id && options?.method==='DELETE'){reached();await gate}return native(url,options)})
     const removing=api.venue.http('/venues/'+v.body.id,{method:'DELETE',headers:f.staff})
-    try{await paused;const updated=await api.venue.http('/venues/'+v.body.id,{method:'PUT',headers:f.staff,body:f.venueInput({version:2,turnaroundMinutes:0,name:'Renamed venue'})});expect(updated.status).toBe(200);release();const r=await removing;expect(r.status).toBe(409);expect(r.body.error.code).toBe('STALE_VENUE');expect((await api.venue.http('/venues/'+v.body.id,{headers:f.staff})).body).toMatchObject({version:3,turnaroundMinutes:0});expect((await api.venue.http('/venues/'+v.body.id,{method:'DELETE',headers:f.staff})).status).toBe(204);expect(f.bookings.getBooking(held.body.id).status).toBe('CONFIRMED')}finally{release();await removing}
+    try{await paused;const updated=await api.venue.http('/venues/'+v.body.id,{method:'PUT',headers:f.staff,body:f.venueInput({version:2,turnaroundMinutes:0,name:'Renamed venue'})});expect(updated.status).toBe(409);expect(updated.body.error.code).toBe('VENUE_MAINTENANCE_PENDING');release();const r=await removing;expect(r.status).toBe(204);expect((await api.venue.http('/venues/'+v.body.id,{headers:f.staff})).status).toBe(404);expect(f.bookings.getBooking(held.body.id).status).toBe('CONFIRMED')}finally{release();await removing}
   })
   it('TC-CS36-22 legitimate deletion against a historical shorter-turnaround snapshot ignores the old booking snapshot',async()=>{
     const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()})

@@ -603,3 +603,18 @@ describe('CS-10 — TC-CS10-17 credential form hydration safety', () => {
     expect((container.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(true)
   })
 })
+
+it('TC-CS10-18 the recognized Safety Officer can obtain a sealed BFF session without exposing its token',async()=>{
+ vi.stubGlobal('defineEventHandler',defineEventHandler);vi.stubGlobal('readBody',readBody);vi.stubGlobal('createError',createError)
+ const seal=vi.fn();vi.stubGlobal('setUserSession',seal)
+ const {MOCK_USERS}=await import('../../frontend/server/utils/mockUserDb')
+ MOCK_USERS.push({id:'officer-login-regression',email:'officer-regression@example.test',passwordHash:'Password123!',firstName:'Safety',lastName:'Officer',role:'SAFETY_OFFICER',createdAt:'2026-10-17T00:00:00Z',company:'ConnectSphere'})
+ try{
+  const {default:handler}=await import('../../frontend/server/api/auth.post')
+  const app=createApp();app.use('/api/auth',handler)
+  const response=await toWebHandler(app)(new Request('http://localhost/api/auth',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'officer-regression@example.test',password:'Password123!'})}))
+  expect(response.status).toBe(200)
+  const result=await response.json();expect(result.user).toMatchObject({role:'SAFETY_OFFICER',permissions:['safety.view','safety.decide']});expect(result).not.toHaveProperty('token')
+  expect(seal).toHaveBeenCalledOnce()
+ }finally{MOCK_USERS.pop();vi.unstubAllGlobals()}
+})

@@ -15,7 +15,7 @@ function factors(room:SafetyVenue) {
     ['Attendance and capacity',attendance(room)],
     ['Layout',text(room.layout)],
     ['Emergency access',text(room.emergencyAccess)],
-    ['Accessibility requirements',room.accessibilityNeeds?.length?room.accessibilityNeeds.join(', '):'None recorded'],
+    ['Accessibility requirements',[room.accessibilityNeeds?.length?room.accessibilityNeeds.join(', '):'None recorded',room.accessibilityDetails].filter(Boolean).join(' · ')],
     ['Equipment placement',text(room.equipmentPlacement)],
     ['Crowd movement',text(room.crowdMovement)],
     ['Venue restrictions',text(room.restrictions)],
@@ -24,9 +24,10 @@ function factors(room:SafetyVenue) {
 </script>
 <template>
   <section aria-label="Safety review factors" class="grid gap-4">
+    <p v-if="props.snapshot.eventStartAt" class="text-sm">Submitted Event interval: {{ new Date(props.snapshot.eventStartAt).toLocaleString() }} – {{ new Date(props.snapshot.eventEndAt || '').toLocaleString() }} · {{ props.snapshot.timeZone }}</p>
     <p v-if="!props.snapshot.venues.length" class="text-sm text-muted-foreground">No venue arrangements are available for review.</p>
     <article v-for="room in props.snapshot.venues" :key="room.bookingId" :data-safety-booking="room.bookingId" class="rounded-2xl border border-border p-4">
-      <h3 class="font-semibold">{{ room.venueName }}</h3>
+      <h3 class="font-semibold">{{ room.venueName }}</h3><p v-if="room.bookingStartAt" class="mt-1 text-sm">Booked: {{ new Date(room.bookingStartAt).toLocaleString() }} – {{ new Date(room.bookingEndAt || '').toLocaleString() }}</p><p v-if="room.venueRequirements" class="mt-1 whitespace-pre-wrap text-sm">Event venue requirements: {{ room.venueRequirements }}</p>
       <p v-if="exceeds(room)" role="alert" class="mt-2 text-sm font-medium text-destructive">Attendance exceeds capacity. This room needs attention.</p>
       <dl class="mt-3 grid gap-3 sm:grid-cols-2">
         <div v-for="[label,value] in factors(room)" :key="label"><dt class="text-sm font-medium">{{ label }}</dt><dd class="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground">{{ value }}</dd></div>
@@ -37,7 +38,7 @@ function factors(room:SafetyVenue) {
       <p v-if="props.snapshot.equipmentStatus === 'UNVERIFIED'" class="mt-1 text-muted-foreground">Equipment approval has not been verified.</p>
       <p v-else-if="props.snapshot.equipmentStatus === 'NOT_REQUIRED'" class="mt-1">Equipment is explicitly marked not required.</p>
       <ul v-else-if="props.snapshot.equipment?.length" class="mt-1 list-disc pl-5"><li v-for="(item,index) in props.snapshot.equipment" :key="index">{{ item.label }} · {{ item.quantity }}</li></ul>
-      <p v-else class="mt-1 text-muted-foreground">The approved equipment list is not available.</p>
+      <p v-else-if="Array.isArray(props.snapshot.equipment)" class="mt-1">Technical Support approval verified. No portable equipment is requested.</p><p v-else class="mt-1 text-muted-foreground">The approved equipment list is not available.</p><p v-if="props.snapshot.technicalProof?.supportRequired" class="mt-3 whitespace-pre-wrap">Support plan: {{ props.snapshot.technicalProof.supportDetails }}</p><dl v-if="props.snapshot.technicalProof?.coverageResolution?.entries.length" class="mt-3 grid gap-3"><div v-for="item in props.snapshot.technicalProof.coverageResolution.entries" :key="item.need"><dt class="font-medium">{{ item.need }} · {{ item.mode==='SUPPORT_ONLY'?'Support only':item.equipmentTypes.join(', ') }}</dt><dd class="whitespace-pre-wrap text-muted-foreground">{{ item.note }}</dd></div></dl>
     </div>
   </section>
 </template>

@@ -59,3 +59,26 @@ Source: `docs/session3-decisions.md`, rows26/17/46/47/49/51. Earlier expected au
 | --- | --- | --- | --- | --- | --- |
 | TC-CS95-28 | Coordinator-directed rework | Current readiness without recorded Coordinator review | Try resubmit; provide matching review round/revision | Blocked without review; enabled only with current proof; no automatic approval-reset claim | Nuxt component |
 | TC-CS95-29 | Organiser feedback privacy | Feedback includes internal notes and arrangements | Render Organiser audience | Only outcome and actionable reason; no private notes/internal arrangements/actions | Nuxt component |
+
+### TC-CS95-40 — Current Event-detail correction and rework
+Date of Creation: 2026-10-17T03:22:00Z
+Preconditions: authenticated real database-backed stack with an approved required venue and a decided Safety round.
+Steps: record Coordinator review; correct source Event description/support needs; inspect old proof; submit/review new technical version; record current review; submit and approve next Safety round.
+Expected: correction persists with history, old technical proof cannot authorize submission, fresh current proof and Coordinator review permit a new immutable round, and confirmation/Preparation remain gated.
+
+### TC-CS95-42 — Reject the arrangement and require revised evidence
+Date of Creation: 2026-10-17T03:41:00Z
+Steps: Officer rejects one identified approved room; Coordinator records review; attempt unchanged resubmission; Venue Staff record corrected facts; Coordinator reviews current proof; resubmit and approve.
+Expected: unchanged rejected evidence cannot create a new round, the booking and unrelated approvals remain attached, and a corrected current room proof permits a new immutable round.
+
+
+## Integrated acceptance additions — 2026-10-17T03:53:21+00:00
+
+These cases supplement the preserved earlier specifications. Current contracts and the Session 3/PO precedence remain authoritative. Browser IDs can cover several linked story assertions; matching numeric suffixes in the shared sheet do not imply identical scenarios.
+
+| Test Case ID | Requirement / expected result | Execution layer and precondition |
+|---|---|---|
+| TC-CS95-40 | Recorded Coordinator source correction invalidates old technical proof; revised support approval and fresh review allow a new Safety round. | Actual authenticated Kong + source-owned PG/resource boundaries. |
+| TC-CS95-41 | Current Coordinator sees feedback, records next action and factual rework, resubmits round2, confirms, separately starts Preparation; Venue Staff records a booking/round-scoped note. | Production desktop/mobile UI plus actual immutable snapshot and preparation PG records. |
+| TC-CS95-42 | A specifically rejected venue cannot resubmit unchanged after review; actual Staff fact correction and fresh Coordinator review permit a new immutable round. | Actual authenticated Kong/PG/resource boundaries. |
+| TC-CS95-43 | Metadata/version/name changes, same-room recreation, a hidden unchanged same-venue session, partial multi-room correction and set ordering cannot bypass scoped rejection. | Actual Event view module with isolated source/resource adapters. Eight positive/negative controls, no live acceptance claim. |

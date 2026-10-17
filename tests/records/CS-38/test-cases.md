@@ -65,3 +65,18 @@ The cases below preserve current scope and original source assertions. Date of C
 | TC-CS38-19 | AC3/6: current venue after queue wait | PostgreSQL queue at A waits behind a supported room move to B | Move wins lock; Staff reads A tentative queue | Moved booking omitted; all original filters reapply to current rows | 2026-10-13T19:07:55+08:00 |
 
 TC-CS38-18: Staff sees the Coordinator request and approves its exact deadline with a reason; no free-form unrequested extension control. Team policy agreed 14 October 2026.
+
+
+## Decision reason boundary — 17 October 2026, 03:54 UTC
+
+TC-CS38-20: use the PM sheet's proposed 500-character decision-reason limit as an engineering default. Whitespace and 501 trimmed characters return422 without booking/history/version changes; 1 and500 pass. This is an internal validation decision, not a new customer answer. Actual HTTP handler evidence is separate from real PG and browser acceptance.
+
+
+## 17 October shared-Sheet evidence reconciliation
+
+Existing customer intent is preserved. Logical draft fields/statuses are reconciled with the operative contract; examples do not create a second reservation or acceptance claim. Date of Creation: 2026-10-17T12:24:00+08:00.
+
+| Test Case ID | Scenario / AC | Preconditions | Steps | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS38-21 | Decision AC: Venue Staff authorization | One current active hold | Attempt decision as Organiser, Coordinator and Attendee | 403; held status/version unchanged | Actual service HTTP with isolated repository fixtures | 2026-10-17T12:24:00+08:00 |
+| TC-CS38-22 | Decision AC: terminal rejection | Reject a hold at version1 | Approve rejected request with its fresh version2 | 409; remains REJECTED/version2 without reopening a hold | Actual service HTTP with isolated repository fixtures | 2026-10-17T12:24:00+08:00 |

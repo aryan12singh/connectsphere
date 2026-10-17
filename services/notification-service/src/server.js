@@ -9,3 +9,9 @@ const server = app.listen(config.port, (error) => {
   }
   console.log(`notification-service listening on port ${server.address().port}`);
 });
+
+const consumer=require('./consumer').start();
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,async()=>{
+ await consumer?.stop();
+ server.close(()=>process.exit(0));
+});

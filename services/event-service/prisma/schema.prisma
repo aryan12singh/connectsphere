@@ -44,6 +44,7 @@ enum EventRequestStatus {
 }
 
 enum EventStatus {
+  PREPARATION
   ARRANGEMENT_PENDING // shown as "Planning"
   CONFIRMED
   CANCELLED // closed
@@ -148,6 +149,14 @@ model Event {
   status         EventStatus @default(ARRANGEMENT_PENDING)
   version        Int         @default(1)
 
+  safetyState String @default("NOT_SUBMITTED")
+  safetyGeneration Int @default(0)
+  safetyToken String?
+  safetyRoundId String?
+  safetyOperation Json?
+  safetyRework Json?
+  safetyRounds SafetyRound[]
+
   confirmedById String?
   confirmedAt   DateTime? @db.Timestamptz(3)
   cancelledById String?
@@ -223,6 +232,9 @@ model Outbox {
   createdAt     DateTime  @default(now()) @db.Timestamptz(3)
   publishedAt   DateTime? @db.Timestamptz(3)
   attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now()) @db.Timestamptz(3)
+  lastError     String?
+  suppressedAt DateTime? @db.Timestamptz(3)
 
   @@map("outbox")
 }
@@ -242,4 +254,49 @@ model IdempotencyRecord {
 
   @@unique([userId, key, method, path])
   @@map("idempotency_records")
+}
+
+model SafetyRound {
+  id String @id @default(uuid())
+  eventId String
+  event Event @relation(fields:[eventId],references:[id])
+  number Int
+  token String @unique
+  generation Int
+  requirementsRevision String
+  snapshot Json
+  status String @default("PENDING")
+  submittedById String
+  submittedAt DateTime @default(now()) @db.Timestamptz(3)
+  decision SafetyDecision?
+  @@unique([eventId,number])
+  @@index([status,submittedAt])
+  @@map("safety_rounds")
+}
+model SafetyDecision {
+  id String @id @default(uuid())
+  roundId String @unique
+  round SafetyRound @relation(fields:[roundId],references:[id])
+  officerId String
+  outcome String
+  reason String
+  privateNotes String
+  areas String[]
+  rejectedBookingIds String[]
+  checklist Json
+  decidedAt DateTime @default(now()) @db.Timestamptz(3)
+  @@map("safety_decisions")
+}
+model PreparationUpdate {
+  roundId String?
+  safetyToken String?
+  bookingId String?
+  id String @id @default(uuid())
+  eventId String
+  actorId String
+  area String
+  note String
+  occurredAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([eventId,occurredAt])
+  @@map("preparation_updates")
 }

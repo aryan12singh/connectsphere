@@ -1,6 +1,6 @@
 // Roles constrain actions even when an editable capability is granted.
 // Identity and capabilities come from auth-service; callers cannot choose them.
-const ROLES = Object.freeze(['EVENT_ORGANISER', 'EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF', 'ATTENDEE']);
+const ROLES = Object.freeze(['EVENT_ORGANISER', 'EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF', 'ATTENDEE', 'SAFETY_OFFICER']);
 const PUBLIC_ROLES = Object.freeze(['EVENT_ORGANISER', 'ATTENDEE']);
 const INTERNAL_ROLES = Object.freeze(['EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF']);
 const ACTION_ROLES = Object.freeze({
@@ -11,7 +11,14 @@ const ACTION_ROLES = Object.freeze({
   'audit.view': ['TECHNICAL_SUPPORT_STAFF'],
   'event_requests.create': ['EVENT_ORGANISER'],
   'event_requests.review': ['EVENT_COORDINATOR'],
-  'events.view': ROLES,
+  'events.view': ROLES.filter(role=>role!=='SAFETY_OFFICER'),
+  'safety.view':['SAFETY_OFFICER'],
+  'safety.decide':['SAFETY_OFFICER'],
+  'safety.submit':['EVENT_COORDINATOR'],
+  'safety.rework':['EVENT_COORDINATOR'],
+  'technical.view':['EVENT_COORDINATOR','TECHNICAL_SUPPORT_STAFF'],
+  'technical.submit':['EVENT_COORDINATOR'],
+  'technical.review':['TECHNICAL_SUPPORT_STAFF'],
   'events.confirm': ['EVENT_COORDINATOR'],
   'venues.view': INTERNAL_ROLES,
   'venues.manage': ['VENUE_STAFF'],

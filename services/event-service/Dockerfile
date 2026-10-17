@@ -16,6 +16,7 @@ RUN npx prisma generate
 
 COPY event-service/src ./src
 COPY utils ./utils
+ENV SERVICE_UTILS_PATH=/app/utils
 
 # Apply any pending migrations, then start. `migrate deploy` only runs
 # migrations already committed in prisma/migrations — it never creates new ones.

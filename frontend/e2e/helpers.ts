@@ -13,6 +13,7 @@ export const emails = {
   coordinator: 'aisha.rahman@connectsphere.sg',
   staff: 'ravi.kumar@marinaconvention.sg',
   support: 'hafiz.ismail@connectsphere.sg',
+  officer:'alex.chen@connectsphere.sg',
   multi: 'priya.raman@greenleaf.org.sg',
 }
 

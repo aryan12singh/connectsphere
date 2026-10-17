@@ -1,6 +1,6 @@
 # Venue and booking model
 
-Updated 14 October 2026 on `feat/aryan-sprint3-venue-safety`, after integrating main `52687d2` and the subsequent PO buffer clarification. Schemas and additive migrations below are the implementation source of truth. The files under `docs/erd` remain historical logical drafts. CS-74 still requires another developer's review; CS-77 owns the reviewed cross-service contract.
+Updated 17 October 2026 on `feat/aryan-sprint3-venue-safety`, after integrating main `52687d2` and the subsequent PO buffer clarification. Schemas and additive migrations below are the implementation source of truth. The files under `docs/erd` remain historical logical drafts. CS-74 still requires another developer's review; CS-77 owns the reviewed cross-service contract.
 
 ## Authoritative schemas
 
@@ -88,11 +88,13 @@ Search compares independent room attendance, parent minimum capacity where appli
 
 All non-cancelled required room arrangements must be approved for the current requirements and free of current suitability/conflict flags for `venueReady`. No capacities are summed and venue readiness does not confirm the parent Event. Physical/hybrid capacity remains positive; virtual capacity/layout may be inapplicable. Opening schedules still reject overnight hours; missing/closed days exclude the occupied interval. Human displays retain IANA timezones and API instants require explicit offsets.
 
-## Remaining release boundaries
+## Current integration and release boundaries
 
-[Session 3 customer answers](session3-decisions.md), subsequent PO direction and agreed team policies are recorded in the [policy register](venue-policy-decisions.md). Only the Coordinator hold-confirmation action remains pending customer clarification. Hold creation derives the agreed 72-hour deadline capped at setup when omitted; explicitly invalid/past values are rejected. CS-50/51 must relay/consume booking intent and deliver actual notifications. CS-90 must integrate the expiry/reminder scheduler; the [PostgreSQL spike](hold-expiry.md) remains test-only.
+The 17 October branch now implements the real Booking/Event outbox relays, durable RabbitMQ delivery/notification receipts, deadline worker, Officer capabilities, Equipment inventory/coverage/reservations, Event-owned immutable Safety rounds and Preparation. Older main-only or UI-only statements in dated reports remain historical. [Integration handoff](sprint3-integration-handoff.md) records exact contracts, engineering defaults and Q2; [architecture](connectsphere-architecture.md) includes the current container/domain/persistence views.
 
-Safety roles and technical/support readiness proof are not present on main. CS-10/42/77 and CS-93/94/95 must agree and deliver those boundaries before a full Safety queue or preparation transition. No empty equipment list is treated as proof of technical approval.
+Venue maintenance now persists an owner-side `venues.maintenance` JSON pending fence before Booking checks. Exact-token apply/resume/cancel and an atomic completion hash/receipt guard all catalogue/hour/deletion paths. Booking and Equipment persist their own readiness fences. Current proof cannot advance through an uncertain owner mutation. Additive schemas/migrations in each owning service are authoritative; no cross-database foreign keys are introduced. Only test/evidence tools read multiple databases, never runtime services.
+
+Only the Coordinator request-confirmation policy Q2 is pending a PO answer. Human model review, peer code review, merge/main CI and manual/PO acceptance remain release gates. Bounded peer integration here does not close another owner's whole story or imply team adoption.
 
 See [BFF routes](frontend-bff-venue-booking.md), [phase delivery and validation](devlogs/2026-10-13-venue-workflows.md), and the existing [Sprint 2 evidence](sprint2/evidence-log.md). This model update does not establish independent review, PO acceptance or story closure.
 

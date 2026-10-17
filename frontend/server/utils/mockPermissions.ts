@@ -5,9 +5,10 @@
 import type { BackendRole } from './mockUserDb'
 
 export const MOCK_ROLE_PERMISSIONS: Record<BackendRole, string[]> = {
-  TECHNICAL_SUPPORT_STAFF: ['audit.view', 'permissions.manage', 'settings.manage', 'users.manage', 'users.view'],
+  SAFETY_OFFICER: ['safety.view', 'safety.decide'],
+  TECHNICAL_SUPPORT_STAFF: ['technical.view', 'technical.review', 'venues.view', 'audit.view', 'permissions.manage', 'settings.manage', 'users.manage', 'users.view'],
   EVENT_ORGANISER: ['event_requests.create', 'events.view', 'messages.send'],
-  EVENT_COORDINATOR: ['event_requests.review', 'events.confirm', 'events.view', 'messages.send', 'venue_bookings.create', 'venues.view'],
+  EVENT_COORDINATOR: ['safety.submit', 'safety.rework', 'technical.submit', 'technical.view', 'event_requests.review', 'events.confirm', 'events.view', 'messages.send', 'venue_bookings.create', 'venues.view'],
   VENUE_STAFF: ['events.view', 'messages.send', 'venue_bookings.decide', 'venues.manage', 'venues.view'],
   ATTENDEE: ['attendance.register', 'events.view'],
 }

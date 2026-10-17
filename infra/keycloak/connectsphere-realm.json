@@ -362,6 +362,22 @@
           "manage-realm"
         ]
       }
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000031",
+      "username": "alex.chen@connectsphere.sg",
+      "email": "alex.chen@connectsphere.sg",
+      "firstName": "Alex",
+      "lastName": "Chen",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Alex@CS31!",
+          "temporary": false
+        }
+      ]
     }
   ]
 }

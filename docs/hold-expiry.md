@@ -1,11 +1,6 @@
 # Hold expiry and occupied-window foundations
 
-CS-78 technical spike and CS-85 domain foundation, initially 9 October 2026;
-integration updates 12–13 October. The research worker below still uses disposable
-PostgreSQL tables. Production requests, decisions, extensions, search, calendar
-and readiness now persist/use buffers, versions and deadlines. The production
-expiry/reminder scheduler (CS-90) and actual notification delivery remain pending;
-see the [agreed policies](venue-policy-decisions.md).
+CS-78 technical spike and CS-85 domain foundation, initially9 October2026; current integration17 October2026. Production requests, decisions, extensions, search, calendar and readiness persist buffers, versions and deadlines. The Booking deadline worker now persists warning/expiry activity and outbox intent, with actual RabbitMQ/notification inbox delivery. [Integration/handoff](sprint3-integration-handoff.md) records the current worker, broker and exact verification command. The research worker below remains an isolated PostgreSQL proof, not the production scheduler. See the [policy register](venue-policy-decisions.md) for defaults, setup cap, extension authorization and Q2.
 
 ## Reusable domain code
 
@@ -70,9 +65,7 @@ schema only when this invocation created it.
 | Release/notice intent | Expiry updates the row and inserts `booking:version:HOLD_EXPIRED` in one transaction. A rejecting SQL constraint rolls back the transition and leaves a retryable claim. |
 | Restart/catch-up | Disconnect/reconnect uses the same schema without reseeding. Deadline/lease survive and the expired row is already excluded on read; the resumed worker produces one expiry action. |
 
-The action table proves durable intent, not message delivery. CS-90 must integrate
-the actual booking/activity/outbox schema reviewed in CS-77; CS-50/51 must deliver
-in-app notices using a stable deduplication key. Delivery consumers must also be
+The prototype action table proves durable intent, not message delivery. The current production Booking worker uses its actual booking/activity/outbox schema, and the integrated relays/consumer deliver in-app notices with stable outbox IDs. These have separate actual broker/PG acceptance records; the prototype alone does not prove them. Delivery consumers must also be
 idempotent. Email is optional under the present channel decision.
 
 For integration choose an agreed polling interval, worker batch/lease configuration

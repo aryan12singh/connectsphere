@@ -32,3 +32,35 @@ Contract alignment: requests use the distinct Planning Event ID; pending venue s
 ## Session 3 fixture reconciliation — 14 October 2026
 
 Customer rows4/6 prohibit later buffer edits. Regression fixtures requiring old inconsistent buffer/booking snapshots now seed explicit isolated historical data; they do not exercise or endorse a public post-confirmation buffer edit. Recheck, conflict, immutability and deletion assertions remain. CS-36-23 now verifies deletion CAS using permitted name maintenance. The new buffer denial/fence cases are TC-CS84-31 through34. Dated earlier execution records are unchanged.
+
+## Notification integration — 17 October 2026
+
+| Test Case ID | Scenario | Preconditions and steps | Expected result | Required layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- |
+| TC-CS39-20 | Durable booking notification context | Create a real Planning Event and venue; request a hold; inspect its transactional intent; retry an overlapping request | Real request ID, organiser, current Coordinator, Event/venue names and timestamp saved together; rejected action creates no extra booking or message | Real HTTP / isolated repositories | 2026-10-17T10:28:00+08:00 |
+
+| TC-CS39-21 | Consumer current-booking projection | Create a hold, read notification context without/with internal key | Unauthorized denied; authorized response contains current identity/status/deadline/version/flags and no private reason | Real HTTP / isolated repositories | 2026-10-17T10:40:00+08:00 |
+| TC-CS39-22 | Reassignment privacy at delivery | Queue a rejected-booking decision naming a former Coordinator; source projection names current Coordinator | Only current Coordinator and owner receive it; staff reason withheld from Organiser | Consumer / real repository with isolated source projection | 2026-10-17T10:40:00+08:00 |
+
+| TC-CS39-23 | Real booking to broker to persisted inbox | Disposable PG/RabbitMQ/Kong/Keycloak stack; real account login, submit/approve request, create venue/hold and same-key replay | One transactional intent; corresponding stable message ID arrives in Staff inbox and notification DB exactly once | Real authentication, HTTP, PG16 and AMQP | 2026-10-17T10:46:00+08:00 |
+
+| TC-CS39-24 | Poison envelope validation | Deliver a message whose payload is an array | 422 and no receipt or inbox write | Delivery boundary | 2026-10-17T10:42:00+08:00 |
+
+| TC-CS39-25 | Superseded queued actions | Current source assignment differs from queued assignment; latest rejected booking decision is a later generation | Neither old action is delivered with invented/current replacement facts or an obsolete reason | Consumer / independently controlled HTTP source | 2026-10-17T10:45:00+08:00 |
+| TC-CS39-26 | Actual hold expiry notice | Create a real five-second hold and wait for expiry on the isolated production stack | Current Coordinator receives one HOLD_EXPIRED; equipment untouched | Real authentication, HTTP, PG16 and AMQP worker | 2026-10-17T10:45:00+08:00 |
+
+| TC-CS39-27 | Concurrent reassignment during duplicate delivery | Two deliveries resolve different current owners before either saves | Only one delivery claims the message; one Staff recipient, one processed and one duplicate result | Real delivery/repository race | 2026-10-17T10:46:00+08:00 |
+
+### TC-CS39-28 — Safety domain message routing and privacy
+Date of Creation: 2026-10-17T03:17:00Z
+Steps: deliver SafetySubmitted and SafetyChangesRequested with TECHNICAL area through actual notification templates and active-role directory adapter.
+Expected: Officer receives current-round link; Technical Support receives applicable feedback; private Safety notes never appear.
+
+
+## Integrated acceptance additions — 2026-10-17T03:53:21+00:00
+
+These cases supplement the preserved earlier specifications. Current contracts and the Session 3/PO precedence remain authoritative. Browser IDs can cover several linked story assertions; matching numeric suffixes in the shared sheet do not imply identical scenarios.
+
+| Test Case ID | Requirement / expected result | Execution layer and precondition |
+|---|---|---|
+| TC-CS39-31 | Actual outage and producer restart retain the outbox intent; confirmed retry creates one inbox item; replay is deduplicated; unroutable publish fails; malformed payload goes to DLQ. | Actual disposable Kong, Keycloak, PostgreSQL and RabbitMQ; opt-in CS_BUS_FAULT_ACCEPTANCE=1. |

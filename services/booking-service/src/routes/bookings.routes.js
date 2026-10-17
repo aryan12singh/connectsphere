@@ -147,7 +147,7 @@ router.post('/', auth, createPermission, async (req, res) => {
 router.put('/:id/decision',auth,operationalBlockPermission,async(req,res)=>{
   const body=req.body || {},errors={};
   if (!['CONFIRMED','REJECTED'].includes(body.status)) errors.status=['Choose approval or rejection'];
-  if (!text(body.reason)) errors.reason=['Decision reason is required'];
+  if (!text(body.reason)||text(body.reason).length>500) errors.reason=['Use a decision reason of 1–500 characters'];
   if (Object.keys(errors).length) return validationError(res,errors);
   return res.json(await workflows.decision(req,req.params.id,body));
 });

@@ -12,6 +12,8 @@ app.use(express.json({ limit: '10kb' }));
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/internal', require('./routes/internal.routes'));
 
+app.use('/',require('./routes/safety.routes'));
+
 app.use('/event-requests', require('./routes/event-requests.routes'));
 app.use('/events', require('./routes/events.routes'));
 app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } }));

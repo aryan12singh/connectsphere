@@ -100,7 +100,7 @@ async function activeCounts() {
   const rows = config.dataMode === 'memory' ? [...memory.requests.values()] : await prisma.eventRequest.findMany({ include: { event: true } });
   const counts = {};
   for (const row of rows) {
-    const active = row.status === 'SUBMITTED' || row.status === 'RETURNED_FOR_AMENDMENT' || (row.status === 'APPROVED' && ['ARRANGEMENT_PENDING', 'CONFIRMED'].includes(row.event?.status));
+    const active = row.status === 'SUBMITTED' || row.status === 'RETURNED_FOR_AMENDMENT' || (row.status === 'APPROVED' && ['ARRANGEMENT_PENDING', 'CONFIRMED', 'PREPARATION'].includes(row.event?.status));
     if (active && row.currentCoordinatorId) counts[row.currentCoordinatorId] = (counts[row.currentCoordinatorId] || 0) + 1;
   }
   return counts;

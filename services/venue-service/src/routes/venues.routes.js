@@ -43,6 +43,9 @@ router.post('/', auth, manage, async (req, res) => {
   return res.status(201).json(venue);
 });
 
+router.get('/:id/maintenance',auth,manage,async(req,res)=>res.json({operation:await require('../maintenance').pending(req.params.id)}));
+router.post('/:id/maintenance/resume',auth,manage,async(req,res)=>{if(typeof req.body?.operationId!=='string')return validationError(res,{operationId:['Current operation required']});return res.json(await require('../maintenance').resume(req.params.id,req.body.operationId));});
+router.post('/:id/maintenance/cancel',auth,manage,async(req,res)=>{if(typeof req.body?.operationId!=='string')return validationError(res,{operationId:['Current operation required']});return res.json(await require('../maintenance').cancel(req.params.id,req.body.operationId));});
 router.get('/:id/legacy-buffer-context',auth,manage,async(req,res)=>res.json(await bookingClient.legacyBuffers(req.params.id)));
 router.get('/:id/buffer-status',auth,manage,async(req,res)=>{
   const venue=await store.getVenue(req.params.id);
@@ -79,7 +82,7 @@ router.put('/:id/operating-hours', auth, manage, async (req, res) => {
   const hours = req.body?.items ?? req.body;
   if (!text(req.body?.reason)) return validationError(res, { reason: ['Reason is required'] });
   if (req.body?.version!==undefined && (!Number.isSafeInteger(req.body.version)||req.body.version<1)) return validationError(res,{version:['Use the current venue version']});
-  return res.json({ venueId: venue.id, timeZone: venue.timeZone, items: await store.setOperatingHours(venue.id, hours, req.actor, req.body?.reason || 'Operating hours updated',req.body?.version) });
+  return res.json({ venueId: venue.id, timeZone: venue.timeZone, items: await bookingClient.maintenance(venue.id,{items:hours,reason:req.body.reason,version:req.body.version},req.actor,'HOURS') });
 });
 
 router.get('/:id', auth, view, async (req, res) => {
@@ -99,7 +102,7 @@ router.put('/:id', auth, manage, async (req, res) => {
     if(!Number.isSafeInteger(input.version)||input.version<1)return validationError(res,{version:['Current venue version is required']});
     return res.json(await bookingClient.legacyBuffers(venue.id,{input,actor:{id:req.actor.id,role:req.actor.role}},'buffer-fence-recovery'));
   }
-  return res.json(await store.replaceVenue(venue.id, input, req.actor));
+  return res.json(await bookingClient.maintenance(venue.id,input,req.actor));
 });
 
 router.delete('/:id', auth, manage, async (req, res) => {

@@ -90,6 +90,123 @@ erDiagram
 
 User/Organisation relations are within user_db; Session.userId is a logical reference in auth_db. Multi-role grants and organisation models already existed; the repair fills their runtime behavior. Only `venues.view` is added for Technical Support by a new migration. Venue operating-hour ordering adds validation without schema changes. The BFF-selected role lives in the sealed cookie and does not add a database field or an authority source.
 
+## Integrated Sprint 3 views — 17 October 2026
+
+These views describe the implemented branch. Confirmation routes to Event; the proposed generic orchestrator remains outside this flow. Each runtime service reads only its own database. Arrows between service databases below are logical source IDs, not cross-database joins or foreign keys.
+
+```mermaid
+flowchart LR
+  People[Coordinator / Venue Staff / Technical Support / Officer / Organiser] --> UI[Nuxt role surfaces]
+  UI --> BFF[Sealed-cookie BFF]
+  BFF --> Kong[Kong public routes]
+  Kong --> Event[Event: Safety / lifecycle]
+  Kong --> Booking[Booking: room / deadline / fences]
+  Kong --> Equipment[Equipment: approval / coverage / stock]
+  Kong --> Venue[Venue: facts / maintenance / rollout]
+  Kong --> Notification[Notification: permitted inbox]
+  Event -->|private current proof and prepare/release| Booking
+  Event -->|private current proof and prepare/release| Equipment
+  Booking -->|current Event authority| Event
+  Equipment -->|current Event authority| Event
+  Venue -->|serialized checked maintenance| Booking
+  Booking -->|exact-token private apply| Venue
+  Event --> EDB[(event_db)]
+  Booking --> BDB[(booking_db)]
+  Equipment --> QDB[(equipment_db)]
+  Venue --> VDB[(venue_db)]
+  EDB -. outbox relay .-> Rabbit[RabbitMQ durable topic / queue / DLQ]
+  BDB -. outbox relay .-> Rabbit
+  Rabbit -->|manual ACK after storage| Notification
+  Notification -->|fresh owner / lifecycle / round / deadline| Event
+  Notification -->|fresh decision / flags| Booking
+  Notification --> NDB[(notification_db inbox / receipts)]
+```
+
+```mermaid
+classDiagram
+  class Event {
+    id
+    eventRequestId
+    safetyState
+    safetyToken
+    safetyGeneration
+  }
+  class SafetyOperation {
+    actorId
+    key
+    originalVersion
+    token
+    phase
+  }
+  class SafetyRound {
+    number
+    requirementsRevision
+    immutableSnapshot
+    status
+  }
+  class SafetyDecision {
+    officerId
+    checklist
+    actionableReason
+    privateNotes
+    rejectedBookingIds
+  }
+  class PreparationUpdate {
+    area
+    bookingId
+    roundId
+    safetyToken
+    note
+  }
+  class ResourceFence {
+    exactToken
+    currentSourceRevision
+  }
+  Event "1" --> "0..1" SafetyOperation : durable JSON state
+  Event "1" --> "0..*" SafetyRound
+  SafetyRound "1" --> "0..1" SafetyDecision
+  Event "1" --> "0..*" PreparationUpdate
+  SafetyRound ..> ResourceFence : logical exact-token proof
+```
+
+```mermaid
+erDiagram
+  EVENT ||--o{ SAFETY_ROUND : immutable_history
+  SAFETY_ROUND ||--o| SAFETY_DECISION : one_outcome
+  EVENT ||--o{ PREPARATION_UPDATE : current_or_historical
+  VENUE {
+    string id PK
+    json maintenance_pending_or_completed_receipt
+  }
+  TECHNICAL_REQUEST ||--o{ EQUIPMENT_RESERVATION : current_stock
+  TECHNICAL_REQUEST {
+    string id PK
+    string requirementsRevision
+    json coverageResolution
+  }
+  EVENT_OUTBOX {
+    string id PK
+    datetime deliveredAt
+    int attempts
+  }
+  BOOKING_OUTBOX {
+    string id PK
+    datetime deliveredAt
+    int attempts
+  }
+  MESSAGE_RECEIPT {
+    string messageId PK
+    string status
+  }
+  NOTIFICATION {
+    string id PK
+    string sourceMessageId
+    string recipientId
+  }
+```
+
+Event tables live in `event_db`; Venue maintenance JSON in `venue_db`; technical requirements/coverage JSON and reservation rows in `equipment_db`; Booking outbox/fences in `booking_db`; receipt/inbox in `notification_db`. Receipt/message uniqueness handles at-least-once replay; a delivery marker follows a publisher confirm. Numbered snapshots and decisions have database immutability triggers. Full columns and local relations are in each service's Prisma schema and additive migrations; historical `docs/erd` drafts do not override them.
+
 ## Historical proposed architecture
 
 ## The pattern

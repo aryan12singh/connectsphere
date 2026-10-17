@@ -10,6 +10,9 @@ export interface OperatingHour {
 
 export interface VenueFormState {
   name: string
+  emergencyAccess?: string|null
+  crowdMovement?: string|null
+  restrictions?: string|null
   address: string
   capacity: number | string
   setupMinutes: number | string
@@ -59,7 +62,7 @@ export function applyOperatingSchedule(hours: OperatingHour[], weekdays: string[
 
 export function createVenueForm(input: Partial<VenueFormState> = {}): VenueFormState {
   const form: VenueFormState = {
-    name: '',
+    name: '',emergencyAccess:'',crowdMovement:'',restrictions:'',
     address: '',
     capacity: '',
     setupMinutes: 0,
@@ -86,6 +89,9 @@ export function venuePayload(form: VenueFormState, fallbackManagedById: string) 
   const minutes = (value: number | string) => typeof value === 'string' ? value.trim() ? Number(value) : null : value
   return {
     name: form.name.trim(),
+    emergencyAccess:form.emergencyAccess?.trim()||null,
+    crowdMovement:form.crowdMovement?.trim()||null,
+    restrictions:form.restrictions?.trim()||null,
     address: form.address.trim(),
     capacity: form.venueType==='VIRTUAL' && String(form.capacity).trim()==='' ? null : form.capacity,
     setupMinutes: minutes(form.setupMinutes),

@@ -5,6 +5,8 @@ const config = require('./config');
 
 const isMemory = config.dataMode === 'memory';
 const prisma = isMemory ? null : require('./db');
+const terminal=status=>['PROCESSED','IGNORED','FAILED'].includes(status);
+async function messageLock(tx,id){await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${id},0))::text`;}
 const state = { notifications: [], receipts: new Map() };
 
 function reset() {
@@ -30,16 +32,22 @@ async function recordAttempt(message, status, error) {
   const lastError = String(error?.message || error || '').slice(0, 500) || null;
   if (isMemory) {
     const current = state.receipts.get(message.id) || { messageId: message.id, messageType: message.type, aggregateId: message.aggregateId || null, attempts: 0, createdAt: new Date() };
+    if(terminal(current.status))return current.attempts;
     const next = { ...current, status, attempts: current.attempts + 1, lastError, updatedAt: new Date() };
     state.receipts.set(message.id, next);
     return next.attempts;
   }
-  const saved = await prisma.messageReceipt.upsert({
-    where: { messageId: message.id },
-    create: { messageId: message.id, messageType: message.type, aggregateId: message.aggregateId || null, status, attempts: 1, lastError },
-    update: { status, attempts: { increment: 1 }, lastError },
+  return prisma.$transaction(async tx=>{
+    await messageLock(tx,message.id);
+    const current=await tx.messageReceipt.findUnique({where:{messageId:message.id}});
+    if(current&&terminal(current.status))return current.attempts;
+    const saved=await tx.messageReceipt.upsert({
+      where:{messageId:message.id},
+      create:{messageId:message.id,messageType:message.type,aggregateId:message.aggregateId||null,status,attempts:1,lastError},
+      update:{status,attempts:{increment:1},lastError},
+    });
+    return saved.attempts;
   });
-  return saved.attempts;
 }
 
 /**
@@ -48,15 +56,18 @@ async function recordAttempt(message, status, error) {
  */
 async function saveDelivered(message, notices, status = 'PROCESSED') {
   if (isMemory) {
+    if(terminal(state.receipts.get(message.id)?.status))return false;
     for (const notice of notices) {
       const exists = state.notifications.some((n) => n.sourceMessageId === message.id && n.recipientId === notice.recipientId && n.type === notice.type);
       if (!exists) state.notifications.push({ id: randomUUID(), ...notice, sourceMessageId: message.id, createdAt: new Date(), readAt: null });
     }
     const current = state.receipts.get(message.id) || { attempts: 0, createdAt: new Date() };
     state.receipts.set(message.id, { ...current, messageId: message.id, messageType: message.type, aggregateId: message.aggregateId || null, status, attempts: current.attempts + 1, lastError: null, updatedAt: new Date() });
-    return;
+    return true;
   }
-  await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
+    await messageLock(tx,message.id);
+    if(terminal((await tx.messageReceipt.findUnique({where:{messageId:message.id}}))?.status))return false;
     if (notices.length) {
       await tx.notification.createMany({
         data: notices.map((notice) => ({ ...notice, sourceMessageId: message.id })),
@@ -68,6 +79,7 @@ async function saveDelivered(message, notices, status = 'PROCESSED') {
       create: { messageId: message.id, messageType: message.type, aggregateId: message.aggregateId || null, status, attempts: 1 },
       update: { status, attempts: { increment: 1 }, lastError: null },
     });
+    return true;
   });
 }
 

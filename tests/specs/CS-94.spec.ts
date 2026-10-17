@@ -94,3 +94,22 @@ describe('CS-94 independent Safety review display and validation',()=>{
     expect(w.emitted('decision')).toHaveLength(1);expect(w.text()).not.toContain('Decision saved');w.unmount()
   })
 })
+
+it('TC-CS94-41 Venue Staff persist the operational Safety facts used by the Officer review',async()=>{
+  const {createRequire}=await import('node:module'),require=createRequire(import.meta.url),f=require('../helpers/venue-workflow.cjs')
+  const stack=await f.stack();f.reset()
+  try{
+    const body=f.venueInput({emergencyAccess:'Two marked exits and a clear emergency lane',crowdMovement:'One-way foyer entry and side exit',restrictions:'No open flames'})
+    const saved=await stack.venue.http('/venues',{method:'POST',headers:f.staff,body})
+    expect(saved.status).toBe(201)
+    expect(saved.body).toMatchObject({emergencyAccess:body.emergencyAccess,crowdMovement:body.crowdMovement,restrictions:body.restrictions})
+  }finally{await stack.close()}
+})
+
+it('TC-CS94-42 the real decision button stays disabled until every required checklist, reason and affected area is complete',async()=>{
+ const w=await mountSuspended(SafetyDecisionForm,{props:props()});await completeChecklist(w)
+ await w.get('select').setValue('REQUEST_CHANGES');await w.get('textarea[aria-label="Actionable comments"]').setValue('Clear the access lane')
+ expect(w.get('button[type="submit"]').attributes('disabled')).toBeDefined()
+ await w.get('input[value="VENUE"]').setValue(true)
+ expect(w.get('button[type="submit"]').attributes('disabled')).toBeUndefined();w.unmount()
+})

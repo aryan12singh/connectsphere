@@ -3,11 +3,17 @@ const assert = require('node:assert/strict');
 const { requireTestDatabase, start } = require('../../../../tests/helpers/service-integration.cjs');
 requireTestDatabase('venue');
 const prisma = require('../../src/db');
-let api, venue;
+let api, venue, boundary;
 const staff = { 'x-test-user-id': 'venue-staff', 'x-test-role': 'VENUE_STAFF' };
 const values = { name: 'PG Venue', address: 'Test Address', capacity: 100, venueType: 'PHYSICAL', supportedLayouts: ['THEATRE'], facilities: [], accessibilityTags: [], timeZone: 'Asia/Singapore', managedById: 'venue-staff', reason: 'PG verification', operatingHours: [{ weekday: 'MONDAY', isClosed: false, opensAt: '00:00', closesAt: '23:59' }] };
-before(async () => { await prisma.venue.deleteMany(); api = await start(require('../../src/app')); });
-after(async () => { await api?.close(); await prisma.$disconnect(); });
+before(async () => {
+ await prisma.venue.deleteMany();api=await start(require('../../src/app'));
+ const express=require('express'),app=express();app.use(express.json());
+ require('../../../../tests/helpers/venue-maintenance-boundary.cjs').mountMaintenanceForwarder(app,()=>api.base);
+ app.put('/internal/buffer-fence-recovery/:id',(_req,res)=>res.status(503).json({error:{code:'UNVERIFIED_CONFIRMATION',message:'No authoritative Booking commitment proof in this isolated Venue fixture'}}));
+ boundary=await start(app);require('../../src/config').bookingServiceUrl=boundary.base;
+});
+after(async () => { await api?.close();await boundary?.close(); await prisma.$disconnect(); });
 test('TC-CS33-01 PostgreSQL venue creation atomically persists hours and history', async () => {
   const result = await api.http('/venues', { method: 'POST', headers: staff, body: values });
   assert.equal(result.status, 201); venue = result.body;
@@ -163,6 +169,8 @@ test('TC-CS84-32 PostgreSQL buffer fence serializes edits, persists across recon
   assert.equal((await api.http('/venues/'+id,{method:'PUT',headers:staff,body:{...values,version:current.version,setupMinutes:90,turnaroundMinutes:45}})).status,503);
   assert.equal((await prisma.venue.findUnique({where:{id}})).setupMinutes,current.setupMinutes);
   assert.equal(await prisma.venueHistory.count({where:{venueId:id}}),before);
+  const pending=(await api.http('/venues/'+id+'/maintenance',{headers:staff})).body.operation;assert.ok(pending);
+  assert.equal((await api.http('/venues/'+id+'/maintenance/cancel',{method:'POST',headers:staff,body:{operationId:pending.id}})).body.cancelled,true);
   assert.equal((await api.http('/venues/'+id,{method:'PUT',headers:staff,body:{...values,version:current.version,name:'Still maintainable',setupMinutes:current.setupMinutes,turnaroundMinutes:current.turnaroundMinutes}})).status,200);
   assert.equal((await api.http('/internal/venues/'+id+'/buffer-lock',{method:'POST',headers:staff,body:lockBody})).status,403);
 });
@@ -172,6 +180,7 @@ test('TC-CS84-38 PostgreSQL legacy configuration is atomic, one-use and durable 
   const internal={'x-internal-api-key':'change-me-dev-internal-key'},payload={version:1,setupMinutes:30,turnaroundMinutes:45,reason:'Verified legacy contacts',retainLock:true,actor:{id:'venue-staff',role:'VENUE_STAFF'},communications:[{eventId:'verified-event',coordinatorId:'current-coordinator',organiserId:'organiser',bookings:[{id:'existing-booking',version:2}],staffInformedCoordinator:true,coordinatorInformedOrganiser:true,note:'Verified upstream communication fixture'}]};
   // Booking-contact checks are exercised by the real three-service HTTP suite;
   // this private-handler fixture isolates actual Venue persistence/rollback.
+  const operation=await require('../../src/maintenance').begin(id,'LEGACY',payload,payload.actor);payload.operationId=operation.id;
   const before=await prisma.venue.findUnique({where:{id},include:{history:true,rechecks:true}});
   await prisma.$executeRawUnsafe(`CREATE FUNCTION fail_legacy_recheck() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'isolated outbox failure'; END $$`);
   await prisma.$executeRawUnsafe('CREATE TRIGGER fail_legacy_recheck BEFORE INSERT ON venue_recheck_outbox FOR EACH ROW EXECUTE FUNCTION fail_legacy_recheck()');
@@ -179,7 +188,7 @@ test('TC-CS84-38 PostgreSQL legacy configuration is atomic, one-use and durable 
     assert.equal((await api.http('/internal/venues/'+id+'/legacy-buffers',{method:'PUT',headers:internal,body:payload})).status,500);
     assert.deepEqual(await prisma.venue.findUnique({where:{id},include:{history:true,rechecks:true}}),before);
   }finally{await prisma.$executeRawUnsafe('DROP TRIGGER fail_legacy_recheck ON venue_recheck_outbox');await prisma.$executeRawUnsafe('DROP FUNCTION fail_legacy_recheck()');}
-  const pair=await Promise.all([api.http('/internal/venues/'+id+'/legacy-buffers',{method:'PUT',headers:internal,body:payload}),api.http('/internal/venues/'+id+'/legacy-buffers',{method:'PUT',headers:internal,body:payload})]);
+  const pair=await Promise.all([api.http('/internal/venues/'+id+'/legacy-buffers',{method:'PUT',headers:internal,body:payload}),api.http('/internal/venues/'+id+'/legacy-buffers',{method:'PUT',headers:internal,body:{...payload,operationId:'another-operation'}})]);
   assert.deepEqual(pair.map(r=>r.status).sort(),[200,409]);
   await prisma.$disconnect();
   const saved=await prisma.venue.findUnique({where:{id},include:{history:true,rechecks:true}});
@@ -194,12 +203,14 @@ test('TC-CS84-42 PostgreSQL pre-confirmation legacy receipt retains flexibility 
   await prisma.venue.update({where:{id},data:{legacyBufferConfigurationPending:true,buffersLockedAt:new Date()}});
   const payload={version:1,setupMinutes:30,turnaroundMinutes:45,reason:'No ever-confirmed commitment',communications:[],actor,retainLock:false};
   assert.equal((await api.http('/internal/venues/'+id+'/legacy-buffers',{method:'PUT',headers:internal,body:{...payload,retainLock:undefined}})).status,422);
+  payload.operationId=(await require('../../src/maintenance').begin(id,'LEGACY',payload,actor)).id;
   const initial=await api.http('/internal/venues/'+id+'/legacy-buffers',{method:'PUT',headers:internal,body:payload});
   assert.equal(initial.status,200);assert.equal(initial.body.buffersLockedAt,null);assert.equal(initial.body.legacyBufferConfigurationPending,false);
   await prisma.$disconnect();
   const receipt=await prisma.venueHistory.findFirst({where:{venueId:id,action:'LEGACY_BUFFERS_CONFIGURED'}});assert.equal(receipt.changes.configuredAfterConfirmation,false);
   const fenced=await api.http('/internal/venues/'+id+'/buffer-lock',{method:'POST',headers:internal,body:{version:2,actor}});assert.equal(fenced.status,200);
-  const recovery=await api.http('/internal/venues/'+id+'/buffer-fence-recovery',{method:'PUT',headers:internal,body:{actor,input:{...fenced.body,setupMinutes:60,reason:'Verified never-confirmed recovery fixture'}}});
+  const input={...fenced.body,setupMinutes:60,reason:'Verified never-confirmed recovery fixture'},operation=await require('../../src/maintenance').begin(id,'RECOVERY',input,actor);
+  const recovery=await api.http('/internal/venues/'+id+'/buffer-fence-recovery',{method:'PUT',headers:internal,body:{actor,input,operationId:operation.id}});
   assert.equal(recovery.status,200);assert.equal(recovery.body.buffersLockedAt,null);assert.equal(recovery.body.setupMinutes,60);
   assert.equal(await prisma.venueHistory.count({where:{venueId:id,action:'BUFFER_FENCE_RECOVERED'}}),1);
 });

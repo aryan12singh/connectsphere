@@ -53,6 +53,9 @@ watch(isDark, (dark) => {
         </div>
 
         <nav class="hidden items-center gap-5 text-sm lg:flex" aria-label="Primary">
+          <NuxtLink v-if="can('safety.view')" to="/safety-checks" class="text-muted-foreground">Safety checks</NuxtLink>
+          <NuxtLink v-if="can('technical.review')" to="/technical-requests" class="text-muted-foreground">Technical review</NuxtLink>
+            <NuxtLink v-if="can('venue_bookings.decide') || can('technical.review')" to="/preparation" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">Preparation</NuxtLink>
           <NuxtLink :to="roleHome(user?.role ?? '')" class="text-muted-foreground">Home</NuxtLink>
           <NuxtLink
             v-if="isEventRole && can('events.view')"

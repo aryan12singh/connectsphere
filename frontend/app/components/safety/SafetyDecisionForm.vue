@@ -9,6 +9,7 @@ const form=reactive({decision:'',reason:'',areas:[] as string[],checklist:{} as 
 const ready=ref(false),issued=ref(false),id=useId()
 onMounted(()=>{ready.value=true})
 const permitted=computed(()=>ready.value && props.canDecide===true && currentSafetyRound(props.round,props.currentRequirementsRevision) && !props.pending && !issued.value)
+const validDraft=computed(()=>validateSafetyDecision(form,props.round,props.currentRequirementsRevision,props.venues.map(room=>room.bookingId)).value!==null)
 function clearDraft(){form.decision='';form.reason='';form.areas=[];form.checklist={};form.privateNotes='';form.rejectedBookingIds=[];errors.value={};issued.value=false}
 watch(()=>[props.round?.id,props.round?.number,props.round?.requirementsRevision,props.currentRequirementsRevision,props.canDecide,JSON.stringify(props.venues)],clearDraft)
 watch(()=>[props.pending,props.requestError] as const,([pending,error],[wasPending,oldError])=>{if(error && !pending && (wasPending || error!==oldError))issued.value=false})
@@ -28,7 +29,7 @@ function submit() {
     <p v-if="!props.canDecide" class="text-sm text-muted-foreground">Safety decisions are available only to an authorized Safety Officer.</p>
     <p v-else-if="!currentSafetyRound(props.round,props.currentRequirementsRevision)" role="alert" class="text-sm text-destructive">This review is out of date. Refresh before deciding.</p>
     <fieldset :disabled="!permitted" class="grid gap-2"><legend class="mb-2 font-medium">Safety review checklist</legend><label v-for="(label,key) in safetyFactors" :key="key" data-safety-factor class="flex items-center gap-2 text-sm"><input v-model="form.checklist[key]" type="checkbox" />Reviewed {{ label }}</label></fieldset>
-    <label :for="`${id}-decision`" class="grid gap-1 text-sm">Safety decision<select :id="`${id}-decision`" v-model="form.decision" :disabled="!permitted" :aria-invalid="Boolean(errors.decision)" class="h-10 rounded-xl border border-border px-3"><option value="">Choose a decision</option><option value="APPROVE">Approve</option><option value="REJECT">Reject venue safety arrangement</option><option value="REQUEST_CHANGES">Request Changes</option></select></label>
+    <label :for="`${id}-decision`" class="grid gap-1 text-sm">Safety decision<select aria-label="Safety decision" :id="`${id}-decision`" v-model="form.decision" :disabled="!permitted" :aria-invalid="Boolean(errors.decision)" class="h-10 rounded-xl border border-border px-3"><option value="">Choose a decision</option><option value="APPROVE">Approve</option><option value="REJECT">Reject venue safety arrangement</option><option value="REQUEST_CHANGES">Request Changes</option></select></label>
     <label :for="`${id}-reason`" class="grid gap-1 text-sm">Actionable comments {{ form.decision === 'APPROVE' ? '(optional)' : '(required for Reject or Request Changes)' }}<textarea aria-label="Actionable comments" :id="`${id}-reason`" v-model="form.reason" :disabled="!permitted" :aria-invalid="Boolean(errors.reason)" rows="3" class="rounded-xl border border-border p-3" /></label>
     <p class="text-sm text-muted-foreground">The outcome and actionable comments can be shared with the Organiser. Keep confidential information in private notes.</p>
     <label class="grid gap-1 text-sm">Private internal notes<textarea aria-label="Private internal notes" v-model="form.privateNotes" :disabled="!permitted" rows="3" class="rounded-xl border border-border p-3" /></label>
@@ -36,6 +37,6 @@ function submit() {
     <fieldset v-if="form.decision === 'REQUEST_CHANGES'" :disabled="!permitted" class="grid gap-2"><legend class="mb-2 text-sm font-medium">Affected areas (select at least one)</legend><label v-for="(label,area) in safetyAreas" :key="area" class="flex items-center gap-2 text-sm"><input v-model="form.areas" type="checkbox" :value="area" />{{ label }}</label></fieldset>
     <ul v-if="Object.keys(errors).length" role="alert" class="list-disc pl-5 text-sm text-destructive"><li v-for="(message,key) in errors" :key="key">{{ message }}</li></ul>
     <p v-if="props.requestError" role="alert" class="text-sm text-destructive">{{ props.requestError }}</p>
-    <Button type="submit" :disabled="!permitted">{{ props.pending ? 'Saving…' : 'Record Safety decision' }}</Button>
+    <Button type="submit" :disabled="!permitted || !validDraft">{{ props.pending ? 'Saving…' : 'Record Safety decision' }}</Button>
   </form>
 </template>

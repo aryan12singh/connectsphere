@@ -82,3 +82,21 @@ The one-time allowance concerns the legacy communication/configuration operation
 | --- | --- | --- | --- | --- |
 | TC-CS84-41 | Legacy catalogue venue has no current or historical confirmed booking, including an empty affected Event list; no missing confirmation history. A later first-confirmation attempt fails after a provisional fence | Submit one-time initial configuration with exact derived consultation and spoofed public `retainLock:true`; perform a normal Staff buffer edit; attempt confirmation with injected failure; read buffer permission and recover the fence; separately spoof `retainLock:false` for a previously confirmed venue | Booking ignores caller lock choice and derives under its venue lock. No-confirmation configuration consumes allowance but clears blanket lock and records `configuredAfterConfirmation:false`; normal edits remain allowed. A later failed first-confirmation fence is recoverable only with actual provisional-fence history, every legacy receipt explicitly false, no historical confirmation and matching current version. Existing-confirmation configuration remains locked with `configuredAfterConfirmation:true` despite the caller's spoof. Unknown/true receipt or dependency failure denies recovery; no allowance is replenished | Real Venue/Booking HTTP; persistent and UI evidence separately |
 | TC-CS84-42 | Actual PostgreSQL pre-confirmation legacy receipt | Private verified Booking fixture initializes with retainLock:false, reconnects, fences an interrupted first confirmation, then applies checked recovery | Explicit null lock and false receipt retained; initial allowance consumed; mandatory internal boolean; one recovery audit/recheck | PostgreSQL HTTP |
+
+
+## Integrated acceptance additions — 2026-10-17T03:53:21+00:00
+
+These cases supplement the preserved earlier specifications. Current contracts and the Session 3/PO precedence remain authoritative. Browser IDs can cover several linked story assertions; matching numeric suffixes in the shared sheet do not imply identical scenarios.
+
+| Test Case ID | Requirement / expected result | Execution layer and precondition |
+|---|---|---|
+| TC-CS84-42 | A PG before-commit barrier times out downstream apply; durable owner pending fence blocks readiness; exact-operation resume records the update and receipt together. | Actual disposable Venue/Booking HTTP and owner PostgreSQL; opt-in CS_MAINTENANCE_ACCEPTANCE=1. The timed-out transaction may roll back or finish; both must remain safe and resumable. |
+
+
+## 17 October shared-Sheet evidence reconciliation
+
+Existing customer intent is preserved. Logical draft fields/statuses are reconciled with the operative contract; examples do not create a second reservation or acceptance claim. Date of Creation: 2026-10-17T12:24:00+08:00.
+
+| Test Case ID | Scenario / AC | Preconditions | Steps | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS84-03 | Buffer AC: Staff-owned configuration | Unconfirmed venue with30/45 minute buffers | Attempt PUT as Coordinator; read venue as Staff | 403; both buffers and version unchanged | Actual service HTTP with isolated repository fixtures | 2026-10-17T12:24:00+08:00 |

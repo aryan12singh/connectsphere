@@ -10,14 +10,26 @@ process.env.NODE_ENV = 'test'
 const require = createRequire(import.meta.url)
 const store = require('../../services/venue-service/src/store')
 const { start } = require('../helpers/service-integration.cjs')
-let api: any
+let api: any,maintenanceBoundary:any,previousBookingUrl:string
 const staff = { 'x-test-user-id': 'staff', 'x-test-role': 'VENUE_STAFF' }
 const venue = (extra: Record<string, unknown> = {}) => ({ name: 'Buffer Hall', address: 'One Bay', capacity: 100, venueType: 'PHYSICAL', supportedLayouts: ['THEATRE'], facilities: ['PROJECTOR'], accessibilityTags: ['WHEELCHAIR_ACCESS'], timeZone: 'Asia/Singapore', managedById: 'staff', reason: 'Set room preparation times', operatingHours: [{ weekday: 'MONDAY', isClosed: false, opensAt: '00:00', closesAt: '23:59' }], ...extra })
-beforeAll(async () => { api = await start(require('../../services/venue-service/src/app')) })
+beforeAll(async () => {
+ api=await start(require('../../services/venue-service/src/app'))
+ const express=require('../../services/venue-service/node_modules/express'),boundary=express();boundary.use(express.json())
+ require('../helpers/venue-maintenance-boundary.cjs').mountMaintenanceForwarder(boundary,()=>api.base)
+ maintenanceBoundary=await start(boundary);const config=require('../../services/venue-service/src/config');previousBookingUrl=config.bookingServiceUrl;config.bookingServiceUrl=maintenanceBoundary.base
+})
 beforeEach(() => store.reset())
-afterAll(async () => { await api.close(); store.reset() })
+afterAll(async () => { await api.close();await maintenanceBoundary.close();require('../../services/venue-service/src/config').bookingServiceUrl=previousBookingUrl; store.reset() })
 
 describe('CS-84 — venue buffer HTTP contract', () => {
+  it('TC-CS84-03 a Coordinator cannot change Venue Staff buffer settings or create a maintenance operation',async()=>{
+    const created=await api.http('/venues',{method:'POST',headers:staff,body:venue({setupMinutes:30,turnaroundMinutes:45})})
+    expect(created.status).toBe(201)
+    const denied=await api.http('/venues/'+created.body.id,{method:'PUT',headers:{'x-test-user-id':'coordinator','x-test-role':'EVENT_COORDINATOR'},body:{...created.body,setupMinutes:60,reason:'Unauthorized edit'}})
+    expect(denied.status).toBe(403)
+    expect((await api.http('/venues/'+created.body.id,{headers:staff})).body).toMatchObject({setupMinutes:30,turnaroundMinutes:45,version:1})
+  })
   it('TC-CS84-41 a legacy venue without any confirmed booking remains flexible after coordinated initialization',async()=>{
     const f=require('../helpers/venue-workflow.cjs'),stack=await f.stack(),native=globalThis.fetch
     let intercept:any
@@ -212,13 +224,15 @@ describe('CS-84 — venue buffer HTTP contract', () => {
   })
   it('TC-CS84-15 retries a failed recheck from the real running service with a stable action ID',async()=>{
     const express=require('../../services/booking-service/node_modules/express'),sink=express(),calls:any[]=[]
-    let recover=false
+    let recover=false,childVenueBase=''
     sink.use(express.json());sink.post('/internal/venue-rechecks',(req:any,res:any)=>{calls.push(req.body);res.status(recover?200:503).json({venueId:req.body.venueId,version:req.body.version})})
+    require('../helpers/venue-maintenance-boundary.cjs').mountMaintenanceForwarder(sink,()=>childVenueBase)
     const downstream=await start(sink)
     const child=spawn(process.execPath,[require.resolve('../../services/venue-service/src/server.js')],{env:{...process.env,PORT:'0',DATA_MODE:'memory',NODE_ENV:'test',BOOKING_SERVICE_URL:downstream.base,RECHECK_POLL_MS:'50'},stdio:['ignore','pipe','pipe']})
     let output=''
     try {
       const port=await new Promise<number>((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Venue fixture did not start: '+output)),4000);child.stdout.on('data',chunk=>{output+=chunk;const m=output.match(/listening on port (\d+)/);if(m){clearTimeout(timer);resolve(Number(m[1]))}});child.stderr.on('data',chunk=>{output+=chunk});child.on('exit',()=>{clearTimeout(timer);reject(new Error('Venue fixture exited: '+output))})})
+      childVenueBase=`http://127.0.0.1:${port}`
       const call=async(path:string,body:any)=>{const r=await fetch(`http://127.0.0.1:${port}${path}`,{method:path==='/venues'?'POST':'PUT',headers:{...staff,'content-type':'application/json'},body:JSON.stringify(body)});expect(r.status).toBe(path==='/venues'?201:200);return await r.json()}
       const v=await call('/venues',venue())
       await call('/venues/'+v.id,venue({version:1,setupMinutes:30,turnaroundMinutes:45}))
@@ -247,3 +261,11 @@ describe('CS-84 — venue buffer HTTP contract', () => {
     }finally{release();config.venueServiceUrl=old;await upstream.close();await stack.close()}
   })
 })
+
+if(process.env.CS_MAINTENANCE_ACCEPTANCE==='1') it('TC-CS84-42 durable owner maintenance fence blocks readiness after downstream timeout and before actual Venue commit',async()=>{
+ const {maintenanceTimeout}=require('../helpers/venue-maintenance-live.cjs')
+ const result=await maintenanceTimeout()
+ expect(result.pendingBlockedReadiness).toBe(true)
+ expect(result.lateApplyCompleted).toBe(true)
+ expect(result.exactReplayStatus).toBe(200)
+},120000)

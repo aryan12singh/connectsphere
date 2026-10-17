@@ -3,10 +3,11 @@ import { computed,onMounted,onUnmounted,reactive,ref,watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { calendarIsoToWallTime,calendarWallTimeToIso } from './booking-state'
+import SafetyWorkspace from '../safety/SafetyWorkspace.vue'
 import CoordinatorSafetyPreparation from '../safety/CoordinatorSafetyPreparation.vue'
 
 interface Room {extensionCount?:number;extensionRequest?:{expiresAt:string;reason:string;requestedById:string}|null;id:string;eventId:string;venueId:string;venueName?:string;venueType?:string|null;venueCapacity?:number|null;title:string;reason:string;timeZone:string;status:string;effectiveStatus?:string;version:number;startAt:string;endAt:string;occupiedStart:string;occupiedEnd:string;expiresAt:string|null;expectedAttendance:number;layout:string;facilities?:string[];accessibilityNeeds?:string[];flags:string[]}
-interface Event {id:string;title:string;status:string;venueType?:string;currentCoordinatorId:string;startAt:string;endAt:string;timeZone:string;expectedAttendance:number;preferredLayout:string;accessibilityNeeds:string[];venueRequirements?:string}
+interface Event {safetyState?:string;id:string;title:string;status:string;venueType?:string;currentCoordinatorId:string;startAt:string;endAt:string;timeZone:string;expectedAttendance:number;preferredLayout:string;accessibilityNeeds:string[];venueRequirements?:string}
 interface Summary {attendancePlan?:{expectedAttendance:number;ready:boolean;sessions:Array<{startAt:string;endAt:string;allocated:number|null;reason:string|null}>};primaryVenue?:{bookingId:string|null;version:number;available:boolean};event:Event;items:Room[];venueReady:boolean;outstanding:Array<{bookingId:string|null;venueName?:string;reasons:string[]}>}
 interface Match {id:string;name:string;address?:string;capacity:number|null;setupMinutes:number;turnaroundMinutes:number;match:'FULL'|'PARTIAL';gaps:string[];canRequest:boolean;occupiedStart:string;occupiedEnd:string}
 interface Option {value:string;label:string}
@@ -14,9 +15,10 @@ const props=defineProps<{eventId:string}>()
 const {user}=useUserSession(),{showError}=useErrorAlert()
 const requestFetch=useRequestFetch()
 const {data,error,refresh}=await useFetch<Summary>(()=>`/api/bookings/events/${encodeURIComponent(props.eventId)}/summary`,{watch:[()=>props.eventId]})
+const {data:safetyData}=await useFetch<any>(()=>`/api/safety/events/${encodeURIComponent(props.eventId)}`,{watch:[()=>props.eventId]})
 const {data:options}=await useFetch<{supportedLayouts?:Option[];facilities?:Option[];accessibilityTags?:Option[]}>('/api/venues/options')
 watch(error,value=>{if(value)showError(value,'Unable to load venue arrangements')},{immediate:true})
-const canArrange=computed(()=>!error.value && data.value?.event.id===props.eventId && data.value.event.status==='ARRANGEMENT_PENDING' && data.value.event.currentCoordinatorId===user.value?.id)
+const canArrange=computed(()=>!error.value && data.value?.event.id===props.eventId && data.value.event.status==='ARRANGEMENT_PENDING' && !['PREPARING','PENDING','APPROVED'].includes(data.value.event.safetyState || '') && data.value.event.currentCoordinatorId===user.value?.id)
 // Enable actions only after their browser handlers have attached.
 const ready=ref(false)
 const open=ref(false),loading=ref(false),posting=ref<string|null>(null),matches=ref<Match[]|null>(null),message=ref('')
@@ -96,7 +98,8 @@ async function release(room:Room){if(!ready.value || !canArrange.value || postin
       <ul v-if="data.outstanding.length" id="venue-outstanding" class="list-disc pl-5 text-sm text-muted-foreground"><li v-for="item in data.outstanding" :key="item.bookingId ?? 'none'">{{ item.venueName || item.bookingId || 'Venue booking' }}: {{ item.reasons.map(r => r.replaceAll('_',' ').toLowerCase()).join(', ') }}</li></ul>
       <section v-if="data.attendancePlan" aria-label="Attendance allocations" class="grid gap-2 text-sm"><p>Event attendance: {{ data.attendancePlan.expectedAttendance }}. Each simultaneous session must account for this total; room capacities are not added across the day.</p><p v-for="session in data.attendancePlan.sessions" :key="session.startAt">{{ format(session.startAt) }}–{{ format(session.endAt) }}: {{ session.allocated ?? 'Unverified' }} allocated<span v-if="session.reason"> — {{ session.reason.replaceAll('_',' ').toLowerCase() }}</span></p></section>
       <p class="text-sm text-muted-foreground">Technical/support approval and a current Safety Officer review are also required before preparation.</p>
-      <CoordinatorSafetyPreparation v-if="data.event.id === props.eventId && data.event.currentCoordinatorId === user?.id" :event-id="props.eventId" :event-title="data.event.title" :rooms="data.items" :venue-ready="data.venueReady" :outstanding="data.outstanding" />
+      <SafetyWorkspace v-if="safetyData?.event" :event-id="props.eventId" @changed="refresh()" />
+      <CoordinatorSafetyPreparation v-else-if="data.event.id === props.eventId && data.event.currentCoordinatorId === user?.id" :event-id="props.eventId" :event-title="data.event.title" :rooms="data.items" :venue-ready="data.venueReady" :outstanding="data.outstanding" />
       <p v-if="!data.primaryVenue?.bookingId" class="text-sm text-muted-foreground">Choose a primary attendee location. Other rooms remain part of the Event.</p>
       <p v-else-if="!data.primaryVenue.available" role="alert" class="text-sm">The selected primary location needs review before publication.</p>
       <p v-if="!data.items.length" class="text-sm text-muted-foreground">No venues requested yet.</p>

@@ -16,7 +16,7 @@ import type { BackendUser } from '../utils/backend'
  * only ever sees `user`.
  */
 
-// The five AC roles (backend UserRole). Anything else — ghost strings,
+// Recognized product roles (backend UserRole). Anything else — ghost strings,
 // nulls, future values — is denied, never defaulted to a privileged role.
 const ALLOWED_ROLES: readonly string[] = [
   'EVENT_ORGANISER',
@@ -24,6 +24,7 @@ const ALLOWED_ROLES: readonly string[] = [
   'VENUE_STAFF',
   'ATTENDEE',
   'TECHNICAL_SUPPORT_STAFF',
+  'SAFETY_OFFICER',
 ]
 
 interface LoginResult {

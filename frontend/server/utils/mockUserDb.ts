@@ -1,5 +1,5 @@
 // Mock backend — mirrors docs/erd/schema.cs10-cs11.prisma User table 1:1. No validation, no mapping.
-export type BackendRole = 'EVENT_ORGANISER' | 'EVENT_COORDINATOR' | 'VENUE_STAFF' | 'ATTENDEE' | 'TECHNICAL_SUPPORT_STAFF'
+export type BackendRole = 'EVENT_ORGANISER' | 'EVENT_COORDINATOR' | 'VENUE_STAFF' | 'ATTENDEE' | 'TECHNICAL_SUPPORT_STAFF' | 'SAFETY_OFFICER'
 
 export interface DbUser {
   id: string

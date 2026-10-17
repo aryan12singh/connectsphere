@@ -80,6 +80,11 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 17 October 2026 — integrated Venue, Safety and notification delivery
+
+[Current phase report](2026-10-17-integrated-venue-safety.md): real RabbitMQ relays/inbox, Equipment stock reservations and complete Safety/rework/Preparation APIs and UI; durable cross-service maintenance/readiness recovery. Contains verification results, evidence boundaries, peer handoff and pending Q2. PR #11 remains subject to actual required checks and human approval.
+
+
 ### 2026-10-14 — Aryan — Venue review, current Safety criteria and Figma annotations
 
 CS-74/78/96 have the venue/model/spike review packet, nine screen annotation
