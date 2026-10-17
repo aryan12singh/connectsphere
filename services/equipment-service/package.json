@@ -1,0 +1,25 @@
+{
+  "name": "equipment-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ConnectSphere event technical requirements and equipment service",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "check": "find src -name '*.js' -type f -print0 | xargs -0 -n 1 node --check && DATA_MODE=memory NODE_ENV=test node -e 'require(\"./src/app\")'",
+    "build": "npx prisma generate && npm run check",
+    "test:unit": "DATA_MODE=memory NODE_ENV=test node --test tests/unit/*.test.js",
+    "test:integration": "DATA_MODE=memory NODE_ENV=test node --test tests/integration/*.test.js",
+    "test:coverage": "DATA_MODE=memory NODE_ENV=test node --experimental-test-coverage --test --test-coverage-include='src/**/*.js' tests/unit/*.test.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@prisma/adapter-pg": "^6.19.3",
+    "@prisma/client": "^6.19.3",
+    "dotenv": "^16.4.5",
+    "express": "^5.1.0",
+    "helmet": "^8.0.0",
+    "prisma": "^6.19.3"
+  }
+}

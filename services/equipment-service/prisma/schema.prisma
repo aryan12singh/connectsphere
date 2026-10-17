@@ -1,0 +1,67 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model EquipmentType {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TechnicalRequest {
+  id                String   @id @default(cuid())
+  eventRequestId    String   @unique
+  coordinatorId     String
+  version           Int      @default(1)
+  status            String   @default("SUBMITTED")
+  requirements      Json
+  decisionReason    String?
+  decidedById       String?
+  decidedAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  history           TechnicalRequestHistory[]
+}
+
+model TechnicalRequestHistory {
+  id             String           @id @default(cuid())
+  requestId      String
+  version        Int
+  action         String
+  actorId        String
+  actorRole      String
+  details        Json?
+  createdAt      DateTime          @default(now())
+  request        TechnicalRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+}
+
+model OutboxEvent {
+  id          String   @id @default(cuid())
+  actionKey   String   @unique
+  eventType   String
+  payload     Json
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([publishedAt, createdAt])
+}
+
+model IdempotencyRecord {
+  id           String   @id @default(cuid())
+  actorId      String
+  key          String
+  requestHash  String
+  responseBody Json
+  createdAt    DateTime @default(now())
+
+  @@unique([actorId, key])
+}
