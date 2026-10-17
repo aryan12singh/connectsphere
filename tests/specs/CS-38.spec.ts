@@ -109,8 +109,13 @@ describe('CS-38 — guarded independent decisions',()=>{
     const remote=await start(delayed),old=config.venueServiceUrl;config.venueServiceUrl=remote.base
     try {const r=await api.booking.http(`/venue-bookings/${booking.id}/decision`,{method:'PUT',headers:f.staff,body:{version:1,status:'CONFIRMED',reason:'Delayed check'}});expect(r.status).toBe(409);expect(r.body.error.code).toBe('HOLD_EXPIRED');expect(f.bookings.getBooking(booking.id).status).toBe('TENTATIVELY_HELD');expect(f.bookings.state.activities).toHaveLength(1)}finally{config.venueServiceUrl=old;await remote.close()}
   })
-  it('TC-CS38-01 approves its own active hold once without treating it as a conflict',async()=>{
-    const {booking}=await hold()
+  it('TC-CS38-01 confirms the requested hold on Staff approval without another Coordinator action',async()=>{
+    const {booking,event}=await hold()
+    expect(booking).toMatchObject({status:'TENTATIVELY_HELD',version:1})
+    const path=`/venue-bookings/events/${event.id}/summary`
+    const pending=await api.booking.http(path,{headers:f.coordinator})
+    expect(pending.status).toBe(200);expect(pending.body.venueReady).toBe(false)
+    expect(pending.body.policy.pendingClarifications).toEqual([])
     const body={version:booking.version,status:'CONFIRMED',reason:'Room and needs verified'}
     const r=await api.booking.http(`/venue-bookings/${booking.id}/decision`,{method:'PUT',headers:f.staff,body})
     expect(r.status).toBe(200);expect(r.body).toMatchObject({id:booking.id,status:'CONFIRMED',version:2,expiresAt:null,statusChangedById:'staff',statusReason:body.reason})
@@ -118,6 +123,11 @@ describe('CS-38 — guarded independent decisions',()=>{
     expect(f.bookings.state.activities).toHaveLength(2)
     // CS-38 names the independent booking decision message, not Event approval.
     expect(f.bookings.state.outbox.filter((m:any)=>m.kind==='VenueBookingApproved')).toHaveLength(1)
+    const approved=await api.booking.http(path,{headers:f.coordinator})
+    expect(approved.status).toBe(200);expect(approved.body.venueReady).toBe(true)
+    expect(approved.body.event.status).toBe('ARRANGEMENT_PENDING')
+    expect(approved.body.items[0]).toMatchObject({id:booking.id,status:'CONFIRMED',version:2})
+    expect(approved.body.policy.pendingClarifications).toEqual([])
   })
   it('TC-CS38-02 requires a rejection reason and releases only that booking',async()=>{
     const {booking}=await hold()

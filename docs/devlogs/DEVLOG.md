@@ -80,6 +80,15 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 17 October 2026 — Aryan — CS-37/38/76 venue confirmation resolved
+
+[Q2 decision and verification](2026-10-17-venue-confirmation.md): Coordinator
+tentative request → Staff approval confirms only that venue booking, with no
+additional Coordinator confirmation button. Existing behavior retained; stale
+pending-policy metadata cleared. Frontend 386/386, Booking unit 35/35,
+PostgreSQL 18/18, contracts 14/14, both typechecks and build pass. PR #13 tracks
+hosted browser/merge checks; CS-37/38 human acceptance remains unconfirmed.
+
 ### 17 October 2026 — Aryan — CS-79 measured coverage gates
 
 [Coverage gate delivery](2026-10-17-coverage-gates.md): baseline-derived frontend

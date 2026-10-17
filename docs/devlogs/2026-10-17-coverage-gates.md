@@ -1,5 +1,9 @@
 # CS-79 coverage gate delivery
 
+Later clarification: Q2 was resolved on 17 October after this checkpoint. See
+[the venue-confirmation follow-up](2026-10-17-venue-confirmation.md). The results
+and pending decisions below describe the earlier execution time.
+
 17 October 2026. Aryan. Branch `chore/cs79-coverage-gates`, created from main
 `7867f24` after PR #11 merged. This is the shared coverage-policy follow-up;
 the venue/Safety feature behavior and Q2 interpretation are unchanged.

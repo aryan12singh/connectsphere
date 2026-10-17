@@ -2,8 +2,9 @@
 
 Decision date: 17 October 2026. Aryan authorized selecting and implementing
 baseline-derived thresholds; peer review of this change records adoption. This
-replaces the earlier pending numerical-policy wording. It does not supply a PO
-answer to the separate Coordinator-confirmation question (Q2).
+replaces the earlier pending numerical-policy wording. The separate
+[17 October venue-policy clarification](venue-policy-decisions.md) resolves Q2;
+these numerical coverage floors do not change the booking or Event lifecycle.
 
 ## Metrics and initial floors
 

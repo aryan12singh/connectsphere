@@ -2,7 +2,7 @@
 
 Blue section. Date of Creation: 2026-10-09T00:24:00+08:00.
 
-Source: [CS-78](https://spmg8.atlassian.net/browse/CS-78) scheduled-job/clock spike. This is a technical proof, not the CS-37 or CS-90 production feature. All fixture durations, warning leads and leases are explicit engineering test data. The current [policy register](../../../docs/venue-policy-decisions.md) records the agreed 72-hour default, one requested/approved extension of at most 24 hours and a 24-hour warning lead. Only the Coordinator confirmation action remains pending clarification; teammate review and the recorded spike timebox remain separate gates.
+Source: [CS-78](https://spmg8.atlassian.net/browse/CS-78) scheduled-job/clock spike. This is a technical proof, not the CS-37 or CS-90 production feature. All fixture durations, warning leads and leases are explicit engineering test data. The current [policy register](../../../docs/venue-policy-decisions.md) records the agreed 72-hour default, one requested/approved extension of at most 24 hours and a 24-hour warning lead. Q2 was resolved on 17 October: tentative Coordinator request → Staff approval; no additional Coordinator action. Teammate review and the recorded spike timebox remain separate gates.
 
 | Test Case ID | Scenario | Pre-conditions | Test Steps / Test Data | Expected Result | Automation layer | Date of Creation |
 | --- | --- | --- | --- | --- | --- | --- |

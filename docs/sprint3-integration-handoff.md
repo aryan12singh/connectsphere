@@ -70,7 +70,7 @@ Stock starts at zero until Technical Support records actual inventory. Reservati
 
 ## Remaining decision and human gates
 
-**Q2 remains pending:** does the Coordinator's venue booking request already constitute Coordinator confirmation, or is a separate Coordinator confirmation required before Venue Staff approval? Continue the current request → Staff decision flow until the PO answers; do not label this customer-approved. When the answer arrives, reconcile CS-76, CS-37/38, the sheet and API/UI tests together.
+**Q2 resolved — 17 October:** Aryan confirmed the PO/team reply: the Coordinator requests a tentative/soft hold, then Venue Staff approves/rejects it with a reason. Staff approval confirms that venue booking; no extra Coordinator Confirm button is required. The current request → Staff decision flow matches. The Booking summary reports `policy.pendingClarifications: []`. Whole-Event confirmation remains a distinct Safety/readiness-gated action. The [policy register](venue-policy-decisions.md) and [Q2 verification](devlogs/2026-10-17-venue-confirmation.md) trace the decision and tests; CS-37/38 still require their human acceptance records.
 
 Q1 is resolved: buffers remain adjustable until first Staff-confirmed booking, then lock. One-use initial configuration for pre-policy bookings requires Staff's recorded communication with each current Coordinator and attestation that the Coordinator communicated with the Organiser. This records a Staff attestation; it is not independent proof that the external conversation occurred.
 

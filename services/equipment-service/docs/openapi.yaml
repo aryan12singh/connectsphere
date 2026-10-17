@@ -4,7 +4,7 @@ info:
   title: ConnectSphere Equipment integration
   version: 0.2.0
   description: 17 October 2026 implemented integration. See docs/sprint3-integration-handoff.md
-    for assumptions, source ownership and pending Q2.
+    for assumptions, source ownership and the resolved two-action venue policy.
 servers:
 - url: http://localhost:8000
 security:

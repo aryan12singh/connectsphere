@@ -5,7 +5,7 @@ Blue section. Date of Creation: 2026-10-17 (Asia/Singapore).
 Source: [CS-79](https://spmg8.atlassian.net/browse/CS-79) and the Sprint 3
 [coverage decision](../../../docs/coverage-policy.md). These cases verify the
 shared coverage gate. Existing feature suites own their business acceptance;
-Q2, model/spike review and team adoption are not inferred from these checks.
+Q2 is resolved separately in the [17 October venue policy](../../../docs/venue-policy-decisions.md). Model/spike review and team adoption are not inferred from these coverage checks.
 
 | Test Case ID | Scenario | Pre-conditions | Test Steps / Test Data | Expected Result | Automation layer | Date of Creation |
 | --- | --- | --- | --- | --- | --- | --- |

@@ -1,5 +1,19 @@
 # CS-38 — Test Case Specification (IS212 / IEEE 829)
 
+## Q2 confirmation policy — 17 October 2026
+
+Source: PO/team reply relayed by Aryan, followed by explicit confirmation that
+no additional Coordinator venue-confirmation button is needed. The existing
+TC-CS38-01 now checks tentative versus approved readiness and cleared policy
+metadata. TC-CS38-30 additionally shows the Coordinator's tentative and approved
+room, no confirmation control on either room card, exactly the request/Staff
+decision activity, actual approval-notification delivery, and the unchanged
+Planning Event in PostgreSQL. Its earlier execution records remain historical.
+
+| Test Case ID | Scenario | Pre-conditions | Steps | Expected result | Layer | Date of Creation |
+| --- | --- | --- | --- | --- | --- | --- |
+| TC-CS38-23 | Q2: two-action venue confirmation | Assigned Coordinator, available suitable venue and active Planning Event | Create a hold as Coordinator; approve its read version as Staff; inspect saved row, activity, outbox and summary | TENTATIVELY_HELD v1 → CONFIRMED v2, deadline cleared, Coordinator creation + Staff decision only, one approval intent, no pending Q2 metadata; parent Event remains Planning | Actual Booking HTTP/PostgreSQL; upstream assignment/venue fixtures explicit | 2026-10-17 |
+
 ## 13 October production browser evidence
 
 Date of Creation: 2026-10-13T21:11:00+08:00. TC-CS38-30 covers staff reason, authorization and stale decision. Preconditions and steps: Coordinator attempts approval; Staff uses actual queue/reason; replay old version. Expected result: 403 for Coordinator, disabled reasonless control, approved once, stale409 preserves approval. Run desktop/mobile on the isolated production stack. Screenshots and captured query results remain CI/Jira evidence. Explicit fixture setup is labelled; this case does not establish unimplemented inbox delivery, whole-Event Safety transitions, customer policy approval or human acceptance.
@@ -8,7 +22,7 @@ Blue section. Date of Creation: 2026-10-12T19:13:47+08:00. Reconciled 12 October
 
 Source: [CS-38](https://spmg8.atlassian.net/browse/CS-38), live acceptance criteria and PM supplemental tables. Source cases retain their IDs and intent. Additional cases below cover observed integration regressions. These are specifications, not execution results; dated yellow records report only the assertions and layers actually run. Passing a related check does not execute the source's browser, message-delivery, parent transition or manual/PO steps.
 
-Contract alignment: requests use the distinct Planning Event ID; pending venue status is `TENTATIVELY_HELD`, approval is `CONFIRMED` for that venue only. Validation uses422 `error.fields`; decisions/extensions carry the read version and reason. Customer policy answers remain Pending in CS-76/77. Numeric caps, touching, duration/extensions and inclusive setup deadlines remain working settings, not approved requirements.
+Contract alignment, reconciled 17 October 2026: requests use the distinct Planning Event ID; the Coordinator creates `TENTATIVELY_HELD` and a separate Venue Staff approval changes only that booking to `CONFIRMED`. No additional Coordinator venue-confirmation action is required (resolved Q2, CS-76). Validation uses422 `error.fields`; decisions/extensions carry the read version and a reason. Team policies 3–6 and Q1 are recorded in the [policy register](../../../docs/venue-policy-decisions.md). Original source tables/creation dates below are preserved; the live versioned decision endpoint supersedes their illustrative APPROVED/POST aliases.
 
 | Test Case ID | Scenario / AC | Pre-conditions | Test steps / data | Expected result / assertions | Required layer | Date of Creation |
 | --- | --- | --- | --- | --- | --- | --- |

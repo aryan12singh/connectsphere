@@ -1,6 +1,6 @@
 # Hold expiry and occupied-window foundations
 
-CS-78 technical spike and CS-85 domain foundation, initially9 October2026; current integration17 October2026. Production requests, decisions, extensions, search, calendar and readiness persist buffers, versions and deadlines. The Booking deadline worker now persists warning/expiry activity and outbox intent, with actual RabbitMQ/notification inbox delivery. [Integration/handoff](sprint3-integration-handoff.md) records the current worker, broker and exact verification command. The research worker below remains an isolated PostgreSQL proof, not the production scheduler. See the [policy register](venue-policy-decisions.md) for defaults, setup cap, extension authorization and Q2.
+CS-78 technical spike and CS-85 domain foundation, initially9 October2026; current integration17 October2026. Production requests, decisions, extensions, search, calendar and readiness persist buffers, versions and deadlines. The Booking deadline worker now persists warning/expiry activity and outbox intent, with actual RabbitMQ/notification inbox delivery. [Integration/handoff](sprint3-integration-handoff.md) records the current worker, broker and exact verification command. The research worker below remains an isolated PostgreSQL proof, not the production scheduler. See the [policy register](venue-policy-decisions.md) for defaults, setup cap, extension authorization and the resolved two-action venue-confirmation policy.
 
 ## Reusable domain code
 
