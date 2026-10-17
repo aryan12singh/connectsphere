@@ -80,6 +80,16 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 17 October 2026 — Aryan — CS-85 operating-hours and shared-case audit
+
+Fixed a reproduced repeated-hour opening-hours bypass in the shared venue
+validator; added native, HTTP, PostgreSQL and live desktop/mobile proof. Local
+Booking43/43 unit,19/19 PostgreSQL and14/14 contracts; frontend387/387 and
+unchanged floors pass. Audited the77 owned Drive scenarios and supplemental
+AC evidence; reconciled stale Q2/source wording. [Audit and review boundaries](2026-10-17-completion-audit.md).
+PR #13 stays on merge hold until Marcus's work reaches main and the combined
+revision is verified. Actual human review/acceptance/process records remain open.
+
 ### 17 October 2026 — Aryan — CS-37/38/76 venue confirmation resolved
 
 [Q2 decision and verification](2026-10-17-venue-confirmation.md): Coordinator

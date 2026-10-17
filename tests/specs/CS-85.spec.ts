@@ -9,6 +9,34 @@ const require = createRequire(import.meta.url)
 const availability = require('../../services/booking-service/src/availability.js')
 
 describe('CS-85 — occupied-window calculation (domain unit tests)', () => {
+  it('TC-CS85-17 repeated-hour operating limits agree across search, request and Staff approval without failed writes',async()=>{
+    const f=require('../helpers/venue-workflow.cjs'),api=await f.stack();f.reset()
+    vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-17T00:00:00Z'))
+    try{
+      const startAt='2026-11-01T01:20:00-04:00',endAt='2026-11-01T01:10:00-05:00'
+      const {event}=await f.eventFixture({startAt:'2026-11-01T00:00:00-04:00',endAt:'2026-11-01T06:00:00-05:00',timeZone:'America/New_York'})
+      const hours=(closesAt:string)=>f.venueInput().operatingHours.map((h:any)=>({...h,opensAt:'01:00',closesAt}))
+      const closed=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({timeZone:'America/New_York',setupMinutes:0,turnaroundMinutes:0,operatingHours:hours('01:30')})})
+      expect(closed.status).toBe(201)
+      const body={eventId:event.id,venueId:closed.body.id,title:'Repeated hour',reason:'Current operating-hours proof',startAt,endAt,timeZone:'America/New_York'}
+      const state=()=>JSON.stringify({bookings:f.bookings.listBookings(),activities:f.bookings.state.activities,outbox:f.bookings.state.outbox})
+      const before=state(),path=`/venue-bookings/events/${event.id}/venue-search?`+new URLSearchParams({startAt,endAt})
+      const search=await api.booking.http(path,{headers:f.coordinator})
+      expect(search.status).toBe(200);expect(search.body.items).toEqual([])
+      const refused=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'dst-closed'},body})
+      expect(refused.status).toBe(422);expect(refused.body.error.fields.venueId).toContain('OUTSIDE_OPERATING_HOURS');expect(state()).toBe(before)
+      const reopened=await api.venue.http('/venues/'+closed.body.id,{method:'PUT',headers:f.staff,body:{...closed.body,operatingHours:hours('02:00'),version:closed.body.version,reason:'Open both repeated-hour occurrences'}})
+      expect(reopened.status).toBe(200)
+      expect((await api.booking.http(path,{headers:f.coordinator})).body.items[0].id).toBe(closed.body.id)
+      const held=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'dst-open'},body})
+      expect(held.status).toBe(201)
+      const restricted=await api.venue.http('/venues/'+closed.body.id,{method:'PUT',headers:f.staff,body:{...reopened.body,operatingHours:hours('01:30'),version:reopened.body.version,reason:'Current hours require renewed suitability'}})
+      expect(restricted.status).toBe(200)
+      const current=await api.booking.http('/venue-bookings/'+held.body.id,{headers:f.staff}),beforeDecision=state()
+      const denied=await api.booking.http('/venue-bookings/'+held.body.id+'/decision',{method:'PUT',headers:f.staff,body:{status:'CONFIRMED',version:current.body.version,reason:'Recheck the entire occupied interval'}})
+      expect(denied.status).toBe(422);expect(denied.body.error.fields.venueId).toContain('OUTSIDE_OPERATING_HOURS');expect(state()).toBe(beforeDecision)
+    }finally{vi.useRealTimers();await api.close()}
+  })
   it('TC-CS85-15 same-fixture search, calendar, preflight and write guard agree without creating a conflicting request',async()=>{
     const f=require('../helpers/venue-workflow.cjs'),api=await f.stack();f.reset()
     let wrapper:any
