@@ -26,7 +26,7 @@ test('TC-CS93-45 TC-CS94-43 TC-CS95-41 LIVE multi-room Safety review, actionable
   const beforeLast=await (await p.coordinator.get('/api/safety/events/'+eventId)).json()
   expect(beforeLast.venueReady).toBe(false);expect(beforeLast.outstanding.some((x:any)=>x.bookingId===rooms[2]!.room.id)).toBe(true)
   expect((await mutation(p.coordinator,'POST','/api/safety/events/'+eventId+'/submit',{version:beforeLast.event.version})).status()).toBe(409)
-  expect((await mutation(p.coordinator,'POST','/api/events/'+eventId+'/confirm',{version:beforeLast.event.version})).status()).toBe(409)
+  expect((await mutation(p.coordinator,'POST','/api/safety/events/'+eventId+'/confirm',{version:beforeLast.event.version})).status()).toBe(409)
   expect((await reviewDatabase('event',async db=>db.query('SELECT id FROM safety_rounds WHERE "eventId"=$1',[eventId]))).rows).toEqual([])
   const unchangedLast=await (await p.coordinator.get('/api/safety/events/'+eventId)).json()
   expect(unchangedLast.event.version).toBe(beforeLast.event.version);expect(unchangedLast.state).toBe(beforeLast.state)

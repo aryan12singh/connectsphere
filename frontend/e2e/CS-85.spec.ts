@@ -45,7 +45,9 @@ test('TC-CS85-30 LIVE setup and turnaround preserve advertised time and protect 
     try{
       const calendarVenue=await createVenue(staff),startAt=nextMonday+'T02:00:00.000Z',endAt=nextMonday+'T04:00:00.000Z'
       const calendarRoom=await hold(soon.coordinator,soon.event.eventId,calendarVenue.id,{startAt,endAt})
-      await signIn(page,soon.contact.email);await page.goto('/venue/'+calendarVenue.id)
+      await signIn(page,emails.staff);await page.goto('/venue')
+      await page.getByPlaceholder('Search venues...').fill(calendarVenue.name)
+      await page.getByRole('button',{name:new RegExp(calendarVenue.name)}).click()
       await page.getByRole('button',{name:'Next range',exact:true}).click()
       const visibleRoom=page.getByRole('button').filter({hasText:calendarRoom.title})
       await expect(visibleRoom).toHaveCount(1);await expect(visibleRoom).toHaveAttribute('title',/Occupied: .*09:30.*12:45/)
