@@ -52,6 +52,8 @@ test('TC-CS85-30 LIVE setup and turnaround preserve advertised time and protect 
       const visibleRoom=page.getByRole('button').filter({hasText:calendarRoom.title})
       await expect(visibleRoom).toHaveCount(1);await expect(visibleRoom).toHaveAttribute('title',/Occupied: .*09:30.*12:45/)
       await expect(page.locator('[data-buffer="setup"]')).toHaveCount(1);await expect(page.locator('[data-buffer="turnaround"]')).toHaveCount(1)
+      await visibleRoom.scrollIntoViewIfNeeded()
+      await expect(visibleRoom).toBeInViewport();await expect(page.locator('[data-buffer="setup"]')).toBeInViewport();await expect(page.locator('[data-buffer="turnaround"]')).toBeInViewport()
       await page.screenshot({path:info.outputPath('TC-CS85-30-real-calendar-buffers.png'),fullPage:true})
       const calendarRows=(await reviewDatabase('booking',async db=>db.query(query,[calendarRoom.id]))).rows
       expect(calendarRows[0].occupiedStart.toISOString()).toBe(calendarRoom.occupiedStart);expect(calendarRows[0].occupiedEnd.toISOString()).toBe(calendarRoom.occupiedEnd)
