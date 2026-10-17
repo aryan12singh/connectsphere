@@ -275,3 +275,26 @@ test('CS30: closed requests cannot be reassigned and the Coordinator list shows 
  const list=await call('GET','/event-requests/coordinators',undefined,current);assert.equal(list.status,200);assert.ok(list.body.items.every(c=>c.id&&c.name));assert.equal(list.body.items.length,2);
  assert.equal((await call('GET','/event-requests/coordinators',undefined,'owner')).status,403);
 });
+
+// ── CS-50 / CS-51: outbox messages that feed notification-service ──────
+test('TC-CS50-06 a refused action writes no outbox message, so nobody is notified', async () => {
+ const r=await create();const actor=r.body.currentCoordinatorId==='test-coord'?'coord':'coord2';
+ const rejected=await call('POST',`/event-requests/${r.body.id}/decision`,{action:'REJECT',text:'Not feasible',version:r.body.version},actor);assert.equal(rejected.status,200);
+ const approve=await call('POST',`/event-requests/${r.body.id}/decision`,{action:'APPROVE',version:rejected.body.version},actor);
+ assert.equal(approve.status,409);
+ assert.equal(await prisma.outbox.count({where:{aggregateId:r.body.id,eventType:'RequestApproved'}}),0);
+});
+test('TC-CS50-01e approval and assignment messages carry the organiser, event name, event id and coordinator', async () => {
+ const r=await create();const actor=r.body.currentCoordinatorId==='test-coord'?'coord':'coord2';
+ const assigned=await prisma.outbox.findFirst({where:{aggregateId:r.body.id,eventType:'CoordinatorAssigned'}});
+ assert.equal(assigned.payload.organiserId,'test-owner');assert.equal(assigned.payload.coordinatorId,r.body.currentCoordinatorId);
+ const approved=await call('POST',`/event-requests/${r.body.id}/decision`,{action:'APPROVE',version:r.body.version},actor);assert.equal(approved.status,200);
+ const row=await prisma.outbox.findFirst({where:{aggregateId:r.body.id,eventType:'RequestApproved'}});
+ assert.equal(row.payload.organiserId,'test-owner');assert.equal(row.payload.eventName,valid.eventName);assert.ok(row.payload.eventId);
+});
+test('TC-CS51-08e a return message carries the Coordinator comment for the Organiser notice', async () => {
+ const r=await create();const actor=r.body.currentCoordinatorId==='test-coord'?'coord':'coord2';
+ const returned=await call('POST',`/event-requests/${r.body.id}/decision`,{action:'RETURN',text:'Add layout',version:r.body.version},actor);assert.equal(returned.status,200);
+ const row=await prisma.outbox.findFirst({where:{aggregateId:r.body.id,eventType:'RequestReturned'}});
+ assert.equal(row.payload.comment,'Add layout');assert.equal(row.payload.organiserId,'test-owner');
+});

@@ -80,6 +80,16 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 17 October 2026 — Aryan — PR #14 main reconciliation
+
+Merged main `344bcd3` (PR #14) into the existing PR #13 branch. Resolved the
+DEVLOG conflict by retaining both owners' complete dated entries; Marc's three
+Event PostgreSQL assertions and CS-50/51 records remain intact. Coverage floors,
+Q2's two-action flow, the CS-85 correction and the existing UI/database evidence
+are retained. [Combined-source verification](2026-10-17-pr14-reconciliation.md).
+PR #13 remains a draft with auto-merge off; peer review, its own main merge/CI
+and the recorded human acceptance/process gates still apply.
+
 ### 17 October 2026 — Aryan — CS-85 operating-hours and shared-case audit
 
 Fixed a reproduced repeated-hour opening-hours bypass in the shared venue
@@ -108,6 +118,34 @@ coverage suites, contracts, typechecks and build pass. PR #11 is already approve
 and merged as main `7867f24`; this follow-up needs its own review, merge and green
 main CI to clear the nine accepted stories' shared coverage blocker. Q2 and the
 unconfirmed model/spike/adoption gates remain separate.
+
+### 17 October 2026 — Marc — CS-50/51 notification verification on main
+
+Checked `main` at `7867f24` against Marc's CS-50/51 branch. Main already
+contains that branch's notification-service, bell, BFF routes and tests,
+plus the RabbitMQ relays/consumer (exchange `connectsphere.events`, queue
+`notification-service.domain-events`). So the branch is **not merged**;
+these follow-ups go on a new branch from main:
+- event-service PG tests: TC-CS50-06 (refused action → no outbox message),
+  TC-CS50-01e (assignment/approval messages carry organiser, event name, ids),
+  TC-CS51-08e (return message carries the Coordinator comment).
+- Test records: CS-50 updated with live results; CS-51 added for main.
+
+Verification on main: notification unit 21 / HTTP 12 / PostgreSQL 4; event
+unit 124 / PostgreSQL 26 (23 + 3 new); booking unit 35 / HTTP 14 /
+PostgreSQL 17; venue unit 43 / HTTP 11. **Live RabbitMQ 3.12:** real
+event-service relay → broker → real consumer. Submit, approve, return with
+comment and reassign each produced exactly the expected notices (first after
+~0.65 s). A refused decision produced none; an unrelated user got none. With
+the broker stopped, the request saved and its 2 messages waited in the outbox,
+then delivered on restart. Republishing a delivered message added no second
+notice. Booking/Safety live paths were not re-run here; use
+`scripts/run-event-review-ci.sh`.
+
+Open: TC-CS51-02 expects a `NEEDS_REPLACEMENT` flag; main flags a booking under
+a Staff block as `BUFFER_CONFLICT`. Agree with Aryan/PO. No `/venue-bookings/:id`
+(review) page exists for notice links (CS-38). Technical-request and
+cancellation/replacement notices are not built.
 
 ### 17 October 2026 — integrated Venue, Safety and notification delivery
 
