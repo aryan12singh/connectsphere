@@ -1,10 +1,10 @@
 import {beforeAll,afterAll,beforeEach,describe,expect,it,vi} from 'vitest'
 import {mockNuxtImport,mountSuspended,registerEndpoint} from '@nuxt/test-utils/runtime'
 import {ref} from 'vue'
-const ui=vi.hoisted(()=>({summary:null as any,safety:null as any,send:vi.fn()}))
+const ui=vi.hoisted(()=>({summary:null as any,safety:null as any,inventory:null as any,send:vi.fn()}))
 mockNuxtImport('useUserSession',()=>()=>({user:ref({id:'coordinator',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR'],permissions:['venue_bookings.create']})}))
 mockNuxtImport('useRequestFetch',()=>()=>ui.send)
-mockNuxtImport('useFetch',()=>async(path:any)=>({data:ref(String(typeof path==='function'?path():path).includes('/summary')?ui.summary:String(typeof path==='function'?path():path).includes('/api/safety/')?ui.safety:{}),error:ref(null),refresh:vi.fn()}))
+mockNuxtImport('useFetch',()=>async(path:any)=>({data:ref(String(typeof path==='function'?path():path).includes('/summary')?ui.summary:String(typeof path==='function'?path():path).includes('/api/safety/')?ui.safety:String(typeof path==='function'?path():path).includes('/api/equipment/inventory')?ui.inventory:{requests:[]}),error:ref(null),refresh:vi.fn()}))
 import EventVenueArrangements from '../../frontend/app/components/venue/EventVenueArrangements.vue'
 import {createRequire} from 'node:module'
 const require=createRequire(import.meta.url),venueFixture=require('../helpers/venue-workflow.cjs')
@@ -100,4 +100,17 @@ it('TC-CS93-44 current source facts and terminal status gate confirmation while 
  expect(observations[1]).toMatchObject({result:'REJECTED',status:409})
  expect(observations[2]).toMatchObject({result:'ACCEPTED',eventStatus:'CONFIRMED',activityTransitions:[['ARRANGEMENT_PENDING','CONFIRMED']]})
  expect(observations[3]).toMatchObject({result:'ACCEPTED',eventStatus:'CONFIRMED'})
+})
+
+
+it('TC-CS93-47 Technical Support stock inputs are inert until hydration so early typing cannot save stale inventory',async()=>{
+ const {createSSRApp}=await import('vue'),{renderToString}=await import('@vue/server-renderer')
+ const Page=(await import('../../frontend/app/pages/technical-requests.vue')).default
+ ui.inventory={items:[{equipmentType:'projector',total:16,version:14}]}
+ try{
+  const html=await renderToString(createSSRApp(Page)),document=new DOMParser().parseFromString(html,'text/html')
+  const input=document.querySelector('input[aria-label="projector total stock"]')
+  expect(input).not.toBeNull();expect(input?.hasAttribute('disabled')).toBe(true)
+  expect([...document.querySelectorAll('button')].filter(b=>b.textContent?.trim()==='Save stock').every(b=>b.hasAttribute('disabled'))).toBe(true)
+ }finally{ui.inventory=null}
 })
