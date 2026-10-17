@@ -57,8 +57,7 @@ for (const metric of ['lines', 'branches', 'functions']) nodeControl(metric, 100
 // frontend floors. It cannot overwrite the full-suite coverage or test report.
 const partialCoverage = join(output, 'frontend-partial-coverage')
 const partialResults = join(output, 'frontend-partial-results.json')
-const vitest = spawnSync(process.execPath, ['../tests/scripts/run-test-report.mjs',
-  '--coverage', '../tests/specs/CS-78.spec.ts'], {
+const vitest = spawnSync('npm', ['run', 'test:coverage', '--', '../tests/specs/CS-78.spec.ts'], {
   cwd: join(root, 'frontend'), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
   env: { ...process.env, TEST_RESULTS_JSON: partialResults, CS_COVERAGE_DIR: partialCoverage,
     TEST_RECORD_STORIES: '', TEST_EVIDENCE_LAYER: '' },
@@ -82,7 +81,7 @@ for (const name of ['lines', 'statements', 'branches', 'functions']) {
 const summary = `# Coverage gate verification\n\nSource: ${process.env.CS_VERIFY_REVISION || 'local working tree'}\n\n` +
   `- Node positive control: 1 passing test, exit 0 through Bash/tee.\n` +
   `- Node line, branch and function controls: assertions pass; each 100% floor rejects with exit 1 through Bash/pipefail/tee.\n` +
-  `- Frontend focused suite: ${results.numPassedTests} tests pass, none fail/skip; the normal global floors reject with exit 1 propagated by run-test-report.mjs.\n` +
+  `- Frontend focused suite: ${results.numPassedTests} tests pass, none fail/skip; the normal global floors reject with exit 1 propagated through npm and run-test-report.mjs.\n` +
   `- Full-suite test and coverage artifacts remain separate from these intentional negative controls.\n`
 writeFileSync(join(output, 'coverage-gate-proof.md'), summary)
 console.log(summary)

@@ -28,7 +28,7 @@ all existing contract commands pass. Frontend 386/386, both typechecks and the
 production build pass. One positive Node control passes; all three intentionally
 strict Node metric controls reject through Bash/pipefail/tee. Actual CS-78 focused
 frontend 17/17 passes with no skips/setup failures while the normal global floors
-correctly return exit 1 through the report wrapper.
+correctly return exit 1 through the actual npm command and report wrapper.
 
 The first local Venue database baseline inherited a mismatched test key from the
 external orchestration script; rerunning with the workflow's normal environment

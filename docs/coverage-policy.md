@@ -86,7 +86,7 @@ The proof executes a passing Node fixture, then rejects each 100% line/branch/
 function control through the real Bash/pipefail/tee boundary while its assertion
 still passes. It also runs the actual CS-78 focused frontend suite: all assertions
 must pass without skips/setup errors, while the normal global frontend floors
-return exit 1. A missing report, assertion/setup failure, signal or absent
+return exit 1 through the actual npm command and its report wrapper. A missing report, assertion/setup failure, signal or absent
 coverage-failure message fails the proof. CI stores its logs, focused JSON and
 coverage report separately in `frontend-evidence/coverage-gate-proof`; the full
 passing frontend report is preserved. Expected negative controls are not product

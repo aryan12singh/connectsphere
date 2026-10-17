@@ -27,6 +27,8 @@ Source: `chore/cs79-coverage-gates` working tree based on main `7867f24`; Node 2
 
 Both frontend typechecks and the production build pass. Existing contracts also pass (Event 2, Venue 11, Booking 14, Notification 12 and Equipment 8). Source scopes and configured floors are in [the policy](../../../../docs/coverage-policy.md); no cross-service or unit/PG aggregate is claimed.
 
-Raw execution evidence: external `sprint3-evidence/2026-10-17-cs79-coverage`, `Local-Gated-Verification.json`, service `*-gated-*.log`, `frontend-gated*` and `proof-local-v2`. CI retains equivalent reports in its existing service/frontend artifacts, including the separate coverage-gate-proof directory.
+Raw execution evidence: external `sprint3-evidence/2026-10-17-cs79-coverage`, `Local-Gated-Verification.json`, service `*-gated-*.log`, `frontend-gated*` and `proof-local-v2` (report wrapper) and `proof-local-v3-npm` (actual npm command). CI retains equivalent reports in its existing service/frontend artifacts, including the separate coverage-gate-proof directory.
 
 Diagnostic history: the initial external Venue harness key mismatch and the first proof-harness report-field mismatch are retained separately. Corrected runs pass; no assertion, threshold or source filter was weakened to clear either diagnostic. This record does not claim a pre-implementation RED run, human acceptance, a merged policy PR or green post-merge main CI.
+
+Follow-up 2026-10-17T16:41:32.768951+08:00: all five controls pass after strengthening TC-CS79-07 to invoke the actual nested `npm run test:coverage` command. The 17 focused assertions pass while coverage rejection remains exit 1 through npm and the report wrapper.
