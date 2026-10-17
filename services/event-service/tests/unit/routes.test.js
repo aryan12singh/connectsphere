@@ -73,7 +73,7 @@ test('authentication and internal route guards cover denied, valid and unavailab
     assert.equal(nextCalled, true);
     assert.equal(bearerRequest.actor.id, 'bearer-user');
 
-    global.fetch = async () => ({ ok: false, json: async () => ({}) });
+    global.fetch = async () => ({ ok: false, status: 401, json: async () => ({}) }); // auth-service answers 401 for an unknown or expired token
     const invalidResponse = responseRecorder();
     await authModule.requireAuth()({ get: requestHeaders({ authorization: 'Bearer expired' }).get }, invalidResponse, () => {});
     assert.equal(invalidResponse.statusCode, 401);

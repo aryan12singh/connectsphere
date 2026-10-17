@@ -1,4 +1,5 @@
 const { displayStatus } = require('./domain/statusLabels');
+const { allowedActions } = require('./policy');
 
 function iso(value) { return value instanceof Date ? value.toISOString() : value || null; }
 
@@ -12,21 +13,6 @@ function localParts(value, timeZone) {
 function userSummary(id, actor) {
   if (!id) return null;
   return { id, name: actor?.name || id, email: actor?.email || '' };
-}
-
-function localAllowedActions(record, actor) {
-  const actions = [];
-  if (actor?.role === 'EVENT_ORGANISER' && actor.id === record.organiserId) {
-    if (record.status === 'DRAFT') actions.push('edit', 'submit');
-    if (record.status === 'RETURNED_FOR_AMENDMENT') actions.push('edit', 'resubmit');
-  }
-  if (actor?.role === 'EVENT_COORDINATOR') {
-    if (record.status === 'SUBMITTED') {
-      if (!record.currentCoordinatorId) actions.push('claim');
-      if (!record.currentCoordinatorId || record.currentCoordinatorId === actor.id) actions.push('approve', 'reject', 'amendments');
-    }
-  }
-  return actions;
 }
 
 function toRequest(record, actor, assignment = null) {
@@ -71,7 +57,7 @@ function toRequest(record, actor, assignment = null) {
     event: record.event ? { id: record.event.id, status: record.event.status } : null,
     eventId: record.event?.id ?? null,
     eventStatus: record.event?.status ?? null,
-    allowedActions: localAllowedActions(record, actor),
+    allowedActions: allowedActions(actor, record),
     createdAt: iso(record.createdAt),
     updatedAt: iso(record.updatedAt),
   };

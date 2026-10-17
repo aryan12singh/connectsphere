@@ -749,6 +749,133 @@ paths:
               $ref: "#/components/schemas/DecisionInput"
       x-required-permissions:
         - event_requests.review
+  /event-requests/{id}/reassign:
+    post:
+      summary: Current Coordinator hands the request to another Coordinator
+      operationId: post_event_requests_id_reassign
+      description: Required version and coordinatorId. Only the CURRENT Coordinator may reassign (if nobody
+        holds the request, a Coordinator may claim it by naming themselves). The target must be an
+        active Coordinator other than the Organiser and the current holder. One transaction closes the
+        old assignment, opens the new one (reason REASSIGNED), bumps the version and writes one
+        COORDINATOR_REASSIGNED activity entry and one CoordinatorReassigned outbox row. Allowed while the
+        request is Submitted, Returned, or Approved with a Planning/Confirmed Event. Requires trusted
+        event_requests.review.
+      responses:
+        "200":
+          description: Reassigned (or authorised replay of the same key)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Request"
+        "400":
+          description: Malformed body or missing operation key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing/expired/revoked session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not the current Coordinator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Record does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Stale version, closed request or conflicting key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Missing, unknown or ineligible target Coordinator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Directory unavailable; no partial write
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [coordinatorId, version]
+              properties:
+                coordinatorId:
+                  type: string
+                version:
+                  type: integer
+                  minimum: 1
+      x-required-permissions:
+        - event_requests.review
+  /event-requests/coordinators:
+    get:
+      summary: Active Coordinators a request can be handed to
+      operationId: get_event_requests_coordinators
+      description: Names for the "Change coordinator" list, passed through from user-service. Requires trusted
+        events.view and event_requests.review.
+      responses:
+        "200":
+          description: Active Coordinators
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        email:
+                          type: string
+        "401":
+          description: Missing/expired/revoked session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not a Coordinator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      x-required-permissions:
+        - events.view
+        - event_requests.review
   /event-requests/{id}/activity:
     get:
       summary: Authorised private Request history

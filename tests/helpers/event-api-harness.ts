@@ -14,11 +14,14 @@ export const valid={eventName:'BFF summit',purpose:'Learning',description:'Synth
 export async function eventHarness(){
  const prefix='bff-'+randomUUID()
  const permissionOverrides=new Map<string,string[]>()
- const users:Record<string,any>={owner:{id:prefix+'-owner',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-bff'},other:{id:prefix+'-other',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-other'},coord:{id:prefix+'-coord',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR']},attendee:{id:prefix+'-attendee',role:'ATTENDEE',roles:['ATTENDEE']}}
+ const users:Record<string,any>={owner:{id:prefix+'-owner',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-bff'},other:{id:prefix+'-other',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-other'},coord:{id:prefix+'-coord',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR']},coord2:{id:prefix+'-coord2',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR']},attendee:{id:prefix+'-attendee',role:'ATTENDEE',roles:['ATTENDEE']}}
  for(const [who,u] of Object.entries(users))Object.assign(u,{firstName:who,lastName:'Synthetic',email:who+'@example.test',name:who+' Synthetic',company:'Synthetic Org',isActive:true})
+ // Coordinators the directory offers for automatic assignment. Starts with one so
+ // existing tests stay deterministic; a test can push users.coord2.id to hand over.
+ const directory:string[]=[users.coord.id]
  const identity=createServer(async(req,res)=>{let text='';for await(const b of req)text+=b;const token=req.url?.startsWith('/auth')?(req.headers.authorization||'').slice(7):text?JSON.parse(text).token:undefined
-  const body=req.url==='/internal/coordinators'?{coordinators:[{id:users.coord.id,createdAt:'2020-01-01'}]}:req.url?.startsWith('/internal/users/')?Object.values(users).find(u=>u.id===decodeURIComponent(req.url!.split('/').at(-1)!)):req.url?.startsWith('/auth')?{user:users[token!],permissions:permissionOverrides.get(token!)??[...new Set((users[token!]?.roles??[]).flatMap((role:string)=>defaultPermissions[role]??[]))]}:{valid:!!users[token!],user:users[token!],permissions:permissionOverrides.get(token!)??[...new Set((users[token!]?.roles??[]).flatMap((role:string)=>defaultPermissions[role]??[]))]}
-  res.writeHead(body && (req.url?.includes('coordinators')||req.url?.includes('/users/')||users[token!])?200:401,{'content-type':'application/json'});res.end(JSON.stringify(body??{}))
+  const body=req.url==='/internal/coordinators'?{coordinators:directory.map(id=>({id,createdAt:'2020-01-01'}))}:req.url?.startsWith('/internal/users?')?{users:[users.coord,users.coord2],page:1,pageSize:25,total:2}:req.url?.startsWith('/internal/users/')?Object.values(users).find(u=>u.id===decodeURIComponent(req.url!.split('/').at(-1)!)):req.url?.startsWith('/auth')?{user:users[token!],permissions:permissionOverrides.get(token!)??[...new Set((users[token!]?.roles??[]).flatMap((role:string)=>defaultPermissions[role]??[]))]}:{valid:!!users[token!],user:users[token!],permissions:permissionOverrides.get(token!)??[...new Set((users[token!]?.roles??[]).flatMap((role:string)=>defaultPermissions[role]??[]))]}
+  res.writeHead(body && (req.url?.includes('coordinators')||req.url?.includes('/users/')||req.url?.includes('/users?')||users[token!])?200:401,{'content-type':'application/json'});res.end(JSON.stringify(body??{}))
  });await new Promise<void>(r=>identity.listen(0,'127.0.0.1',r))
  const identityUrl='http://127.0.0.1:'+(identity.address() as any).port
  process.env.AUTH_SERVICE_URL=process.env.USER_SERVICE_URL=identityUrl;process.env.INTERNAL_API_KEY='bff-integration-key'
@@ -43,12 +46,12 @@ export async function eventHarness(){
   return data
  }}))
  const app=createApp(),router=createRouter();
- const routes=[['post','/api/events','events.post'],['get','/api/events','events.get'],['get','/api/review-queue','review-queue.get'],['get','/api/events/:id','events/[id].get'],['put','/api/events/:id','events/[id].put'],['post','/api/events/:id/decision','events/[id]/decision.post'],['get','/api/events/:id/activity','events/[id]/activity.get'],['get','/api/events/:id/coordinator','events/[id]/coordinator.get']]
+ const routes=[['post','/api/events','events.post'],['get','/api/events','events.get'],['get','/api/review-queue','review-queue.get'],['get','/api/events/:id','events/[id].get'],['put','/api/events/:id','events/[id].put'],['post','/api/events/:id/decision','events/[id]/decision.post'],['get','/api/events/:id/activity','events/[id]/activity.get'],['get','/api/events/:id/coordinator','events/[id]/coordinator.get'],['post','/api/events/:id/reassign','events/[id]/reassign.post'],['get','/api/coordinators','coordinators.get']]
  const modules=import.meta.glob('../../frontend/server/api/**/*.ts')
  for(const [method,path,file] of routes){const handler=(await modules[`../../frontend/server/api/${file}.ts`]!() as any).default;(router as any)[method!](path,handler)}
  router.get('/test-session',defineEventHandler(async(event)=>{const who=String(getQuery(event).who);const s=await useSession(event,{password,name:'nuxt-session'});await s.update({user:users[who],secure:{token:who}});return {ok:true}}));app.use(router);const handle=toWebHandler(app)
  const cookies:Record<string,string>={};for(const who of Object.keys(users)){const r=await handle(new Request('http://localhost/test-session?who='+who));cookies[who]=(r.headers.get('set-cookie')||'').split(';')[0]!}
- return {users,permissionOverrides,db:require('../../services/event-service/src/db'),async call(method:string,path:string,body?:any,who:string|null='owner',key=randomUUID(),extra={}){
+ return {users,directory,permissionOverrides,db:require('../../services/event-service/src/db'),async call(method:string,path:string,body?:any,who:string|null='owner',key=randomUUID(),extra={}){
   const r=await handle(new Request('http://localhost'+path,{method,headers:{'content-type':'application/json',...(who?{cookie:cookies[who]!}:{}),'Idempotency-Key':key,...extra},...(body!==undefined?{body:JSON.stringify(body)}:{})}));return {status:r.status,body:await r.json() as any}
  },async close(){vi.unstubAllGlobals();vi.doUnmock('../../frontend/server/utils/kongBff');await Promise.all([service,identity,gateway].map(s=>new Promise<void>(r=>s.close(()=>r()))));await require('../../services/event-service/src/db').$disconnect()}}
 }

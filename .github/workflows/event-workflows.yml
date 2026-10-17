@@ -103,6 +103,8 @@ jobs:
           cache-dependency-path: services/event-service/package-lock.json
       - run: npm ci && npm run build && npx prisma migrate deploy
       - run: npm run test:coverage | tee "$RUNNER_TEMP/event-coverage.txt"
+      - name: PostgreSQL integration tests (real event_db, migrations applied above)
+        run: npm run test:integration
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
