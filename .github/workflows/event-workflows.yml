@@ -68,6 +68,10 @@ jobs:
           npm run typecheck:e2e
           npm run test:coverage
           npm run build
+      - name: Verify coverage failures propagate through the real runners
+        env:
+          CS_COVERAGE_PROOF_DIR: ${{ runner.temp }}/coverage-gate-proof
+        run: node tests/scripts/verify-coverage-gates.mjs
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
@@ -76,6 +80,7 @@ jobs:
           path: |
             ${{ runner.temp }}/frontend-results.json
             ${{ runner.temp }}/frontend-coverage
+            ${{ runner.temp }}/coverage-gate-proof
 
   event:
     name: Event service checks
@@ -108,13 +113,15 @@ jobs:
       - run: npm ci && npm run build && npx prisma migrate deploy
       - run: npm run test:coverage | tee "$RUNNER_TEMP/event-coverage.txt"
       - name: PostgreSQL integration tests (real event_db, migrations applied above)
-        run: npm run test:integration
+        run: npm run test:integration | tee "$RUNNER_TEMP/event-postgres-coverage.txt"
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
           name: event-evidence
           retention-days: 30
-          path: ${{ runner.temp }}/event-coverage.txt
+          path: |
+            ${{ runner.temp }}/event-coverage.txt
+            ${{ runner.temp }}/event-postgres-coverage.txt
 
   venue_booking:
     name: ${{ matrix.service }} checks

@@ -80,6 +80,16 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 17 October 2026 — Aryan — CS-79 measured coverage gates
+
+[Coverage gate delivery](2026-10-17-coverage-gates.md): baseline-derived frontend
+and seven service unit/PostgreSQL thresholds, production-only Event reporting,
+and actual Node/Vitest failure controls. Local frontend 386/386, all 14 service
+coverage suites, contracts, typechecks and build pass. PR #11 is already approved
+and merged as main `7867f24`; this follow-up needs its own review, merge and green
+main CI to clear the nine accepted stories' shared coverage blocker. Q2 and the
+unconfirmed model/spike/adoption gates remain separate.
+
 ### 17 October 2026 — integrated Venue, Safety and notification delivery
 
 [Current phase report](2026-10-17-integrated-venue-safety.md): real RabbitMQ relays/inbox, Equipment stock reservations and complete Safety/rework/Preparation APIs and UI; durable cross-service maintenance/readiness recovery. Contains verification results, evidence boundaries, peer handoff and pending Q2. PR #11 remains subject to actual required checks and human approval.
