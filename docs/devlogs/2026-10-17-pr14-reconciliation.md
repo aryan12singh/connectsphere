@@ -6,8 +6,9 @@ Owner: Aryan. Follow-up: [PR #13](https://github.com/aryan12singh/connectsphere/
 
 Merged main `344bcd3fcf03e2eb6b5381350c5bef4d8f725f36` (merged PR #14)
 into `chore/cs79-coverage-gates`, retaining the published `2d51890` history.
-The DEVLOG was the only conflict. Both owners' complete dated entries remain;
-Marc's three Event PostgreSQL tests and CS-50/51 records match main exactly.
+The DEVLOG was the only conflict. Both owners' histories were preserved;
+Marc's entry remains unchanged. His three Event PostgreSQL tests and CS-50/51
+records match main exactly.
 No application, dependency, migration or CI-policy file changes from `2d51890`.
 
 The additional assertions cover refused approval without an approval intent,
@@ -32,7 +33,9 @@ Node 22.23.3; newly created PostgreSQL 16 database with deployed migrations:
 Raw logs, the precommit source/tree manifest and coverage reports remain outside
 Git. Required hosted CI verifies this combined commit across all seven services,
 all 14 coverage suites, real broker/browser workflows and retained-data restart;
-its exact revision and results are linked on PR #13 and the Jira checkpoint.
+[hosted run 39044671915](https://github.com/aryan12singh/connectsphere/actions/runs/39044671915)
+passed all 10 jobs on a merge-preview tree matching `ac9a38f`.
+PR #13 links the current review and checks.
 Prior results are not relabelled as execution of this combined revision.
 
 ## Review and closure

@@ -47,9 +47,11 @@ RED/GREEN records remain under `tests/records/CS-85`.
 
 ## Merge and human records
 
-**Merge hold:** Aryan is waiting for Marcus's work to reach `main`. Do not merge
-PR #13 automatically. Once that lands, reconcile and rerun the affected checks
-on the actual combined revision before seeking squash merge.
+**Checkpoint history:** this audit preceded PR #14. Its merge is included at
+`ac9a38f`; [combined-source reconciliation](2026-10-17-pr14-reconciliation.md)
+records all 10 hosted CI jobs passing. The earlier Marcus dependency is cleared.
+PR #13 remains draft and unmerged pending independent review and an authorized
+squash merge.
 
 Q2 is resolved: Coordinator tentative request → Venue Staff approval confirms
 the venue booking, without an extra Coordinator button. Parent Event Safety,
