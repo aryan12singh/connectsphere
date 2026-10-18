@@ -17,7 +17,7 @@ module.exports = {
   // tests opt into DATA_MODE=memory explicitly so they remain deterministic.
   dataMode,
   databaseUrl,
-  // Team-agreed defaults; the Coordinator confirmation action remains pending.
+  // Team-agreed timing defaults; Staff approval confirms a Coordinator's hold.
   holdHours,
   allowTouching: process.env.VENUE_ALLOW_TOUCHING !== 'false',
   allowExpiryAtSetup: process.env.VENUE_ALLOW_EXPIRY_AT_SETUP !== 'false',

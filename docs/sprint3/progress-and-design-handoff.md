@@ -108,7 +108,7 @@ Source: [EventVenueArrangements](../../frontend/app/components/venue/EventVenueA
 - **Visible data:** room/Event/booking ID, read version, attendees/layout, advertised and occupied interval/time zone, hold deadline/countdown, request reason, extension requested deadline/reason and used-extension state.
 - **Normal:** request creates a tentative hold; omitted initial deadline derives 72 hours capped at setup. Current Coordinator requests one extension up to24 hours, Staff decides; pending extension leaves current expiry unchanged. **Empty:** “No venues requested yet.” **Validation:** reason, future valid deadline never beyond setup, current version and one-extension allowance; explicit invalid/null initial deadline is rejected.
 - **Permission:** current assignment and Planning state; Coordinator cannot approve their own hold/extension. **Loading:** disable duplicate requests/mutations while posting; ambiguous failure retains retry identity. **Error:** stale/unavailable/expired state is refreshed; show “Expired — request a new hold” at the deadline and stop acting on it. **Mobile:** stacked extension/release fields and wrapping IDs.
-- **Boundary:** automatic effective expiry is delivered; CS-90 scheduler and CS-50/51 actual notice delivery remain separate. Q2 is still pending: whether this request also counts as Coordinator confirmation or an additional guarded action is required.
+- **Boundary:** automatic effective expiry is delivered; CS-90 scheduler and CS-50/51 actual notice delivery remain separate. Q2 was resolved on 17 October: Coordinator requests a tentative hold, then Staff approval confirms it; no extra Coordinator confirmation control is required. See the [current integration handoff](../sprint3-integration-handoff.md) for the integrated worker/delivery beyond this earlier design snapshot.
 
 ### Staff requests and decisions — CS-38
 
@@ -160,6 +160,6 @@ Leave these records blank until the named people actually act. A prepared pack i
 | CS-74 independent model review | |
 | CS-78 timebox/spike review | |
 | Venue human walkthrough and story acceptance | |
-| Q2 clarification received and impact reconciled | |
+| Q2 clarification received and impact reconciled | 17 October 2026; Aryan confirmed Coordinator tentative request → Staff approval, with no extra Coordinator button. [Decision and verification](../devlogs/2026-10-17-venue-confirmation.md); human story acceptance remains separate. |
 
 Apply the [Definition of Done](../DEFINITION_OF_DONE.md). Keep implementation/evidence, actual review, main integration/CI and PO acceptance distinct; record the Sprint end snapshot before carrying remaining work forward.

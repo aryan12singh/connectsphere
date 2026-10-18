@@ -80,6 +80,38 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 18 October 2026 — Aryan — review and evidence cleanup
+
+Shortened PR #13 and Jira summaries; indexed the important test records and
+archived 53 superseded passing runs plus seven zero-execution copies. Genuine
+failures, policy milestones and results by test layer remain. Application,
+test and CI code are unchanged. [Evidence and retention index](../../tests/records/README.md).
+Peer review and the remaining human gates are listed on [PR #13](https://github.com/aryan12singh/connectsphere/pull/13).
+
+### 17 October 2026 — Aryan — PR #14 main reconciliation
+
+Included main `344bcd3` at `ac9a38f`, preserving both DEVLOG histories and Marc's
+three Event PostgreSQL tests. All 10 combined-source CI jobs passed.
+[Source and verification](2026-10-17-pr14-reconciliation.md).
+PR #13 remains draft and unmerged; this clears the earlier Marcus dependency.
+
+### 17 October 2026 — Aryan — CS-85 operating-hours correction
+
+Fixed the repeated-hour occupied-interval bypass; native, HTTP, PostgreSQL and
+desktop/mobile regressions verify refusal without business effects and a valid
+control. [Defect, correction and evidence](2026-10-17-completion-audit.md).
+
+### 17 October 2026 — Aryan — CS-37/38/76 venue confirmation resolved
+
+Coordinator tentative request → Venue Staff approval confirms that booking;
+parent Event confirmation remains separate. [Q2 decision and verification](2026-10-17-venue-confirmation.md).
+
+### 17 October 2026 — Aryan — CS-79 coverage enforcement
+
+Measured floors apply independently to the frontend and all seven service
+unit/PostgreSQL layers; five controls verify failure propagation.
+[Policy delivery](2026-10-17-coverage-gates.md).
+
 ### 17 October 2026 — Marc — CS-50/51 notification verification on main
 
 Checked `main` at `7867f24` against Marc's CS-50/51 branch. Main already

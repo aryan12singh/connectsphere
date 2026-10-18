@@ -14,9 +14,9 @@
     "test": "DATA_MODE=memory NODE_ENV=test node --test --test-concurrency=1 tests/unit/*.test.js",
     "test:unit": "DATA_MODE=memory NODE_ENV=test node --test --test-concurrency=1 tests/unit/*.test.js",
     "test:routes": "DATA_MODE=memory NODE_ENV=test node --test --test-concurrency=1 tests/unit/routes.test.js",
-    "test:coverage": "DATA_MODE=memory NODE_ENV=test node --test --test-concurrency=1 --experimental-test-coverage tests/unit/*.test.js",
+    "test:coverage": "DATA_MODE=memory NODE_ENV=test node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-lines=60 --test-coverage-branches=70 --test-coverage-functions=55 --test-coverage-include='src/**/*.js' --test-coverage-include='../utils/**/*.js' tests/unit/*.test.js",
     "test:contract": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
-    "test:integration": "INTERNAL_API_KEY=integration-key node --test --test-concurrency=1 tests/integration/*.test.js"
+    "test:integration": "INTERNAL_API_KEY=integration-key node --experimental-test-coverage --test-coverage-lines=60 --test-coverage-branches=70 --test-coverage-functions=50 --test-coverage-include='src/**/*.js' --test-coverage-include='../utils/**/*.js' --test --test-concurrency=1 tests/integration/*.test.js"
   },
   "engines": {
     "node": ">=20"

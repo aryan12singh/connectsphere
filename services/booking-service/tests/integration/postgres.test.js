@@ -92,6 +92,42 @@ test('TC-CS35-01 operational block persists audit data and appears for even a on
 
 function coordinatorActor() {actor={id:'coordinator',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR'],permissions:[...defaults.EVENT_COORDINATOR]};}
 function independentValues(venueId) {return {...values,venueId,startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z'};}
+test('TC-CS85-18 PostgreSQL rejects a repeated-hour closure without booking, activity or outbox effects',async()=>{
+  coordinatorActor();const venueId='pg-dst-'+randomUUID();
+  const hours=closesAt=>['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].map(weekday=>({weekday,isClosed:false,opensAt:'01:00',closesAt}));
+  const body={...independentValues(venueId),startAt:'2026-11-01T01:20:00-04:00',endAt:'2026-11-01T01:10:00-05:00',timeZone:'America/New_York'};
+  venueOverrides.set(venueId,{timeZone:body.timeZone,operatingHours:hours('01:30')});
+  const effects=()=>Promise.all([prisma.venueBookingRequest.count({where:{venueId}}),prisma.venueBookingActivity.count({where:{booking:{venueId}}}),prisma.bookingOutbox.count({where:{payload:{path:['venueId'],equals:venueId}}})]);
+  const before=await effects();
+  const denied=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+'-closed'},body});
+  assert.equal(denied.status,422);assert.ok(denied.body.error.fields.venueId.includes('OUTSIDE_OPERATING_HOURS'));
+  assert.deepEqual(await effects(),before);
+  venueOverrides.set(venueId,{timeZone:body.timeZone,operatingHours:hours('02:00')});
+  const accepted=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+'-open'},body});
+  assert.equal(accepted.status,201);
+  const saved=await prisma.venueBookingRequest.findUnique({where:{id:accepted.body.id}});
+  assert.equal(saved.requestedStart.toISOString(),'2026-11-01T05:20:00.000Z');assert.equal(saved.requestedEnd.toISOString(),'2026-11-01T06:10:00.000Z');
+  assert.deepEqual(await effects(),[1,1,1]);
+});
+test('TC-CS38-23 PostgreSQL confirms a Coordinator hold through one Staff decision with no extra confirmation',async()=>{
+  coordinatorActor();const venueId='pg-q2-'+randomUUID();
+  const created=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId},body:independentValues(venueId)});
+  assert.equal(created.status,201);assert.equal(created.body.status,'TENTATIVELY_HELD');assert.equal(created.body.version,1);
+  const savedHold=await prisma.venueBookingRequest.findUnique({where:{id:created.body.id}});
+  assert.equal(savedHold.status,'TENTATIVELY_HELD');assert.ok(savedHold.expiresAt);
+  actor={id:'staff',role:'VENUE_STAFF',roles:['VENUE_STAFF'],permissions:[...defaults.VENUE_STAFF]};
+  const approved=await api.http(`/venue-bookings/${created.body.id}/decision`,{method:'PUT',headers,body:{version:1,status:'CONFIRMED',reason:'Q2 two-action venue review'}});
+  assert.equal(approved.status,200);assert.equal(approved.body.version,2);
+  const saved=await prisma.venueBookingRequest.findUnique({where:{id:created.body.id}});
+  assert.equal(saved.status,'CONFIRMED');assert.equal(saved.expiresAt,null);assert.equal(saved.statusChangedById,'staff');
+  const history=await prisma.venueBookingActivity.findMany({where:{bookingId:saved.id},orderBy:{occurredAt:'asc'}});
+  assert.deepEqual(history.map(row=>[row.action,row.actorRole,row.toStatus]),[['BOOKING_CREATED','EVENT_COORDINATOR','TENTATIVELY_HELD'],['STATUS_CHANGED','VENUE_STAFF','CONFIRMED']]);
+  assert.equal(await prisma.bookingOutbox.count({where:{aggregateId:saved.id,kind:'VenueBookingApproved'}}),1);
+  coordinatorActor();
+  const summary=await api.http('/venue-bookings/events/assigned-event/summary',{headers});
+  assert.equal(summary.status,200);assert.equal(summary.body.event.status,'ARRANGEMENT_PENDING');
+  assert.deepEqual(summary.body.policy.pendingClarifications,[]);
+});
 test('TC-CS87-18 PostgreSQL movement retains immutable origin history and current-assignment privacy for both venues',async()=>{
   coordinatorActor();const origin='pg-history-a-'+randomUUID(),destination='pg-history-b-'+randomUUID(),body=independentValues(origin)
   const held=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':origin},body});assert.equal(held.status,201)
