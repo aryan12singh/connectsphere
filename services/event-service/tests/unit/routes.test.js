@@ -420,3 +420,41 @@ test('route cases cover capability checks, assignment, pagination, decisions and
     });
   });
 });
+
+test('CS-41 Technical Support reads minimum event metadata without events.view', async () => {
+  await withServer(async (baseUrl) => {
+    const organiser = auth('technical-metadata-organiser', 'EVENT_ORGANISER');
+    const coordinator = auth('technical-metadata-coordinator', 'EVENT_COORDINATOR');
+    const support = auth('technical-metadata-support', 'TECHNICAL_SUPPORT_STAFF');
+    const createdResponse = await fetch(`${baseUrl}/event-requests`, {
+      method: 'POST', headers: organiser, body: JSON.stringify(validRequest),
+    });
+    assert.equal(createdResponse.status, 201);
+    const draft = await createdResponse.json();
+    const submittedResponse = await fetch(`${baseUrl}/event-requests/${draft.id}/submit`, {
+      method: 'POST', headers: organiser, body: JSON.stringify({ version: draft.version }),
+    });
+    assert.equal(submittedResponse.status, 200);
+    const submitted = await submittedResponse.json();
+    const claimedResponse = await fetch(`${baseUrl}/event-requests/${draft.id}/reassign`, {
+      method: 'POST', headers: coordinator,
+      body: JSON.stringify({ coordinatorId: 'technical-metadata-coordinator', version: submitted.version }),
+    });
+    assert.equal(claimedResponse.status, 200);
+
+    const path = `${baseUrl}/event-requests/technical-metadata?ids=${encodeURIComponent(draft.id)}`;
+    const metadataResponse = await fetch(path, { headers: support });
+    assert.equal(metadataResponse.status, 200);
+    const metadata = await metadataResponse.json();
+    assert.deepEqual(metadata.items, [{
+      eventRequestId: draft.id,
+      title: validRequest.eventName,
+      startAt: '2026-11-20T01:00:00.000Z',
+      endAt: '2026-11-20T09:00:00.000Z',
+      timeZone: 'Asia/Singapore',
+      submitter: { id: 'technical-metadata-coordinator', name: 'technical-metadata-coordinator' },
+    }]);
+    assert.equal('submittedAt' in metadata.items[0], false);
+    assert.equal((await fetch(path, { headers: coordinator })).status, 403);
+  });
+});

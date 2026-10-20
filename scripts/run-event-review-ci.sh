@@ -30,6 +30,7 @@ cleanup() {
 }
 trap cleanup EXIT
 export NUXT_AUTH_MODE=live
+node tests/scripts/validate-equipment-traceability.cjs
 npm run build --prefix frontend > "$EVIDENCE/frontend-build.log" 2>&1
 compose up -d --build postgres keycloak user-service auth-service event-service venue-service booking-service notification-service equipment-service rabbitmq kong > "$EVIDENCE/stack-start.log" 2>&1
 wait_http() {

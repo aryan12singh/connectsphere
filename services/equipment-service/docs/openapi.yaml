@@ -1,0 +1,73 @@
+openapi: 3.0.3
+info:
+  title: ConnectSphere Equipment Service
+  version: 1.0.0
+paths:
+  /technical-requests:
+    get:
+      summary: List Technical Support requests with backend-derived equipment periods
+      parameters:
+        - in: query
+          name: includeResolved
+          schema: { type: string, enum: ['0', '1'] }
+      responses:
+        '200': { description: Queue records include equipmentPeriod (null when no equipment or allocation context is unavailable) }
+        '403': { description: Technical Support access required }
+  /event-requests/{eventRequestId}/technical-request/availability:
+    get:
+      summary: Check current pooled equipment availability without committing stock
+      parameters:
+        - in: path
+          name: eventRequestId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Current period, per-line availability and fulfillability }
+        '403': { description: Technical Support access required }
+  /event-requests/{eventRequestId}/technical-request/reservations:
+    post:
+      summary: Atomically reserve all lines in the approved current request
+      parameters:
+        - in: path
+          name: eventRequestId
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Reservation saved or replayed }
+        '409': { description: Stale approval, idempotency conflict, or all-line shortage list }
+  /equipment-operational-unavailability:
+    post:
+      summary: Record a bounded Technical Support operational unavailability
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          description: Exact retries return the same operation; reuse with different data returns 409.
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [equipmentType, quantity, reason, startAt, endAt]
+              properties:
+                equipmentType: { type: string }
+                quantity: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+                startAt: { type: string, format: date-time }
+                endAt: { type: string, format: date-time }
+      responses:
+        '201': { description: Operational status recorded }
+        '409': { description: The action key was reused with different data }
+        '422': { description: Unknown type, invalid quantity, reason or period }
+  /internal/events/{eventId}/readiness:
+    get:
+      summary: Internal current technical readiness proof for Event/Safety
+      description: Requires current-version reservation lines. Operational supply shortfalls return PENDING with EQUIPMENT_OPERATION_CHANGED while retaining reservations and history.
+      responses:
+        '200': { description: Current proof; never routed publicly }

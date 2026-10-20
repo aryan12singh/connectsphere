@@ -6,6 +6,7 @@ module.exports = {
   databaseUrl: process.env.DATABASE_URL || '',
   authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3002',
   eventServiceUrl: process.env.EVENT_SERVICE_URL || 'http://localhost:3003',
+  bookingServiceUrl: process.env.BOOKING_SERVICE_URL || 'http://localhost:3004',
   internalApiKey: process.env.INTERNAL_API_KEY || 'change-me-dev-internal-key',
   isTest: process.env.NODE_ENV === 'test',
 };

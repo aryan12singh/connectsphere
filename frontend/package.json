@@ -11,6 +11,7 @@
     "test:report": "node ../tests/scripts/run-test-report.mjs",
     "test:coverage": "npm run test:report -- --coverage",
     "test:e2e": "playwright test",
+    "test:traceability:equipment": "node ../tests/scripts/validate-equipment-traceability.cjs",
     "typecheck": "nuxt typecheck",
     "postinstall": "nuxt prepare",
     "test:e2e:report": "node ../tests/scripts/run-browser-report.mjs",

@@ -122,7 +122,7 @@ it('TC-CS93-44 current source facts and terminal status gate confirmation while 
 
 it('TC-CS93-47 Technical Support stock inputs are inert until hydration so early typing cannot save stale inventory',async()=>{
  const {createSSRApp}=await import('vue'),{renderToString}=await import('@vue/server-renderer')
- const Page=(await import('../../frontend/app/pages/technical-requests.vue')).default
+ const Page=(await import('../../frontend/app/pages/technical-requirements/index.vue')).default
  ui.inventory={items:[{equipmentType:'projector',total:16,version:14}]}
  try{
   const html=await renderToString(createSSRApp(Page)),document=new DOMParser().parseFromString(html,'text/html')

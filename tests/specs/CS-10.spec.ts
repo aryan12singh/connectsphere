@@ -209,13 +209,13 @@ describe('CS-10 — TC-CS10-07 unauthenticated interface directs to login', () =
 
     expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/attendee')
   })
-  it('TC-CS10-11 sends Technical Support to its own home and denies an unknown role', async () => {
+  it('TC-CS10-11 sends Technical Support to the technical requirements review queue and denies an unknown role', async () => {
     const { default: middleware } = await import('../../frontend/app/middleware/auth.global')
     authMiddlewareMocks.loggedIn.value = true
     authMiddlewareMocks.sessionUser.value = { id: 'tech', email: 'tech@example.test', name: 'Tech', role: 'TECHNICAL_SUPPORT_STAFF' }
     authMiddlewareMocks.navigateToLogin.mockClear()
     await middleware({ path: '/' } as never)
-    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/technical-support')
+    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/technical-requirements')
     authMiddlewareMocks.sessionUser.value = { ...authMiddlewareMocks.sessionUser.value, role: 'UNKNOWN', roles: [] }
     authMiddlewareMocks.navigateToLogin.mockClear()
     await middleware({ path: '/' } as never)

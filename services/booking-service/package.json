@@ -8,7 +8,8 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test:unit": "DATA_MODE=memory NODE_ENV=test node --test tests/unit/*.test.js",
-    "test:coverage": "DATA_MODE=memory NODE_ENV=test node --experimental-test-coverage --test --test-coverage-include='src/**/*.js' tests/unit/*.test.js",
+    "test:coverage": "c8 --all --include='src/**/*.js' --reporter=text --reporter=json --reporter=json-summary --reporter=lcov --check-coverage --statements=81 --branches=81 --functions=81 --lines=81 node ../../tests/scripts/service-coverage.cjs",
+    "test:coverage:unit": "DATA_MODE=memory NODE_ENV=test node --experimental-test-coverage --test --test-coverage-include='src/**/*.js' tests/unit/*.test.js",
     "test:contract": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -26,5 +27,8 @@
     "express": "^5.1.0",
     "helmet": "^8.0.0",
     "prisma": "^6.19.3"
+  },
+  "devDependencies": {
+    "c8": "10.1.3"
   }
 }

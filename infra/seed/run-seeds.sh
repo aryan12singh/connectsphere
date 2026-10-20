@@ -6,8 +6,8 @@
 # seed file. Seeds are idempotent (ON CONFLICT DO NOTHING / safe UPDATEs), so
 # running it again is harmless.
 #
-# Order matters only for readability: services never read each other's
-# databases, ids just line up (user ids in event_db / venue_db seeds).
+# Event and Venue must be seeded before Booking, and all dependencies before
+# Equipment so seeded Technical Review rows can resolve their live context.
 set -euo pipefail
 
 SEEDS=/seed/services
@@ -16,8 +16,8 @@ LIST=(
   "user_db|organisations|$SEEDS/user-service/prisma/seed/01_user_db.sql"
   "auth_db|sessions|$SEEDS/auth-service/prisma/seed/02_auth_db.sql"
   "venue_db|venue_operating_hours|$SEEDS/venue-service/prisma/seed/03_venue_db.sql"
-  "booking_db|venue_booking_requests|$SEEDS/booking-service/prisma/seed/04_booking_db.sql"
   "event_db|activity_log|$SEEDS/event-service/prisma/seed/04_event_db.sql"
+  "booking_db|venue_booking_requests|$SEEDS/booking-service/prisma/seed/04_booking_db.sql"
   "equipment_db|equipment_stock|$SEEDS/equipment-service/prisma/seed/05_equipment_db.sql"
 )
 
@@ -32,4 +32,6 @@ for entry in "${LIST[@]}"; do
   echo "[seed] loading $(basename "$file") into $db"
   psql -v ON_ERROR_STOP=1 -q -d "$db" -f "$file"
 done
+echo "[seed] verifying Technical Review fixture dependencies ..."
+bash /validate-technical-review-seeds.sh
 echo "[seed] done"

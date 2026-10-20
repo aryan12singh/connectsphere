@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const { validateRequirements } = require('../../services/equipment-service/src/domain/technical-request') as {
+  validateRequirements: (input: unknown, equipmentTypes: unknown[], previous?: unknown) => { valid: boolean, errors?: Record<string, string[]>, value?: Record<string, any> }
+}
 
 const fixture = vi.hoisted(() => ({
   fetch: vi.fn(),
@@ -14,9 +20,11 @@ const fixture = vi.hoisted(() => ({
 
 mockNuxtImport('useFetch', () => (url: string) => {
   if (url === '/api/technical-equipment-types')
-    return { data: ref({ equipmentTypes: [{ id: 'projector', name: 'projector' }, { id: 'microphone', name: 'microphone' }] }), error: ref(null) }
-  if (url === '/api/technical-requests')
+    return { data: ref({ equipmentTypes: [{ id: 'projector', name: 'projector', total: 2, version: 1 }, { id: 'microphone', name: 'microphone', total: 4, version: 1 }] }), error: ref(null) }
+  if (url === '/api/technical-requests' || url === '/api/technical-requests?includeResolved=1')
     return { data: fixture.queue, error: ref(null), refresh: vi.fn() }
+  if (url === '/api/equipment/inventory')
+    return { data: ref({ items: [] }), error: ref(null), refresh: vi.fn() }
   return { data: fixture.data, error: fixture.error }
 })
 mockNuxtImport('useRequestFetch', () => () => fixture.fetch)
@@ -24,7 +32,7 @@ mockNuxtImport('useRoute', () => () => ({ params: { id: fixture.routeId } }))
 mockNuxtImport('useUserSession', () => () => ({ user: fixture.user }))
 
 describe('CS-40 — Technical requirements frontend', () => {
-  it('renders an editable equipment request and sends the complete requirements when submitted', async () => {
+  it('TC-CS40-01 renders an editable request and submits the complete Coordinator requirements', async () => {
     fixture.data = ref(null)
     fixture.error = ref({ statusCode: 404, statusMessage: 'Technical request not found.' })
     fixture.user.value = { id: 'coordinator-1', role: 'EVENT_COORDINATOR' }
@@ -54,7 +62,7 @@ describe('CS-40 — Technical requirements frontend', () => {
     finally { wrapper.unmount() }
   })
 
-  it('blocks incomplete requirements and shows validation feedback without calling the API', async () => {
+  it('TC-CS40-02 blocks empty requirements without calling the API', async () => {
     fixture.data = ref(null)
     fixture.error = ref(null)
     fixture.user.value = { id: 'coordinator-1', role: 'EVENT_COORDINATOR' }
@@ -71,7 +79,7 @@ describe('CS-40 — Technical requirements frontend', () => {
     finally { wrapper.unmount() }
   })
 
-  it('shows a submitted request read-only to Safety Officers and displays its decision status', async () => {
+  it('TC-CS40-09 shows an assigned Safety Officer the submitted request read-only', async () => {
     fixture.data = ref({ eventRequestId: 'event-40', version: 2, status: 'APPROVED', equipment: [{ equipmentType: 'projector', quantity: 2 }], supportRequired: false, supportDetails: '', placementDetails: 'Front of hall', notRequired: false, decisionReason: null })
     fixture.error = ref(null)
     fixture.user.value = { id: 'safety-1', role: 'SAFETY_OFFICER' }
@@ -87,24 +95,88 @@ describe('CS-40 — Technical requirements frontend', () => {
     finally { wrapper.unmount() }
   })
 
-  it('requires a rejection reason and posts a versioned decision from the Technical Support queue', async () => {
+  it('TC-CS40-04 blocks a blank rejection reason and posts the versioned Support decision', async () => {
     fixture.queue = ref({ requests: [{ eventRequestId: 'event-40', coordinatorId: 'coordinator-1', version: 3, status: 'SUBMITTED', equipment: [{ equipmentType: 'projector', quantity: 2 }], supportRequired: true, supportDetails: 'Assist with setup', placementDetails: 'Front of hall', notRequired: false }] })
     fixture.user.value = { id: 'support-1', role: 'TECHNICAL_SUPPORT_STAFF' }
     fixture.fetch.mockReset().mockResolvedValue({ status: 'REJECTED' })
-    const module = await import('../../frontend/app/pages/technical-requests.vue').catch(() => null)
+    const module = await import('../../frontend/app/pages/technical-requirements/index.vue').catch(() => null)
     expect(module, 'CS-40 Technical Support review page should be implemented').not.toBeNull()
     const wrapper = await mountSuspended(module!.default)
     try {
-      await wrapper.findAll('button').at(-1)!.trigger('click')
+      await wrapper.get('button[value="REJECTED"]').trigger('click')
+      await wrapper.findAll('button').find(button => button.text().includes('Submit decision'))!.trigger('click')
       expect(wrapper.get('[role="alert"]').text()).toContain('A reason is required')
       expect(fixture.fetch).not.toHaveBeenCalled()
       await wrapper.get('textarea[aria-label="Decision note"]').setValue('No technician is available')
-      await wrapper.findAll('button').at(-1)!.trigger('click')
+      await wrapper.findAll('button').find(button => button.text().includes('Submit decision'))!.trigger('click')
       await flushPromises()
       expect(fixture.fetch).toHaveBeenCalledWith('/api/events/event-40/technical-request/decision', expect.objectContaining({
         method: 'POST', body: { decision: 'REJECTED', reason: 'No technician is available', version: 3 },
       }))
     }
     finally { wrapper.unmount() }
+  })
+
+  it('TC-CS40-06 recognizes a direct NOT_REQUIRED declaration in the form with stock and text limits', async () => {
+    fixture.data = ref(null)
+    fixture.error = ref({ statusCode: 404, statusMessage: 'Technical request not found.' })
+    fixture.user.value = { id: 'coordinator-1', role: 'EVENT_COORDINATOR' }
+    fixture.fetch.mockReset().mockResolvedValue({
+      eventRequestId: 'event-40', version: 1, status: 'NOT_REQUIRED', equipment: [], supportRequired: false,
+      supportDetails: '', placementDetails: 'No setup needed', notRequired: true, decidedById: 'coordinator-1', decidedAt: '2026-10-17T10:00:00.000Z',
+    })
+    const module = await import('../../frontend/app/pages/technical-requirements/[id].vue').catch(() => null)
+    const wrapper = await mountSuspended(module!.default)
+    try {
+      expect(wrapper.get('input[aria-label="projector quantity"]').attributes('max')).toBe('2')
+      await wrapper.get('input[aria-label="Technical support is required"]').setValue(true)
+      expect(wrapper.get('textarea[aria-label="Support details"]').attributes('maxlength')).toBe('1000')
+      await wrapper.get('input[aria-label="Technical support is required"]').setValue(false)
+      expect(wrapper.get('textarea[aria-label="Placement and preparation details"]').attributes('maxlength')).toBe('500')
+      await wrapper.get('textarea[aria-label="Placement and preparation details"]').setValue('No setup needed')
+      await wrapper.get('input[aria-label="No technical requirements are needed"]').setValue(true)
+      await wrapper.get('form').trigger('submit')
+      await flushPromises()
+      expect(fixture.fetch).toHaveBeenCalledWith('/api/events/event-40/technical-request', expect.objectContaining({
+        method: 'POST', body: expect.objectContaining({ notRequired: true, equipment: [], supportRequired: false }),
+      }))
+      expect(wrapper.get('[data-testid="technical-status"]').text()).toContain('No technical requirements')
+      expect(wrapper.text()).toContain('No Technical Support review or equipment reservation is required')
+    }
+    finally { wrapper.unmount() }
+  })
+
+  it('TC-CS40-14 rejects a requested quantity above physical stock without saving a partial request', () => {
+    const result = validateRequirements({
+      eventId: 'event-40', coordinatorId: 'coordinator-40',
+      equipment: [{ equipmentType: 'projector', quantity: 2 }],
+      supportRequired: false, supportDetails: '', placementDetails: 'Projector in the main hall', notRequired: false,
+    }, [{ name: 'projector', total: 1 }])
+    expect(result.valid).toBe(false)
+    expect(result.errors?.['equipment.0.quantity']).toBeDefined()
+  })
+
+  it('TC-CS40-15 applies prototype text limits and excludes support from not-required declarations', () => {
+    const base = {
+      eventId: 'event-40', coordinatorId: 'coordinator-40',
+      equipment: [{ equipmentType: 'projector', quantity: 2 }],
+      supportRequired: false, supportDetails: '', placementDetails: 'Projector in the main hall', notRequired: false,
+    }
+    const tooMuchSupport = validateRequirements({ ...base, supportRequired: true, supportDetails: 'x'.repeat(1001) }, [{ name: 'projector', total: 2 }])
+    const tooMuchPlacement = validateRequirements({ ...base, placementDetails: 'x'.repeat(501) }, [{ name: 'projector', total: 2 }])
+    const contradictory = validateRequirements({ ...base, equipment: [], supportRequired: true, supportDetails: 'Technician needed', notRequired: true }, [{ name: 'projector', total: 2 }])
+
+    expect(tooMuchSupport.errors?.supportDetails).toBeDefined()
+    expect(tooMuchPlacement.errors?.placementDetails).toBeDefined()
+    expect(contradictory.errors?.notRequired).toBeDefined()
+  })
+
+  it('TC-CS40-06 treats an explicit empty declaration as current NOT_REQUIRED proof', () => {
+    const result = validateRequirements({
+      eventId: 'event-40', coordinatorId: 'coordinator-40', equipment: [],
+      supportRequired: false, supportDetails: '', placementDetails: 'No setup required', notRequired: true,
+    }, [{ name: 'projector', total: 2 }])
+    expect(result.valid).toBe(true)
+    expect(result.value?.status).toBe('NOT_REQUIRED')
   })
 })

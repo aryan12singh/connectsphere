@@ -8,16 +8,22 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model EquipmentType {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model EquipmentStock {
+  equipmentType String   @id
+  total         Int      @default(0)
+  version       Int      @default(1)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("equipment_stock")
 }
 
 model TechnicalRequest {
   id                String   @id @default(cuid())
   eventRequestId    String   @unique
+  planningEventId   String?
+  requirementsRevision String?
+  allocationSnapshot Json?
   coordinatorId     String
   version           Int      @default(1)
   status            String   @default("SUBMITTED")
@@ -28,6 +34,8 @@ model TechnicalRequest {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   history           TechnicalRequestHistory[]
+
+  @@map("technical_requests")
 }
 
 model TechnicalRequestHistory {
@@ -42,6 +50,7 @@ model TechnicalRequestHistory {
   request        TechnicalRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId, createdAt])
+  @@map("technical_request_history")
 }
 
 model OutboxEvent {
@@ -53,6 +62,7 @@ model OutboxEvent {
   createdAt   DateTime @default(now())
 
   @@index([publishedAt, createdAt])
+  @@map("outbox_events")
 }
 
 model IdempotencyRecord {
@@ -64,4 +74,51 @@ model IdempotencyRecord {
   createdAt    DateTime @default(now())
 
   @@unique([actorId, key])
+  @@map("idempotency_records")
+}
+
+model EquipmentReservation {
+  id              String   @id
+  eventRequestId  String
+  eventId          String
+  requestVersion  Int
+  equipmentType   String
+  quantity        Int
+  startAt         DateTime @db.Timestamptz(3)
+  endAt           DateTime @db.Timestamptz(3)
+  active          Boolean  @default(true)
+  actorId         String
+  sourceVersions  Json
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([equipmentType, active, startAt, endAt])
+  @@index([eventRequestId, active])
+  @@map("equipment_reservations")
+}
+
+model EquipmentOperationalUnavailability {
+  id            String   @id
+  equipmentType String
+  quantity      Int
+  startAt       DateTime @db.Timestamptz(3)
+  endAt         DateTime @db.Timestamptz(3)
+  reason        String
+  actorId       String
+  version       Int      @default(1)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([equipmentType, startAt, endAt])
+  @@map("equipment_operational_unavailability")
+}
+
+model TechnicalReadinessFence {
+  token          String   @id
+  eventId        String
+  eventRequestId String
+  active         Boolean  @default(true)
+  proof          Json
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([eventRequestId, active])
+  @@map("technical_readiness_fences")
 }

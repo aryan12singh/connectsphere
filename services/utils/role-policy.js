@@ -12,6 +12,7 @@ const ACTION_ROLES = Object.freeze({
   'event_requests.create': ['EVENT_ORGANISER'],
   'event_requests.review': ['EVENT_COORDINATOR'],
   'events.view': ROLES.filter(role=>role!=='SAFETY_OFFICER'),
+  'events.technical.metadata.view': ['TECHNICAL_SUPPORT_STAFF'],
   'safety.view':['SAFETY_OFFICER'],
   'safety.decide':['SAFETY_OFFICER'],
   'safety.submit':['EVENT_COORDINATOR'],

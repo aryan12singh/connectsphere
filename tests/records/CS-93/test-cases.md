@@ -83,7 +83,7 @@ These cases supplement the preserved earlier specifications. Current contracts a
 |---|---|---|
 | TC-CS93-44 | Terminal/source-stale Safety confirmation is denied; current approved facts permit confirmation; handover metadata preserves sign-offs. | Actual Event module with isolated adapters; no live-locking claim. |
 | TC-CS93-45 | With two of three required rooms approved the UI blocks submit; the last approval enables the real current-proof submission. | Production desktop/mobile browser + actual PG; current source needs explicitly require no equipment. |
-| TC-CS93-46 | Coordinator submits required equipment; Technical Support changes stock, approves and reserves the complete request; Officer sees the current reserved equipment proof. | Authenticated production desktop/mobile browser + actual Equipment/Event PostgreSQL; verifies request quantities, stock versions, reservation window and Safety snapshot linkage. |
+| TC-CS93-46 | Coordinator submits required equipment; Technical Support changes stock, approves and reserves the complete request; Officer sees the current reserved equipment proof. | Covered across `frontend/e2e/CS-41.spec.ts` (versioned stock change) and `frontend/e2e/CS-42.spec.ts` (reservation, buffered period, and Safety snapshot linkage) on the authenticated production desktop/mobile stack with actual Equipment/Event PostgreSQL. |
 
 
 ## 17 October production mobile stock-entry regression

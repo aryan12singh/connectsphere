@@ -3,7 +3,7 @@ import { test, field, signIn, emails } from './helpers'
 
 test('TC-CS10-06 LIVE all five roles reach functional homes and forbidden typed routes are denied', async ({ page }) => {
   test.setTimeout(360_000)
-  for (const [email, heading] of [[emails.owner, 'My events'], [emails.coordinator, 'My events'], [emails.staff, 'Manage venues'], [emails.attendee, 'Attendee home'], [emails.support, 'Technical Support']]) {
+  for (const [email, heading] of [[emails.owner, 'My events'], [emails.coordinator, 'My events'], [emails.staff, 'Manage venues'], [emails.attendee, 'Attendee home'], [emails.support, 'Technical requirements review']]) {
     await page.context().clearCookies()
     await signIn(page, email)
     if (email === emails.owner || email === emails.coordinator) await expect(page.getByRole('heading', { level: 1 })).toBeVisible()

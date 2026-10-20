@@ -159,7 +159,7 @@ jobs:
           cache-dependency-path: services/${{ matrix.service }}/package-lock.json
       - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy
       - run: npm run test:coverage | tee "$RUNNER_TEMP/coverage.txt"
-      - run: npm run test:contract 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
+      - run: npm run test:contract --if-present 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
       - name: PostgreSQL HTTP integration and source coverage
         run: npm run test:integration | tee "$RUNNER_TEMP/postgres-coverage.txt"
       - name: Hold expiry PostgreSQL spike
@@ -175,6 +175,7 @@ jobs:
           retention-days: 30
           path: |
             ${{ runner.temp }}/coverage.txt
+            services/${{ matrix.service }}/coverage/
             ${{ runner.temp }}/http-contracts.txt
             ${{ runner.temp }}/postgres-coverage.txt
             ${{ runner.temp }}/hold-expiry.txt
@@ -211,6 +212,8 @@ jobs:
       - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy && npm run check
       - run: npm run test:unit | tee "$RUNNER_TEMP/equipment-unit.log"
       - run: npm run test:integration | tee "$RUNNER_TEMP/equipment-integration.log"
+      - name: Combined service coverage gate (all four categories above 80 percent)
+        run: npm run test:coverage | tee "$RUNNER_TEMP/equipment-coverage.log"
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
@@ -219,6 +222,8 @@ jobs:
           path: |
             ${{ runner.temp }}/equipment-unit.log
             ${{ runner.temp }}/equipment-integration.log
+            ${{ runner.temp }}/equipment-coverage.log
+            services/equipment-service/coverage/
 
   identity:
     name: ${{ matrix.service }} checks

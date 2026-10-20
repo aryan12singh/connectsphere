@@ -6,6 +6,7 @@ const {venueContext,removeVenue}=require('../venueClient');
 
 const router = express.Router();
 router.get('/events/:id/readiness',internalOnly,async(req,res)=>res.json(await require('../readiness').preview(req.params.id)));
+router.get('/events/:id/equipment-allocation-context',internalOnly,async(req,res)=>res.json(await workflows.equipmentAllocationContext(req.params.id)));
 router.post('/events/:id/readiness/prepare',internalOnly,async(req,res)=>res.json(await require('../readiness').prepare(req.params.id,req.body||{})));
 router.post('/events/:id/readiness/release',internalOnly,async(req,res)=>res.json(await require('../readiness').release(req.params.id,req.body?.token)));
 router.put('/venue-maintenance/:id',internalOnly,async(req,res)=>{

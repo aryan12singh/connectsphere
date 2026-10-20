@@ -181,6 +181,28 @@ router.get(['/', '/drafts'], requirePermission('events.view'), async (req, res, 
   } catch (error) { return next(error); }
 });
 
+// A deliberately narrow metadata projection for the Technical Support queue.
+// It does not confer general event visibility and never returns submission time.
+router.get('/technical-metadata', requirePermission('events.technical.metadata.view'), async (req, res, next) => {
+  try {
+    const ids = [...new Set(String(req.query.ids || '').split(',').filter(Boolean))].slice(0, 100);
+    const items = await Promise.all(ids.map(async id => {
+      const record = await repository.findRequest(id);
+      if (!record) return null;
+      const coordinator = record.currentCoordinatorId ? await coordinatorById(record.currentCoordinatorId) : null;
+      return {
+        eventRequestId: record.id,
+        title: record.eventName,
+        startAt: record.startAt,
+        endAt: record.endAt,
+        timeZone: record.timeZone || 'UTC',
+        submitter: { id: record.currentCoordinatorId || '', name: coordinator ? ([coordinator.firstName, coordinator.lastName].filter(Boolean).join(' ') || coordinator.email || coordinator.id) : (record.currentCoordinatorId || 'Unknown') },
+      };
+    }));
+    return res.json({ items: items.filter(Boolean) });
+  } catch (error) { return next(error); }
+});
+
 router.get('/:id/activity', requirePermission('events.view'), async (req, res, next) => {
   try {
     const record = await repository.findRequest(req.params.id);

@@ -1271,6 +1271,20 @@ paths:
           description: Internal credential missing or invalid
         "404":
           description: Event or its source request not found
+  /event-requests/technical-metadata:
+    get:
+      summary: Read minimum event metadata for the Technical Support request queue
+      description: Requires events.technical.metadata.view. Returns event title, period, time zone and current Coordinator display name only; does not grant events.view and omits submittedAt.
+      parameters:
+        - in: query
+          name: ids
+          required: true
+          description: Comma-separated event request IDs from the technical queue (up to 100).
+          schema: { type: string }
+      responses:
+        "200": { description: Scoped event metadata items }
+        "403": { description: Scoped technical metadata permission required }
+
 components:
   securitySchemes:
     internalApiKey:

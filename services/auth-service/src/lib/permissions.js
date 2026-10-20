@@ -27,6 +27,7 @@ const PERMISSIONS = Object.freeze({
   'event_requests.create': 'Submit event requests',
   'event_requests.review': 'Approve or reject event requests',
   'events.view': 'See events',
+  'events.technical.metadata.view': 'View event metadata for technical requests',
   'events.confirm': 'Confirm events once arrangements are ready',
 
   // Venues and bookings

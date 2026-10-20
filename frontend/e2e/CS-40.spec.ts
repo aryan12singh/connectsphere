@@ -1,240 +1,246 @@
-import { expect, type Locator } from '@playwright/test'
-import { created, emails, field, mutation, session, signIn, test, validRequest } from './helpers'
+import { randomUUID } from 'node:crypto'
+import { test, expect, emails, body, path, snapshot, fault, internal, mutation, reviewDatabase } from './equipment-fixtures'
+import { signIn, field } from './helpers'
 
-async function coordinatorFor(owner: Parameters<typeof created>[0], requestId: string) {
-  const response = await owner.get(`/api/events/${requestId}/coordinator`)
-  expect(response.status()).toBe(200)
-  const assignment = await response.json()
-  expect(assignment?.email).toBeTruthy()
-  return assignment.email as string
-}
-
-const technicalBody = {
-  version: 1,
-  equipment: [
-    { equipmentType: 'projector', quantity: 2 },
-    { equipmentType: 'speaker', quantity: 1 },
-  ],
-  supportRequired: true,
-  supportDetails: 'Please assist with setup',
-  placementDetails: 'Projector at the front of the hall',
-  notRequired: false,
-}
-
-async function activate(locator: Locator) {
-  await locator.focus()
-  await locator.press('Enter')
-}
-
-test('CS-40 TC-01/05: assigned Coordinator submits equipment and support requirements through the page', async ({ page, playwright, owner }, testInfo) => {
-  const consoleErrors: string[] = []
-  page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()) })
-  page.on('pageerror', error => consoleErrors.push(error.message))
-  const event = await created(owner, 'submit', validRequest())
-  const coordinator = await coordinatorFor(owner, event.id)
-  const coordinatorSession = await session(playwright.request, coordinator)
-  const serverRendered = await coordinatorSession.get(`/technical-requirements/${event.id}`)
-  expect(serverRendered.status()).toBe(200)
-  expect(await serverRendered.text()).toMatch(/<button[^>]*disabled[^>]*>Submit requirements<\/button>/)
-
-  await signIn(page, coordinator)
-  await page.goto(`/technical-requirements/${event.id}`)
-
+test('TC-CS40-01: Coordinator submits pooled equipment and support through the browser', async ({ equipment, page }, info) => {
+  await equipment.stock('projector', 5); await equipment.stock('speaker', 5)
+  const event = await equipment.event()
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
+  const ssr = await event.coordinator.get(`/technical-requirements/${event.id}`)
+  expect(await ssr.text()).toMatch(/<button[^>]*disabled[^>]*>Submit requirements<\/button>/)
+  await signIn(page, event.email); await page.goto(`/technical-requirements/${event.id}`)
   await expect(page).toHaveTitle('Technical requirements | ConnectSphere')
   await expect(page.getByRole('heading', { name: 'Technical requirements', exact: true })).toBeVisible()
-  await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /width=device-width/)
-  if (testInfo.project.name === 'mobile') {
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
-  }
-  await expect(page.getByRole('button', { name: 'Submit requirements', exact: true })).toBeEnabled()
-  await field(page, 'projector quantity').fill('2')
-  await field(page, 'speaker quantity').fill('1')
-  await expect(field(page, 'projector quantity')).toHaveValue('2')
+  await field(page, 'projector quantity').fill('2'); await field(page, 'speaker quantity').fill('1')
   await expect(page.getByTestId('selected-equipment')).toHaveText('Selected equipment: projector — 2, speaker — 1')
   await page.getByLabel('Technical support is required').check()
-  await page.getByLabel('Support details').fill('Please assist with setup')
-  await page.getByLabel('Placement and preparation details').fill('Projector at the front of the hall')
-  await activate(page.getByRole('button', { name: 'Submit requirements', exact: true }))
+  await page.getByLabel('Support details').fill('Setup assistance')
+  await page.getByLabel('Placement and preparation details').fill('Projector at the front')
+  await page.getByRole('button', { name: 'Submit requirements', exact: true }).press('Enter')
   await expect(page.getByText('Submitted for Technical Support review', { exact: true })).toBeVisible()
-  await page.screenshot({ path: testInfo.outputPath('cs40-technical-requirements.png'), fullPage: true })
-
-  try {
-    const saved = await coordinatorSession.get(`/api/events/${event.id}/technical-request`)
-    expect(saved.status()).toBe(200)
-    expect(await saved.json()).toMatchObject({ status: 'SUBMITTED', equipment: technicalBody.equipment, supportRequired: true })
-    expect(consoleErrors).toEqual([])
-  }
-  finally { await coordinatorSession.dispose() }
+  const saved = await snapshot(event)
+  expect(saved.requests[0]).toMatchObject({ version: 1, status: 'PENDING_TECH_REVIEW' })
+  expect(saved.history).toHaveLength(1); expect(saved.outbox).toHaveLength(1)
+  expect(saved.history[0]).toMatchObject({ actorId: expect.any(String), createdAt: expect.any(Date) })
+  expect(errors).toEqual([])
+  await page.screenshot({ path: info.outputPath('TC-CS40-01-submitted.png'), fullPage: true })
 })
 
-test('CS-40 TC-02: page blocks an empty request and API validation rejects unknown equipment and invalid quantity', async ({ page, playwright, owner }) => {
-  const event = await created(owner, 'submit', validRequest())
-  const email = await coordinatorFor(owner, event.id)
-  await signIn(page, email)
-  await page.goto(`/technical-requirements/${event.id}`)
-  await page.getByLabel('Placement and preparation details').fill('Front of hall')
-  await activate(page.getByRole('button', { name: 'Submit requirements', exact: true }))
+test('TC-CS40-02: invalid catalog types and quantities cause field errors without writes', async ({ equipment }) => {
+  const event = await equipment.event(); const before = await snapshot(event)
+  const response = await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'unknown', quantity: 0 }]))
+  expect(response.status()).toBe(422)
+  const error = await response.json()
+  expect(error.data?.error?.fields ?? error.error?.fields).toMatchObject({ 'equipment.0.equipmentType': expect.any(Array), 'equipment.0.quantity': expect.any(Array) })
+  expect(await snapshot(event)).toEqual(before)
+})
+
+test('TC-CS40-03: a reasoned Support rejection remains visible with actor, time and version', async ({ equipment, page }) => {
+  await equipment.stock('projector', 5)
+  const event = await equipment.event(); await equipment.submit(event)
+  const support = await equipment.actor(emails.support)
+  const response = await mutation(support, 'POST', `${path(event)}/decision`, { decision: 'REJECTED', version: 1, reason: 'No technician available' })
+  expect(response.status()).toBe(200)
+  expect(await response.json()).toMatchObject({ status: 'REJECTED', version: 1, decisionReason: 'No technician available', decidedById: expect.any(String), decidedAt: expect.any(String) })
+  await signIn(page, event.email); await page.goto(`/technical-requirements/${event.id}`)
+  await expect(page.getByTestId('technical-status')).toContainText('Rejected')
+  await expect(page.getByText('Technical Support feedback: No technician available', { exact: true })).toBeVisible()
+  await signIn(page, emails.support); await page.goto('/technical-requirements')
+  await page.getByRole('button', { name: new RegExp(`Event request ${event.id}`) }).click()
+  const decisionCard = page.locator('[data-slot="card"]').filter({ has: page.getByRole('heading', { name: 'Decision', exact: true }) })
+  await expect(decisionCard).toBeVisible()
+  await expect(decisionCard.getByText('Saved decision: Rejected', { exact: true })).toHaveCount(0)
+  await expect(decisionCard.getByRole('radio')).toHaveCount(2)
+  await expect(decisionCard.getByRole('radio', { name: 'Reject' })).toBeChecked()
+  await expect(decisionCard.getByRole('radio', { name: 'Reject' })).toBeDisabled()
+  await expect(decisionCard.getByLabel('Decision note')).toHaveValue('No technician available')
+  await expect(decisionCard.getByLabel('Decision note')).toBeDisabled()
+  await expect(decisionCard.getByRole('button', { name: 'Submit decision' })).toHaveCount(0)
+  await expect(decisionCard.getByRole('button', { name: 'Reserve complete request' })).toHaveCount(0)
+  expect((await internal('equipment', `/internal/events/${event.eventId}/readiness`)).body.status).toBe('PENDING')
+})
+
+test('TC-CS40-04: whitespace rejection leaves decision, history and outbox untouched', async ({ equipment }) => {
+  const event = await equipment.event(); await equipment.submit(event)
+  const before = await snapshot(event)
+  const response = await mutation(await equipment.actor(emails.support), 'POST', `${path(event)}/decision`, { decision: 'REJECTED', version: 1, reason: ' \n ' })
+  expect(response.status()).toBe(422); expect(await snapshot(event)).toEqual(before)
+})
+
+test('TC-CS40-05: support-only submission remains pending without equipment commitments', async ({ equipment }) => {
+  const event = await equipment.event()
+  const record = await equipment.submit(event, [], { supportRequired: true, supportDetails: 'An operator at the lectern' })
+  expect(record).toMatchObject({ status: 'PENDING_TECH_REVIEW', equipment: [], supportRequired: true })
+  expect((await internal('equipment', `/internal/events/${event.eventId}/readiness`)).body.status).toBe('PENDING')
+  expect((await snapshot(event)).reservations).toEqual([])
+})
+
+test('TC-CS40-06: explicit not-required declaration creates versioned proof and no reservation', async ({ equipment }) => {
+  const event = await equipment.event()
+  const record = await equipment.submit(event, [], { notRequired: true })
+  expect(record).toMatchObject({ status: 'NOT_REQUIRED', version: 1, notRequired: true, equipment: [], decidedById: expect.any(String), decidedAt: expect.any(String) })
+  expect((await snapshot(event)).reservations).toEqual([])
+  expect((await internal('equipment', `/internal/events/${event.eventId}/readiness`)).body.status).toBe('NOT_REQUIRED')
+})
+
+test('TC-CS40-07: a submitted technical revision retains old decisions and rejects obsolete approval', async ({ equipment }) => {
+  const event = await equipment.event(); await equipment.submit(event); await equipment.approve(event)
+  const revised = await equipment.submit(event, [{ equipmentType: 'projector', quantity: 3 }])
+  expect(revised).toMatchObject({ version: 2, status: 'PENDING_TECH_REVIEW' })
+  expect((await mutation(await equipment.actor(emails.support), 'POST', `${path(event)}/decision`, { decision: 'APPROVED', version: 1 })).status()).toBe(409)
+  const saved = await snapshot(event)
+  expect(saved.history.filter((row: any) => row.action === 'TechRequestDecided' && row.version === 1)).toHaveLength(1)
+  expect((await internal('equipment', `/internal/events/${event.eventId}/readiness`)).body.status).toBe('PENDING')
+})
+
+test('TC-CS40-08: former and foreign Coordinators lose access after current assignment changes', async ({ equipment }) => {
+  const event = await equipment.event(); await equipment.submit(event)
+  const otherEmail = event.email === emails.coordinator ? 'kevin.ong@connectsphere.sg' : emails.coordinator
+  const current = await equipment.actor(otherEmail)
+  const identity = await (await current.get('/api/auth/me')).json()
+  expect((await mutation(current, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 3 }]))).status()).toBe(403)
+  // Dependency-owned assignment is fixture setup; acceptance concerns Equipment access.
+  await reviewDatabase('event', pool => pool.query('UPDATE event_requests SET "currentCoordinatorId"=$1 WHERE id=$2', [identity.user.id, event.id]))
+  expect((await event.coordinator.get(path(event))).status()).toBe(403)
+  expect((await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 3 }]))).status()).toBe(403)
+  expect((await current.get(path(event))).status()).toBe(200)
+  expect((await mutation(current, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 3 }]))).status()).toBe(200)
+})
+
+test('TC-CS40-09: permitted Safety review reads Equipment proof but cannot submit or decide it', async ({ equipment }) => {
+  const event = await equipment.event(); await equipment.submit(event); await equipment.approve(event)
+  expect((await equipment.reserve(event)).status()).toBe(200)
+  const preparation = await (await event.coordinator.get(`/api/safety/events/${event.eventId}`)).json()
+  const submitted = await mutation(event.coordinator, 'POST', `/api/safety/events/${event.eventId}/submit`, { version: preparation.event.version })
+  expect(submitted.status()).toBe(200)
+  const current = await (await event.coordinator.get(`/api/safety/events/${event.eventId}`)).json()
+  const officer = await equipment.actor(emails.officer)
+  const read = await officer.get(`/api/safety/rounds/${current.round.id}`)
+  expect(read.status()).toBe(200)
+  expect((await read.json()).snapshot.equipment).toEqual([{ equipmentType: 'projector', quantity: 2 }])
+  expect((await mutation(officer, 'POST', path(event), body([]))).status()).toBe(403)
+  expect((await mutation(officer, 'POST', `${path(event)}/decision`, { decision: 'APPROVED', version: 1 })).status()).toBe(403)
+})
+
+test('TC-CS40-10: two rooms share one pooled Event requirement without duplicated demand', async ({ equipment }) => {
+  const event = await equipment.event({ rooms: 2 })
+  const record = await equipment.submit(event, [{ equipmentType: 'projector', quantity: 3 }], { placementDetails: 'Room A: one; Room B: two projectors' })
+  expect(record.equipment).toEqual([{ equipmentType: 'projector', quantity: 3 }])
+  expect((await snapshot(event)).requests).toHaveLength(1)
+})
+
+test('TC-CS40-11: concurrent approve/reject and retries produce one authoritative decision action', async ({ equipment }) => {
+  const event = await equipment.event(); await equipment.submit(event)
+  const support = await equipment.actor(emails.support); const keys = { APPROVED: randomUUID(), REJECTED: randomUUID() }
+  const response = await Promise.all((['APPROVED', 'REJECTED'] as const).map(decision => mutation(support, 'POST', `${path(event)}/decision`, { decision, version: 1, reason: 'Concurrent review' }, keys[decision])))
+  expect(response.map(value => value.status()).sort()).toEqual([200, 409])
+  const saved = await snapshot(event)
+  expect(saved.history.filter((row: any) => row.action === 'TechRequestDecided')).toHaveLength(1)
+  expect(saved.outbox.filter((row: any) => row.eventType === 'TechRequestDecided')).toHaveLength(1)
+  const decision = saved.requests[0].status as keyof typeof keys
+  expect((await mutation(support, 'POST', `${path(event)}/decision`, { decision, version: 1, reason: 'Concurrent review' }, keys[decision])).status()).toBe(200)
+  expect(await snapshot(event)).toEqual(saved)
+})
+
+test('TC-CS40-12: transactional submission failure rolls back and retry creates one durable outbox action', async ({ equipment }) => {
+  const event = await equipment.event(); const before = await snapshot(event); const key = randomUUID()
+  await fault(event, 'TechRequestSubmitted', async () => {
+    expect((await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 1 }]), key)).status()).toBe(500)
+    expect(await snapshot(event)).toEqual(before)
+  })
+  expect((await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 1 }]), key)).status()).toBe(200)
+  const committed = await snapshot(event)
+  expect(committed.outbox).toHaveLength(1)
+  expect((await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 1 }]), key)).status()).toBe(200)
+  expect(await snapshot(event)).toEqual(committed)
+})
+
+test('TC-CS40-13: keyboard-accessible browser validation, review and refresh preserve current state', async ({ equipment, page }, info) => {
+  await equipment.stock('projector', 5)
+  const event = await equipment.event()
+  await signIn(page, event.email); await page.goto(`/technical-requirements/${event.id}`)
+  await page.getByLabel('Placement and preparation details').fill('Accessible lectern')
+  await page.getByRole('button', { name: 'Submit requirements', exact: true }).press('Enter')
   await expect(page.getByRole('alert')).toContainText('Specify equipment or support')
-
-  const coordinator = await session(playwright.request, email)
-  try {
-    const response = await mutation(coordinator, 'POST', `/api/events/${event.id}/technical-request`, {
-      ...technicalBody,
-      equipment: [{ equipmentType: 'unlisted equipment', quantity: 0 }],
-    })
-    expect(response.status()).toBe(422)
-    const failure = await response.json()
-    expect(failure.data?.error?.fields ?? failure.error?.fields).toMatchObject({
-      'equipment.0.equipmentType': expect.any(Array),
-      'equipment.0.quantity': expect.any(Array),
-    })
-  }
-  finally { await coordinator.dispose() }
+  await field(page, 'projector quantity').fill('1')
+  await page.getByRole('button', { name: 'Submit requirements', exact: true }).press('Enter')
+  await expect(page.getByTestId('technical-status')).toContainText('Pending')
+  await page.reload(); await expect(field(page, 'projector quantity')).toHaveValue('1')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  await signIn(page, emails.support); await page.goto('/technical-requirements')
+  await expect(page.getByRole('button', { name: new RegExp(`Event request ${event.id}`) })).toBeEnabled()
+  await page.getByRole('button', { name: new RegExp(`Event request ${event.id}`) }).press('Enter')
+  await page.getByRole('button', { name: 'Submit decision', exact: true }).click()
+  await expect(page.getByText('Technical requirements approved.', { exact: true })).toBeVisible()
+  const decisionCard = page.locator('[data-slot="card"]').filter({ has: page.getByRole('heading', { name: 'Decision', exact: true }) })
+  await expect(decisionCard).toBeVisible()
+  await expect(decisionCard.getByText('Saved decision: Approved', { exact: true })).toHaveCount(0)
+  await expect(decisionCard.getByRole('radio')).toHaveCount(2)
+  await expect(decisionCard.getByRole('radio', { name: 'Approve' })).toBeChecked()
+  await expect(decisionCard.getByRole('radio', { name: 'Approve' })).toBeDisabled()
+  await expect(decisionCard.getByLabel('Decision note')).toBeDisabled()
+  await expect(decisionCard.getByRole('button', { name: 'Submit decision' })).toHaveCount(0)
+  await expect(decisionCard.getByRole('button', { name: 'Reserve complete request' })).toBeEnabled()
+  await expect(decisionCard.getByRole('table', { name: 'Equipment availability' })).toBeVisible()
+  await expect(decisionCard.getByRole('heading', { name: 'Availability for the event period' })).toHaveCount(0)
+  await expect(decisionCard.getByText(/Equipment period includes venue setup and turnaround buffers/)).toHaveCount(0)
+  await expect(decisionCard.getByText('All requested equipment is available.', { exact: true })).toHaveCount(0)
+  await decisionCard.getByRole('button', { name: 'Reserve complete request' }).click()
+  await expect(decisionCard.getByRole('button', { name: 'Reserved', exact: true })).toBeDisabled()
+  await expect(decisionCard.getByRole('columnheader')).toHaveText(['Equipment', 'Requested'])
+  const reservedSnapshot = await snapshot(event)
+  expect((await equipment.reserve(event)).status()).toBe(200)
+  expect(await snapshot(event)).toEqual(reservedSnapshot)
+  await page.reload()
+  await page.getByRole('button', { name: new RegExp(`Event request ${event.id}`) }).click()
+  await expect(page.getByRole('region', { name: 'Selected technical request' })).toContainText('Approved')
+  await expect(page.getByRole('heading', { name: 'Decision', exact: true })).toBeVisible()
+  await expect(page.getByText('Saved decision: Approved', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Reserved', exact: true })).toBeDisabled()
+  await expect(page.getByRole('columnheader')).toHaveText(['Equipment', 'Requested'])
+  await page.screenshot({ path: info.outputPath('TC-CS40-13-browser.png'), fullPage: true })
 })
 
-test('CS-40 TC-03/04: Technical Support cannot reject without a reason and the Coordinator sees the recorded rejection', async ({ page, playwright, owner }) => {
-  const event = await created(owner, 'submit', validRequest())
-  const email = await coordinatorFor(owner, event.id)
-  const coordinator = await session(playwright.request, email)
-  try {
-    const submission = await mutation(coordinator, 'POST', `/api/events/${event.id}/technical-request`, technicalBody)
-    expect(submission.status()).toBe(200)
-  }
-  finally { await coordinator.dispose() }
-
-  await signIn(page, emails.support)
-  await page.goto('/technical-requests')
-  await expect(page.getByRole('heading', { name: 'Technical requirements review', exact: true })).toBeVisible()
-  await expect(page.getByText(`Event request ${event.id}`, { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeEnabled()
-  await activate(page.getByRole('button', { name: new RegExp(`Event request ${event.id}`) }))
-  await activate(page.getByRole('button', { name: 'Reject', exact: true }))
-  await expect(page.getByRole('alert')).toContainText('A reason is required')
-  await page.getByLabel('Decision note').fill('No technician is available')
-  await activate(page.getByRole('button', { name: 'Reject', exact: true }))
-  await expect(page.getByRole('status')).toContainText('Technical requirements rejected')
-  const support = await session(playwright.request, emails.support)
-  try {
-    const record = await support.get(`/api/events/${event.id}/technical-request`)
-    expect(record.status()).toBe(200)
-    expect(await record.json()).toMatchObject({ status: 'REJECTED', decisionReason: 'No technician is available' })
-  }
-  finally { await support.dispose() }
+test('TC-CS40-14: physical stock ceiling rejects the entire over-stock request', async ({ equipment }) => {
+  await equipment.stock('projector', 5)
+  const event = await equipment.event(); const before = await snapshot(event)
+  expect((await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 6 }]))).status()).toBe(422)
+  expect(await snapshot(event)).toEqual(before)
 })
 
-test('CS-40 TC-03/06: Technical Support approves an explicit no-requirements request', async ({ page, playwright, owner }) => {
-  const event = await created(owner, 'submit', validRequest())
-  const email = await coordinatorFor(owner, event.id)
-  const coordinator = await session(playwright.request, email)
-  try {
-    const submission = await mutation(coordinator, 'POST', `/api/events/${event.id}/technical-request`, {
-      ...technicalBody,
-      equipment: [], supportRequired: false, supportDetails: '', notRequired: true,
-    })
-    expect(submission.status()).toBe(200)
-  }
-  finally { await coordinator.dispose() }
-
-  await signIn(page, emails.support)
-  await page.goto('/technical-requests')
-  await expect(page.getByText(`Event request ${event.id}`, { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled()
-  await activate(page.getByRole('button', { name: new RegExp(`Event request ${event.id}`) }))
-  await expect(page.getByText('None requested', { exact: true })).toBeVisible()
-  await activate(page.getByRole('button', { name: 'Approve', exact: true }))
-  await expect(page.getByRole('status')).toContainText('Technical requirements approved')
+test('TC-CS40-15: field limits and contradictory declarations reject every partial write', async ({ equipment, page }) => {
+  const event = await equipment.event(); const before = await snapshot(event)
+  await signIn(page, event.email); await page.goto(`/technical-requirements/${event.id}`)
+  await page.getByLabel('Technical support is required').check()
+  await expect(page.getByLabel('Support details')).toHaveAttribute('maxlength', '1000')
+  await expect(page.getByLabel('Placement and preparation details')).toHaveAttribute('maxlength', '500')
+  const invalid = body([{ equipmentType: 'projector', quantity: 1 }], { supportRequired: true, supportDetails: 's'.repeat(1001), placementDetails: 'p'.repeat(501), notRequired: true })
+  expect((await mutation(event.coordinator, 'POST', path(event), invalid)).status()).toBe(422)
+  expect(await snapshot(event)).toEqual(before)
 })
 
-test('CS-40 TC-07: changing approved requirements returns them to Technical Support review', async ({ page, playwright, owner }) => {
-  const event = await created(owner, 'submit', validRequest())
-  const email = await coordinatorFor(owner, event.id)
-  const coordinator = await session(playwright.request, email)
-  try {
-    expect((await mutation(coordinator, 'POST', `/api/events/${event.id}/technical-request`, technicalBody)).status()).toBe(200)
-  }
-  finally { await coordinator.dispose() }
-
-  await signIn(page, emails.support)
-  await page.goto('/technical-requests')
-  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled()
-  await activate(page.getByRole('button', { name: new RegExp(`Event request ${event.id}`) }))
-  await activate(page.getByRole('button', { name: 'Approve', exact: true }))
-  await expect(page.getByRole('status')).toContainText('Technical requirements approved')
-
-  await signIn(page, email)
-  await page.goto(`/technical-requirements/${event.id}`)
-  await expect(page.getByTestId('technical-status')).toContainText('Approved')
-  await field(page, 'projector quantity').fill('3')
-  await activate(page.getByRole('button', { name: 'Update requirements', exact: true }))
-  await expect(page.getByTestId('technical-status')).toContainText('Pending Technical Support review')
-  const refreshed = await session(playwright.request, email)
-  try {
-    const record = await refreshed.get(`/api/events/${event.id}/technical-request`)
-    expect(await record.json()).toMatchObject({
-      version: 2,
-      status: 'SUBMITTED',
-      equipment: [
-        { equipmentType: 'projector', quantity: 3 },
-        { equipmentType: 'speaker', quantity: 1 },
-      ],
-    })
-  }
-  finally { await refreshed.dispose() }
+test('TC-CS40-16: venue can be selected per equipment row', async ({ equipment, page }, info) => {
+  await equipment.stock('projector', 5)
+  const event = await equipment.event()
+  await signIn(page, event.email); await page.goto(`/technical-requirements/${event.id}`)
+  await field(page, 'projector quantity').fill('2')
+  await page.getByRole('combobox', { name: 'Venue' }).click()
+  await page.getByRole('option').first().click()
+  await page.getByLabel('Placement and preparation details').fill('Projector at the front')
+  await page.getByRole('button', { name: 'Submit requirements', exact: true }).press('Enter')
+  await expect(page.getByTestId('technical-status')).toContainText('Pending')
+  const saved = await snapshot(event)
+  expect(saved.requests[0].equipment[0].venueId).toBeTruthy()
 })
 
-test('CS-40 TC-08/09: Coordinators cannot use the review queue and Technical Support has a read-only request view', async ({ page, playwright, owner }) => {
-  const event = await created(owner, 'submit', validRequest())
-  const email = await coordinatorFor(owner, event.id)
-  const coordinator = await session(playwright.request, email)
-  try {
-    expect((await mutation(coordinator, 'POST', `/api/events/${event.id}/technical-request`, technicalBody)).status()).toBe(200)
-  }
-  finally { await coordinator.dispose() }
-
-  await signIn(page, emails.support)
-  await page.goto(`/technical-requirements/${event.id}`)
-  await expect(page.getByTestId('technical-status')).toContainText('Pending Technical Support review')
-  await expect(page.getByText('These requirements are read-only for your account.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Update requirements' })).toHaveCount(0)
-
-  await signIn(page, email)
-  await page.goto('/technical-requests')
-  await expect(page.getByRole('alert')).toContainText('review queue is unavailable')
-  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Reject', exact: true })).toHaveCount(0)
-})
-
-test('CS-40 TC-11: Technical Support cannot approve a superseded requirements version', async ({ page, playwright, owner }) => {
-  const event = await created(owner, 'submit', validRequest())
-  const email = await coordinatorFor(owner, event.id)
-  const coordinator = await session(playwright.request, email)
-  try {
-    expect((await mutation(coordinator, 'POST', `/api/events/${event.id}/technical-request`, technicalBody)).status()).toBe(200)
-  }
-  finally { await coordinator.dispose() }
-
-  await signIn(page, emails.support)
-  await page.goto('/technical-requests')
-  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled()
-  await activate(page.getByRole('button', { name: new RegExp(`Event request ${event.id}`) }))
-
-  const currentCoordinator = await session(playwright.request, email)
-  try {
-    const update = await mutation(currentCoordinator, 'POST', `/api/events/${event.id}/technical-request`, {
-      ...technicalBody,
-      equipment: [{ equipmentType: 'projector', quantity: 4 }],
-      placementDetails: 'Updated after Support opened the review queue',
-    })
-    expect(update.status()).toBe(200)
-  }
-  finally { await currentCoordinator.dispose() }
-
-  await activate(page.getByRole('button', { name: 'Approve', exact: true }))
-  await expect(page.getByRole('alert')).toBeVisible()
-  const support = await session(playwright.request, emails.support)
-  try {
-    const record = await support.get(`/api/events/${event.id}/technical-request`)
-    expect(await record.json()).toMatchObject({ version: 2, status: 'SUBMITTED', equipment: [{ equipmentType: 'projector', quantity: 4 }] })
-  }
-  finally { await support.dispose() }
+test('TC-CS40-17: missing venue is blocked in the browser', async ({ equipment, page }) => {
+  await equipment.stock('projector', 5)
+  const event = await equipment.event()
+  await signIn(page, event.email); await page.goto(`/technical-requirements/${event.id}`)
+  await field(page, 'projector quantity').fill('2')
+  await page.getByLabel('Placement and preparation details').fill('Projector at the front')
+  await page.getByRole('button', { name: 'Submit requirements', exact: true }).press('Enter')
+  await expect(page.getByRole('alert')).toContainText('Select a venue')
 })

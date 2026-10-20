@@ -76,7 +76,7 @@ test('TC-CS93-45 TC-CS94-43 TC-CS95-41 LIVE multi-room Safety review, actionable
   await page.reload();await panel.getByRole('button',{name:'Confirm Event',exact:true}).click();await expect(panel.getByRole('button',{name:'Start Preparation',exact:true})).toBeVisible()
   await page.screenshot({path:info.outputPath('TC-CS95-02-confirmed-after-safety.png'),fullPage:true})
   await panel.getByRole('button',{name:'Start Preparation',exact:true}).click();await expect(panel).toContainText('Preparation has started')
-  await signIn(staffPage,emails.staff);await staffPage.goto('/preparation')
+  await signIn(staffPage,emails.staff);await staffPage.goto('/technical-requirements/preparation')
   await staffPage.getByLabel('Event',{exact:true}).selectOption(eventId)
   await staffPage.getByLabel('Required venue',{exact:true}).selectOption(rooms[0]!.room.id)
   await staffPage.getByLabel('Preparation update',{exact:true}).fill('Required room exits and setup inspected for the current approved round')
