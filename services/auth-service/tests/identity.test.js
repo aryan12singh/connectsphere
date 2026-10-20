@@ -150,7 +150,8 @@ test('TC-CS26-05 duplicate email is a field-level 409 and creates no profile', a
   const result = await http('/auth/register', { method: 'POST', body: signup() });
   assert.equal(result.status, 409); assert.ok(result.body.error?.fields?.email); assert.equal(created.length, 0);
 });
-for (const role of ['EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF', 'SYSTEM_ADMINISTRATOR']) {
+// CS-10 Week 7 adds SAFETY_OFFICER and EVENT_COORDINATOR_LEAD (TC-CS10-21): internal only.
+for (const role of ['EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF', 'SYSTEM_ADMINISTRATOR', 'SAFETY_OFFICER', 'EVENT_COORDINATOR_LEAD']) {
   test(`TC-CS26-06 ${role} cannot be granted by signup or the staff user-creation endpoint`, async () => {
     assert.equal((await http('/auth/register', { method: 'POST', body: signup({ role }) })).status, 400);
     user.role = 'TECHNICAL_SUPPORT_STAFF'; user.roles = [user.role];

@@ -63,6 +63,9 @@ UPDATE "users" SET "roles" = ARRAY['EVENT_ORGANISER', 'ATTENDEE']::"UserRole"[]
 -- Controlled internal Safety Officer fixture; public registration cannot select it.
 INSERT INTO users (id,email,"passwordHash","firstName","lastName",role,roles,"createdAt","updatedAt") VALUES
  ('a1000000-0000-4000-8000-000000000031','alex.chen@connectsphere.sg',crypt('Alex@CS31!',gen_salt('bf',10)),'Alex','Chen','SAFETY_OFFICER',ARRAY['SAFETY_OFFICER']::"UserRole"[],now(),now()) ON CONFLICT (id) DO NOTHING;
+-- CS-10: controlled internal Event Coordinator Lead fixture (not self-registrable).
+INSERT INTO users (id,email,"passwordHash","firstName","lastName",role,roles,"createdAt","updatedAt") VALUES
+ ('a1000000-0000-4000-8000-000000000032','jordan.lim@connectsphere.sg',crypt('Jordan@CS32!',gen_salt('bf',10)),'Jordan','Lim','EVENT_COORDINATOR_LEAD',ARRAY['EVENT_COORDINATOR_LEAD']::"UserRole"[],now(),now()) ON CONFLICT (id) DO NOTHING;
 COMMIT;
 
 -- Sanity check (optional): should return 1 row

@@ -1,6 +1,8 @@
 // Roles constrain actions even when an editable capability is granted.
 // Identity and capabilities come from auth-service; callers cannot choose them.
-const ROLES = Object.freeze(['EVENT_ORGANISER', 'EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF', 'ATTENDEE', 'SAFETY_OFFICER']);
+// CS-10 Week 7: Event Coordinator Lead and Safety Officer are internal roles
+// (seed/controlled provisioning only; never selectable at sign-up).
+const ROLES = Object.freeze(['EVENT_ORGANISER', 'EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF', 'ATTENDEE', 'SAFETY_OFFICER', 'EVENT_COORDINATOR_LEAD']);
 const PUBLIC_ROLES = Object.freeze(['EVENT_ORGANISER', 'ATTENDEE']);
 const INTERNAL_ROLES = Object.freeze(['EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF']);
 const ACTION_ROLES = Object.freeze({
@@ -12,6 +14,10 @@ const ACTION_ROLES = Object.freeze({
   'event_requests.create': ['EVENT_ORGANISER'],
   'event_requests.review': ['EVENT_COORDINATOR'],
   'events.view': ROLES.filter(role=>role!=='SAFETY_OFFICER'),
+  // CS-10: the Lead's landing screen (Unassigned Queue). Assigning and
+  // reassigning are added by CS-81/CS-30. A Lead is NOT a Coordinator: it never
+  // gets event_requests.review, events.confirm or venue booking powers (Q11).
+  'assignments.view':['EVENT_COORDINATOR_LEAD'],
   'safety.view':['SAFETY_OFFICER'],
   'safety.decide':['SAFETY_OFFICER'],
   'safety.submit':['EVENT_COORDINATOR'],

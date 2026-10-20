@@ -11,7 +11,7 @@
  * `error.data.details` (one message per bad field).
  */
 
-export type Role = 'EVENT_ORGANISER' | 'EVENT_COORDINATOR' | 'VENUE_STAFF' | 'TECHNICAL_SUPPORT_STAFF' | 'ATTENDEE' | 'SAFETY_OFFICER'
+export type Role = 'EVENT_ORGANISER' | 'EVENT_COORDINATOR' | 'VENUE_STAFF' | 'TECHNICAL_SUPPORT_STAFF' | 'ATTENDEE' | 'SAFETY_OFFICER' | 'EVENT_COORDINATOR_LEAD'
 
 export interface AdminUser {
   id: string

@@ -25,6 +25,7 @@ const ALLOWED_ROLES: readonly string[] = [
   'ATTENDEE',
   'TECHNICAL_SUPPORT_STAFF',
   'SAFETY_OFFICER',
+  'EVENT_COORDINATOR_LEAD',
 ]
 
 interface LoginResult {
