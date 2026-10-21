@@ -2,6 +2,10 @@
 
 > Blue section — written once. Execution results are retained with the test run's workflow artifacts.
 
+2026-10-21T16:31:00+08:00: live TC-CS10-06/12 use the current Attendee heading “Your events” (also asserted by CS-47) and Support heading “Manage technical availability”. Typed-route denials, role switching, persistence after reload, and rejection of unassigned roles remain required.
+
+TC-CS10-06 uses one fresh Playwright context per actor. Reusing a page while clearing its cookies let that page's in-flight session verification clear the next actor's new session; role-home assertions now execute independently with the same desktop/mobile project settings.
+
 Story: *As a ConnectSphere user, I want to log in securely and reach the correct starting screen so that I can access the functions available to my role.*
 Roles per AC (north star): `EVENT_ORGANISER | EVENT_COORDINATOR | VENUE_STAFF | ATTENDEE | TECHNICAL_SUPPORT_STAFF` — no temporary enum details.
 

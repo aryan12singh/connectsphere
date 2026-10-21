@@ -14,7 +14,9 @@ if [[ "$(node -p 'process.versions.node.split(".")[0]')" != 22 ]]; then
   echo 'Use Node.js 22 for this reproducible runner' >&2; exit 2
 fi
 cd "$ROOT"
-PORT_BASE="${CSE2E_PORT_BASE:-33000}"
+# Keep stopped services' published ports outside Linux's ephemeral client range
+# so outbound reconnect attempts cannot claim them during restart checks.
+PORT_BASE="${CSE2E_PORT_BASE:-13000}"
 COMPOSE="$CSE2E_WORK_DIR/compose.json"
 EVIDENCE="$CSE2E_WORK_DIR/evidence"
 python3 scripts/prepare-event-review.py --project "$CSE2E_PROJECT" --output "$COMPOSE" --port-base "$PORT_BASE"

@@ -88,6 +88,8 @@ These cases supplement the preserved earlier specifications. Current contracts a
 
 ## 17 October production mobile stock-entry regression
 
+2026-10-21T16:31:00+08:00: live TC-CS93-30 checks the current Safety detail text “Equipment approval has not been verified.” from SafetyReviewDetails; verified venue facts and the disabled Safety submission action remain required. This replaces the older generic technical/support message after the Equipment proof integration.
+
 TC-CS93-48: Coordinator fact-review proof remains stable after display-name edits and asynchronous Booking/Venue version updates, while exact resource-fence proof changes; a real emergency-access correction changes the fact-review proof. Actual service HTTP with isolated repositories; actual rework/resubmit acceptance and PostgreSQL evidence remain separate. Date of Creation: 17 October 2026.
 
 | Test Case ID | Scenario / AC | Preconditions | Steps | Expected result | Layer | Date of Creation |
