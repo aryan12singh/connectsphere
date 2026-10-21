@@ -125,6 +125,15 @@ async function equipmentAcceptance(){
   const support=await f.login(realm.users.find(x=>x.email==='hafiz.ismail@connectsphere.sg'));
   const inventory=await f.call('GET','/equipment-inventory',undefined,support.token);
   assert.equal(inventory.status,200,'Technical Support can inspect real owned inventory');
+  // Submission is capped by physical stock. Establish the synthetic inventory
+  // before requesting it; the later reduction still exercises atomic shortage.
+  for(const [equipmentType,quantity] of [['projector',2],['microphone',1]]){
+   const row=inventory.body.items.find(item=>item.equipmentType===equipmentType);
+   if(row.total<quantity){
+    const stocked=await f.call('PUT',`/equipment-inventory/${equipmentType}`,{version:row.version,total:quantity},support.token);
+    assert.equal(stocked.status,200,JSON.stringify(stocked.body));
+   }
+  }
   const approved=await f.call('PUT',`/venue-bookings/${f.booking.id}/decision`,{version:f.booking.version,status:'CONFIRMED',reason:'Room reviewed'},f.staff.token);assert.equal(approved.status,200);
   const input={version:1,equipment:[{equipmentType:'projector',quantity:2,venueId:f.venue.id},{equipmentType:'microphone',quantity:1,venueId:f.venue.id}],supportRequired:true,supportDetails:'Projection operator',notRequired:false,placementDetails:'Projector at rear of Main hall, microphone at lectern; keep exits clear'};
   const technical=await f.call('POST',`/event-requests/${f.eventRequestId}/technical-request`,input,f.coordinator.token);assert.equal(technical.status,201,JSON.stringify(technical.body));
