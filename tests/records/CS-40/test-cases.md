@@ -24,4 +24,6 @@ Date of Creation: 2026-10-17T18:00:00+08:00. Story: record and review one pooled
 
 ## Historical ID mapping
 
+TC-CS40-01 also verifies that the server-rendered form controls stay disabled until hydration, so an early equipment/venue selection cannot be lost before the browser handlers are ready. This supplements the existing disabled-submit assertion and preserves the full submission flow.
+
 The following mappings describe the earlier 17 October numbering, before the new venue cases 16/17 above. Earlier local 03 blank-reason maps to canonical **04**; local 04 reason visibility maps to **03**. Local 16/19 map to **06**, local 17/18 to supplements **14/15**, and local 08 is split across **08** assignment and **09** Safety read-only.

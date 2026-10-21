@@ -205,6 +205,7 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
     </Card>
 
     <form v-if="!requestUnavailable && !typesError" class="flex flex-col gap-6" @submit.prevent="submit">
+      <fieldset :disabled="!pageReady" aria-label="Technical requirements" class="m-0 flex min-w-0 flex-col gap-6 border-0 p-0">
       <Card>
         <CardHeader>
           <CardTitle>Equipment</CardTitle>
@@ -299,6 +300,7 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
         </Button>
       </div>
       <p v-if="readOnly" class="text-sm text-muted-foreground">These requirements are read-only for your account.</p>
+      </fieldset>
     </form>
   </main>
 </template>
