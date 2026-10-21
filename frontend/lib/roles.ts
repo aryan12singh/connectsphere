@@ -5,6 +5,7 @@ export const ROLE_LABELS = {
   TECHNICAL_SUPPORT_STAFF: 'Technical Support',
   ATTENDEE: 'Attendee',
   SAFETY_OFFICER: 'Safety Officer',
+  EVENT_COORDINATOR_LEAD: 'Coordinator Lead',
 } as const
 export type Role = keyof typeof ROLE_LABELS
 export function recognisedRoles(user: { role?: string, roles?: string[] } | null | undefined): Role[] {
@@ -13,5 +14,5 @@ export function recognisedRoles(user: { role?: string, roles?: string[] } | null
   return [...new Set(roles)] as Role[]
 }
 export function roleHome(role: string) {
-  return ({ SAFETY_OFFICER:'/safety-checks', VENUE_STAFF: '/venue', ATTENDEE: '/attendee', TECHNICAL_SUPPORT_STAFF: '/technical-support' } as Record<string, string>)[role] ?? '/'
+  return ({ EVENT_COORDINATOR_LEAD: '/queue', SAFETY_OFFICER:'/safety-checks', VENUE_STAFF: '/venue', ATTENDEE: '/attendee', TECHNICAL_SUPPORT_STAFF: '/technical-support' } as Record<string, string>)[role] ?? '/'
 }

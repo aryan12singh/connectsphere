@@ -80,6 +80,40 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 21 October 2026 — Marc — CS-10 seven roles (Coordinator Lead) and story check
+
+Checked Marc's stories (CS-10, CS-26, CS-50, CS-51, CS-79) on main `a7749cb`.
+All suites pass when run like CI. Earlier reports of three CS-10 frontend
+failures came from running without `NUXT_AUTH_MODE=mock`, not a defect.
+
+**Gap fixed in CS-10:** the Week 7 *Event Coordinator Lead* role did not exist
+(six roles only). Decisions (Shadow, 21 Oct): role + landing only, with
+permissions `assignments.view` and `events.view`; queue contents and
+assign/reassign remain CS-81/CS-30; Q11 still pending.
+- `EVENT_COORDINATOR_LEAD` added to the shared role lists
+  (`services/utils/role-policy.js`, `role-permissions.js`), event-service
+  recognised roles, the BFF login allow-list and frontend role labels.
+- New permission `assignments.view` (auth-service catalogue). Migrations:
+  user-service `20261021000000_coordinator_lead` (enum value) and auth-service
+  `20261021000000_coordinator_lead` (default grants). Seeds and Keycloak realm
+  add Jordan Lim (`jordan.lim@connectsphere.sg`).
+- Frontend: Lead home `/queue` (landing page, guarded by role +
+  `assignments.view`) and an "Unassigned queue" nav item. Mock user `lead@example.com`.
+- `docs/access-matrix.md`: seven-role table.
+- Tests: 7-role matrix, landings, typed-route denials and Lead BFF session
+  (`CS-10.spec.ts`); sign-up refuses both new roles (auth-service); Lead cannot
+  approve and Safety Officer cannot edit (event-service PG).
+
+Results: frontend 393/393 with typecheck, e2e typecheck, coverage gate and
+build; auth 25/4; event 124/29; other services unchanged and passing. A
+browser check of the production build confirms the Lead landing and denials.
+
+**Existing volumes:** run the two new migrations (services do this on start),
+re-run the seed (`docker compose -f infra/docker-compose.yml run --rm seed`),
+and add Jordan Lim to Keycloak through partial import (Skip existing), as for
+the Safety Officer. Open: idle timeout defaults to 0 (off); the card's 30-minute
+example is configured by Technical Support in Settings.
+
 ### 18 October 2026 — Aryan — review and evidence cleanup
 
 Shortened PR #13 and Jira summaries; indexed the important test records and

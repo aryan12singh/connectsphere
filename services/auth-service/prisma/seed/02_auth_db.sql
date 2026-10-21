@@ -36,3 +36,6 @@ INSERT INTO role_permissions (role,permission) VALUES
  ('EVENT_COORDINATOR','safety.submit'),('EVENT_COORDINATOR','safety.rework'),
  ('EVENT_COORDINATOR','technical.submit'),('EVENT_COORDINATOR','technical.view'),
  ('TECHNICAL_SUPPORT_STAFF','technical.review'),('TECHNICAL_SUPPORT_STAFF','technical.view') ON CONFLICT DO NOTHING;
+-- CS-10: Event Coordinator Lead (supervision landing only; no Coordinator powers).
+INSERT INTO role_permissions (role,permission) VALUES
+ ('EVENT_COORDINATOR_LEAD','assignments.view'),('EVENT_COORDINATOR_LEAD','events.view') ON CONFLICT DO NOTHING;

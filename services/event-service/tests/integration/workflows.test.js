@@ -11,6 +11,7 @@ const actors = {
  coord: {id:'test-coord',roles:['EVENT_COORDINATOR']},
  coord2: {id:'test-coord2',roles:['EVENT_COORDINATOR']},
  attendee:{id:'test-attendee',roles:['ATTENDEE']}, staff:{id:'test-staff',roles:['VENUE_STAFF']},
+ lead:{id:'test-lead',roles:['EVENT_COORDINATOR_LEAD']}, officer:{id:'test-officer',roles:['SAFETY_OFFICER']},
  multi:{id:'test-multi',roles:['ATTENDEE','EVENT_ORGANISER'],organisationId:'org-a'},
  missingOrg:{id:'test-no-org',roles:['EVENT_ORGANISER']},
 };
@@ -297,4 +298,25 @@ test('TC-CS51-08e a return message carries the Coordinator comment for the Organ
  const returned=await call('POST',`/event-requests/${r.body.id}/decision`,{action:'RETURN',text:'Add layout',version:r.body.version},actor);assert.equal(returned.status,200);
  const row=await prisma.outbox.findFirst({where:{aggregateId:r.body.id,eventType:'RequestReturned'}});
  assert.equal(row.payload.comment,'Add layout');assert.equal(row.payload.organiserId,'test-owner');
+});
+
+// ── CS-10 Week 7: the two new internal roles get no Coordinator/planning edit powers ──
+test('TC-CS10-22 a Coordinator Lead cannot approve an assigned request; nothing changes', async () => {
+ const r=await create();
+ const before=await prisma.eventRequest.findUnique({where:{id:r.body.id}});
+ const res=await call('POST',`/event-requests/${r.body.id}/decision`,{action:'APPROVE',version:r.body.version},'lead');
+ assert.equal(res.status,403);
+ const after=await prisma.eventRequest.findUnique({where:{id:r.body.id}});
+ assert.equal(after.status,before.status);assert.equal(after.version,before.version);
+ assert.equal(await prisma.outbox.count({where:{aggregateId:r.body.id,eventType:'RequestApproved'}}),0);
+});
+test('TC-CS10-23 a Safety Officer cannot edit event request details; nothing changes', async () => {
+ const r=await create();
+ const res=await call('PUT',`/event-requests/${r.body.id}`,{...valid,expectedAttendance:500,version:r.body.version},'officer');
+ assert.ok([403,404].includes(res.status),`status ${res.status}`);
+ assert.equal((await prisma.eventRequest.findUnique({where:{id:r.body.id}})).expectedAttendance,valid.expectedAttendance);
+});
+test('TC-CS10-22b a Lead and a Safety Officer cannot read another user\'s request or private draft', async () => {
+ const r=await create();
+ for(const who of ['lead','officer'])assert.ok([403,404].includes((await call('GET',`/event-requests/${r.body.id}`,undefined,who)).status),who);
 });
