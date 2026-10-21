@@ -140,6 +140,8 @@ jobs:
             database: notification_test
           - service: equipment-service
             database: equipment_test
+          - service: attendance-service
+            database: attendance_test
     services:
       postgres:
         image: postgres:16
@@ -187,50 +189,6 @@ jobs:
             ${{ runner.temp }}/postgres-coverage.txt
             ${{ runner.temp }}/hold-expiry.txt
             ${{ runner.temp }}/hold-expiry-results.json
-
-  equipment:
-    name: Equipment and technical requirements checks
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: connectsphere
-          POSTGRES_PASSWORD: isolated-ci-only
-          POSTGRES_DB: equipment_test
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U connectsphere -d equipment_test"
-          --health-interval 5s --health-timeout 5s --health-retries 10
-    env:
-      DATABASE_URL: postgresql://connectsphere:isolated-ci-only@localhost:5432/equipment_test
-    defaults:
-      run:
-        shell: bash
-        working-directory: services/equipment-service
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-node@v7.0.0
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: services/equipment-service/package-lock.json
-      - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy && npm run check
-      - run: npm run test:unit | tee "$RUNNER_TEMP/equipment-unit.log"
-      - run: npm run test:integration | tee "$RUNNER_TEMP/equipment-integration.log"
-      - name: Combined service coverage gate (all four categories above 80 percent)
-        run: npm run test:coverage | tee "$RUNNER_TEMP/equipment-coverage.log"
-      - uses: actions/upload-artifact@v7.0.1
-        if: always()
-        with:
-          name: equipment-evidence
-          retention-days: 30
-          path: |
-            ${{ runner.temp }}/equipment-unit.log
-            ${{ runner.temp }}/equipment-integration.log
-            ${{ runner.temp }}/equipment-coverage.log
-            services/equipment-service/coverage/
 
   identity:
     name: ${{ matrix.service }} checks
@@ -331,7 +289,7 @@ jobs:
   gate:
     name: Sprint 2 checks
     if: always()
-    needs: [frontend, event, venue_booking, identity, equipment, live]
+    needs: [frontend, event, venue_booking, identity, live]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     env:
