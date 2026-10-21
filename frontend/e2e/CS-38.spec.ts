@@ -1,10 +1,16 @@
 import {expect} from '@playwright/test'
 import {test,session,emails,signIn,mutation} from './helpers'
 import {createVenue,planningEvent,hold,roomInput,reviewDatabase,databaseEvidence} from './fixtures/venue-fixtures'
-test('TC-CS38-30 LIVE Staff decision requires a reason and refuses stale replay without changing approval',async({page,playwright,owner},info)=>{
+test('TC-CS38-30 LIVE Coordinator hold becomes confirmed on Staff approval without an extra Coordinator action',async({page,playwright,owner},info)=>{
   const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner)
   try {
     const venue=await createVenue(staff),room=await hold(p.coordinator,p.event.eventId,venue.id)
+    expect(room).toMatchObject({status:'TENTATIVELY_HELD',version:1})
+    await signIn(page,p.contact.email);await page.goto(`/events/${p.event.eventId}`)
+    const requested=page.locator(`[data-booking-id="${room.id}"]`)
+    await expect(requested).toContainText('tentatively held')
+    await expect(requested.getByRole('button',{name:/confirm/i})).toHaveCount(0)
+    await page.screenshot({path:info.outputPath('TC-CS38-30-coordinator-tentative-hold.png'),fullPage:true})
     const forbidden=await mutation(p.coordinator,'PUT',`/api/bookings/${room.id}/decision`,{version:1,status:'CONFIRMED',reason:'Coordinator cannot approve'})
     expect(forbidden.status()).toBe(403)
     await signIn(page,emails.staff);await page.getByRole('button',{name:'Booking requests',exact:true}).click()
@@ -25,6 +31,7 @@ test('TC-CS38-30 LIVE Staff decision requires a reason and refuses stale replay 
     const outboxQuery='SELECT id,kind,payload FROM booking_outbox WHERE "aggregateId"=$1 AND kind=$2'
     const intents=(await reviewDatabase('booking',async db=>db.query(outboxQuery,[room.id,'VenueBookingApproved']))).rows
     expect(intents).toHaveLength(1);expect(intents[0].payload.coordinatorId).toBe(p.contact.id)
+    expect(history.rows.map((row:any)=>row.action)).toEqual(['BOOKING_CREATED','STATUS_CHANGED'])
     const effectsQuery='SELECT (SELECT count(*) FROM venue_booking_requests WHERE "eventId"=$1) AS bookings,(SELECT count(*) FROM venue_booking_activity a JOIN venue_booking_requests b ON b.id=a."bookingId" WHERE b."eventId"=$1) AS activities,(SELECT count(*) FROM booking_outbox WHERE payload->>\'eventId\'=$1) AS intents'
     const effectsBefore=(await reviewDatabase('booking',async db=>db.query(effectsQuery,[p.event.eventId]))).rows
     const confirmedClash=await mutation(p.coordinator,'POST','/api/bookings',roomInput(p.event.eventId,venue.id))
@@ -38,7 +45,18 @@ test('TC-CS38-30 LIVE Staff decision requires a reason and refuses stale replay 
     await signIn(page,p.contact.email);await page.getByTestId('bell').click()
     const notices=page.getByRole('dialog',{name:'Notifications'});await expect(notices).toContainText(venue.name);await expect(notices).toContainText('was approved')
     await page.screenshot({path:info.outputPath('TC-CS38-30-coordinator-decision-notice.png'),fullPage:true})
-    await databaseEvidence(page,info,'TC-CS38-30',[{database:'booking_db',query,rows:current.rows},{database:'booking_db',query:historyQuery,rows:history.rows},{database:'booking_db',query:outboxQuery,rows:intents},{database:'notification_db',query:inboxQuery,rows:delivered}])
+    await page.goto(`/events/${p.event.eventId}`)
+    const confirmed=page.locator(`[data-booking-id="${room.id}"]`)
+    await expect(confirmed).toContainText('Venue approved')
+    await expect(confirmed.getByRole('button',{name:/confirm/i})).toHaveCount(0)
+    const summary=await (await p.coordinator.get(`/api/bookings/events/${p.event.eventId}/summary`)).json()
+    expect(summary.policy.pendingClarifications).toEqual([])
+    expect(summary.event.status).toBe('ARRANGEMENT_PENDING');expect(summary.venueReady).toBe(true)
+    await page.screenshot({path:info.outputPath('TC-CS38-30-coordinator-confirmed-venue.png'),fullPage:true})
+    const eventQuery='SELECT id,status FROM events WHERE id=$1'
+    const eventRows=(await reviewDatabase('event',async db=>db.query(eventQuery,[p.event.eventId]))).rows
+    expect(eventRows).toEqual([{id:p.event.eventId,status:'ARRANGEMENT_PENDING'}])
+    await databaseEvidence(page,info,'TC-CS38-30',[{database:'booking_db',query,rows:current.rows},{database:'booking_db',query:historyQuery,rows:history.rows},{database:'booking_db',query:outboxQuery,rows:intents},{database:'notification_db',query:inboxQuery,rows:delivered},{database:'event_db',query:eventQuery,rows:eventRows}])
     const rejectedVenue=await createVenue(staff),toReject=await hold(p.coordinator,p.event.eventId,rejectedVenue.id)
     expect((await mutation(staff,'PUT','/api/bookings/'+toReject.id+'/decision',{version:1,status:'REJECTED',reason:'Choose the available alternative room'})).status()).toBe(200)
     const afterRejection=await hold(p.coordinator,p.event.eventId,rejectedVenue.id)

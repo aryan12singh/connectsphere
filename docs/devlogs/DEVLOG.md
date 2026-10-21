@@ -80,6 +80,28 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 2026-10-21 — Attendance, test evidence and main integration
+
+Delivered the CS-47 attendee read model, title-based event heading and
+test-scoped Attendance fixtures under `frontend/e2e/fixtures/`. Retained the
+three explicit dependency stubs and recorded the actual partial/targeted
+CS-40–42 and runnable CS-47 browser results. Published 21 successful-case
+screenshots, seven raw Playwright reports and four summaries to the requested
+Drive folder and linked only the four requested stories in the test sheet.
+
+Merged the older remote Equipment branch while preserving the newer local
+source, then integrated main's venue-policy, daylight-saving and coverage
+changes. Resolved fixture paths and coverage-script layout conflicts, preserved
+both development histories and the combined 81% Booking/Equipment gates, and
+fixed a pre-existing technical-request response type annotation.
+
+Merged-source checks passed: Booking unit 67/67, Equipment unit 35/35,
+Attendance unit 22/22, focused CS-38/85 frontend 58/58, both frontend typechecks
+and Playwright test collection. Booking's native unit coverage gate also passed.
+Full merged-source PostgreSQL, browser execution and combined coverage remain
+unrun. See the
+[dated changes, evidence links and merge decisions](2026-10-21-attendance-evidence-main-merge.md).
+
 ### 2026-10-18 — Booking / Equipment — combined coverage and canonical E2E cases
 
 Both services now enforce combined unit/integration coverage above 80% in all
@@ -121,6 +143,66 @@ isolated `booking_test` database and a rebuilt isolated Node 22 Docker stack;
 the shared development databases were deliberately not altered. This is not a
 claim that Booking's aggregate coverage or all story-specific E2E cases have
 completed; those remain the next required work items.
+
+### 18 October 2026 — Aryan — review and evidence cleanup
+
+Shortened PR #13 and Jira summaries; indexed the important test records and
+archived 53 superseded passing runs plus seven zero-execution copies. Genuine
+failures, policy milestones and results by test layer remain. Application,
+test and CI code are unchanged. [Evidence and retention index](../../tests/records/README.md).
+Peer review and the remaining human gates are listed on [PR #13](https://github.com/aryan12singh/connectsphere/pull/13).
+
+### 17 October 2026 — Aryan — PR #14 main reconciliation
+
+Included main `344bcd3` at `ac9a38f`, preserving both DEVLOG histories and Marc's
+three Event PostgreSQL tests. All 10 combined-source CI jobs passed.
+[Source and verification](2026-10-17-pr14-reconciliation.md).
+PR #13 remains draft and unmerged; this clears the earlier Marcus dependency.
+
+### 17 October 2026 — Aryan — CS-85 operating-hours correction
+
+Fixed the repeated-hour occupied-interval bypass; native, HTTP, PostgreSQL and
+desktop/mobile regressions verify refusal without business effects and a valid
+control. [Defect, correction and evidence](2026-10-17-completion-audit.md).
+
+### 17 October 2026 — Aryan — CS-37/38/76 venue confirmation resolved
+
+Coordinator tentative request → Venue Staff approval confirms that booking;
+parent Event confirmation remains separate. [Q2 decision and verification](2026-10-17-venue-confirmation.md).
+
+### 17 October 2026 — Aryan — CS-79 coverage enforcement
+
+Measured floors apply independently to the frontend and all seven service
+unit/PostgreSQL layers; five controls verify failure propagation.
+[Policy delivery](2026-10-17-coverage-gates.md).
+
+### 17 October 2026 — Marc — CS-50/51 notification verification on main
+
+Checked `main` at `7867f24` against Marc's CS-50/51 branch. Main already
+contains that branch's notification-service, bell, BFF routes and tests,
+plus the RabbitMQ relays/consumer (exchange `connectsphere.events`, queue
+`notification-service.domain-events`). So the branch is **not merged**;
+these follow-ups go on a new branch from main:
+- event-service PG tests: TC-CS50-06 (refused action → no outbox message),
+  TC-CS50-01e (assignment/approval messages carry organiser, event name, ids),
+  TC-CS51-08e (return message carries the Coordinator comment).
+- Test records: CS-50 updated with live results; CS-51 added for main.
+
+Verification on main: notification unit 21 / HTTP 12 / PostgreSQL 4; event
+unit 124 / PostgreSQL 26 (23 + 3 new); booking unit 35 / HTTP 14 /
+PostgreSQL 17; venue unit 43 / HTTP 11. **Live RabbitMQ 3.12:** real
+event-service relay → broker → real consumer. Submit, approve, return with
+comment and reassign each produced exactly the expected notices (first after
+~0.65 s). A refused decision produced none; an unrelated user got none. With
+the broker stopped, the request saved and its 2 messages waited in the outbox,
+then delivered on restart. Republishing a delivered message added no second
+notice. Booking/Safety live paths were not re-run here; use
+`scripts/run-event-review-ci.sh`.
+
+Open: TC-CS51-02 expects a `NEEDS_REPLACEMENT` flag; main flags a booking under
+a Staff block as `BUFFER_CONFLICT`. Agree with Aryan/PO. No `/venue-bookings/:id`
+(review) page exists for notice links (CS-38). Technical-request and
+cancellation/replacement notices are not built.
 
 ### 17 October 2026 — integrated Venue, Safety and notification delivery
 

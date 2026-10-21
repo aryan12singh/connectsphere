@@ -12,6 +12,7 @@ export default defineVitestConfig({
       exclude: ['**/*.d.ts', 'frontend/app/components/ui/**'],
       reporter: ['text', 'html', 'lcov', 'json-summary'],
       reportsDirectory: process.env.CS_COVERAGE_DIR || '../coverage/frontend',
+      thresholds: { statements: 65, branches: 60, functions: 65, lines: 65 },
     },
   },
 })

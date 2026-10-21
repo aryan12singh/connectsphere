@@ -1,6 +1,49 @@
 import {expect} from '@playwright/test'
 import {test,session,emails,signIn,mutation} from './helpers'
 import {createVenue,planningEvent,hold,roomInput,reviewDatabase,databaseEvidence} from './fixtures/venue-fixtures'
+test('TC-CS85-31 LIVE repeated-hour closure blocks search, request and Staff approval with preserved PostgreSQL evidence',async({page,playwright,owner},info)=>{
+  const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner,{proposedDate:'2028-11-05',startTime:'00:00',endTime:'06:00',timeZone:'America/New_York'})
+  try{
+    const hours=(closesAt:string)=>['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].map(weekday=>({weekday,isClosed:false,opensAt:'01:00',closesAt}))
+    const venue=await createVenue(staff,{timeZone:'America/New_York',setupMinutes:0,turnaroundMinutes:0,operatingHours:hours('01:30')})
+    const input={startAt:'2028-11-05T01:20:00-04:00',endAt:'2028-11-05T01:10:00-05:00',timeZone:'America/New_York'}
+    const query='SELECT b.id,b.status,b.version,b."requestedStart",b."requestedEnd",b.flags,(SELECT count(*)::int FROM venue_booking_activity a WHERE a."bookingId"=b.id) AS activities,(SELECT count(*)::int FROM booking_outbox o WHERE o."aggregateId"=b.id) AS intents FROM venue_booking_requests b WHERE b."venueId"=$1 ORDER BY b.id'
+    type StoredRoom={id:string;status:string;version:number;requestedStart:Date;requestedEnd:Date;flags:string[];activities:number;intents:number}
+    const rows=async()=> (await reviewDatabase<{rows:StoredRoom[]}>('booking',db=>db.query(query,[venue.id]))).rows
+    const search=await p.coordinator.get('/api/bookings/events/'+p.event.eventId+'/venue-search?'+new URLSearchParams({startAt:input.startAt,endAt:input.endAt}))
+    expect(search.status()).toBe(200);expect((await search.json()).items.some((v:any)=>v.id===venue.id)).toBe(false)
+    const denied=await mutation(p.coordinator,'POST','/api/bookings',roomInput(p.event.eventId,venue.id,input))
+    expect(denied.status()).toBe(422);expect(JSON.stringify(await denied.json())).toContain('OUTSIDE_OPERATING_HOURS');expect(await rows()).toEqual([])
+    async function changeHours(closesAt:string){
+      const current=await (await staff.get('/api/venues/'+venue.id)).json()
+      const changed=await mutation(staff,'PUT','/api/venues/'+venue.id+'/operating-hours',{items:hours(closesAt),version:current.version,reason:'Repeated-hour current operating limits'})
+      expect(changed.status(),await changed.text()).toBe(200)
+    }
+    await changeHours('02:00')
+    const room=await hold(p.coordinator,p.event.eventId,venue.id,input)
+    expect(room.startAt).toBe('2028-11-05T05:20:00.000Z');expect(room.endAt).toBe('2028-11-05T06:10:00.000Z')
+    await changeHours('01:30')
+    await expect.poll(async()=>(await rows())[0]?.flags).toContain('OUTSIDE_OPERATING_HOURS')
+    const before=await rows();expect(before).toHaveLength(1);expect(before[0].flags).toContain('OUTSIDE_OPERATING_HOURS')
+    const refused=await mutation(staff,'PUT','/api/bookings/'+room.id+'/decision',{status:'CONFIRMED',version:before[0].version,reason:'Validate every occupied instant'})
+    expect(refused.status()).toBe(422);expect(JSON.stringify(await refused.json())).toContain('OUTSIDE_OPERATING_HOURS');expect(await rows()).toEqual(before)
+    await signIn(page,p.contact.email);await page.goto('/events/'+p.event.eventId)
+    const card=page.locator(`[data-booking-id="${room.id}"]`)
+    await expect(card).toContainText('outside operating hours');await expect(card).toContainText('tentatively held')
+    await page.screenshot({path:info.outputPath('TC-CS85-31-current-hours-blocker.png'),fullPage:true})
+    await info.attach('TC-CS85-31-network-results',{body:Buffer.from(JSON.stringify({caseId:'TC-CS85-31',venueId:venue.id,bookingId:room.id,searchStatus:search.status(),closedRequestStatus:denied.status(),staffApprovalStatus:refused.status(),input,storedBefore:before,storedAfter:await rows()},null,2)),contentType:'application/json'})
+    await databaseEvidence(page,info,'TC-CS85-31',[{database:'booking_db',query,rows:before}])
+    await changeHours('02:00')
+    await expect.poll(async()=>(await rows())[0]?.flags).toEqual([])
+    const current=(await rows())[0]
+    const approved=await mutation(staff,'PUT','/api/bookings/'+room.id+'/decision',{status:'CONFIRMED',version:current.version,reason:'Complete repeated hour is now open'})
+    expect(approved.status(),await approved.text()).toBe(200)
+    const saved=await rows();expect(saved[0].status).toBe('CONFIRMED');expect(saved[0].flags).toEqual([])
+    await page.goto('/events/'+p.event.eventId);await expect(page.locator(`[data-booking-id="${room.id}"]`)).toContainText('Venue approved')
+    await page.screenshot({path:info.outputPath('TC-CS85-31-open-hours-approved.png'),fullPage:true})
+    await databaseEvidence(page,info,'TC-CS85-31-open-hours',[{database:'booking_db',query,rows:saved}])
+  }finally{await staff.dispose();await p.coordinator.dispose()}
+})
 test('TC-CS85-30 LIVE setup and turnaround preserve advertised time and protect the occupied window',async({page,playwright,owner},info)=>{
   const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner)
   try {

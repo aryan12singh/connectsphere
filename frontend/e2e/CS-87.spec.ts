@@ -1,6 +1,7 @@
 import {test,created,validRequest,assignedSession,session,emails,mutation,signIn} from './helpers'
 import {expect} from '@playwright/test'
 import {randomUUID} from 'node:crypto'
+import {reviewDatabase,databaseEvidence} from './fixtures/venue-fixtures'
 
 test('TC-CS87-13 LIVE Coordinator changes only the selected breakout and Staff can extend its hold',async({page,browser,playwright,owner},testInfo)=>{
   const submitted=await created(owner,'submit',validRequest({expectedAttendance:80,minimumCapacity:80,accessibilityNeeds:[]})),coordinator=await assignedSession(playwright.request,owner,submitted.id),staff=await session(playwright.request,emails.staff),staffPage=await browser.newPage()
@@ -116,6 +117,12 @@ test('TC-CS87-25 TC-CS87-03 TC-CS84-31 LIVE Coordinator requests independent roo
     expect(selected.primaryVenue).toMatchObject({bookingId:first.id,version:1,available:true})
     expect(selected.items.map((r:any)=>r.status).sort()).toEqual(['CANCELLED','CONFIRMED'])
     await page.screenshot({path:testInfo.outputPath('CS-87-primary-location.png'),fullPage:true})
+    const selectionQuery='SELECT "eventId","bookingId",version,"actorId" FROM event_primary_venues WHERE "eventId"=$1'
+    const roomsQuery='SELECT id,status,version FROM venue_booking_requests WHERE "eventId"=$1 ORDER BY id'
+    const proof=await reviewDatabase('booking',async db=>({selection:(await db.query(selectionQuery,[event.eventId])).rows,rooms:(await db.query(roomsQuery,[event.eventId])).rows}))
+    expect(proof.selection).toHaveLength(1);expect(proof.selection[0]).toMatchObject({eventId:event.eventId,bookingId:first.id,version:1,actorId:selected.event.currentCoordinatorId})
+    expect(proof.rooms.map((r:any)=>r.status).sort()).toEqual(['CANCELLED','CONFIRMED'])
+    await databaseEvidence(page,testInfo,'TC-CS87-25-primary',[{database:'booking_db',query:selectionQuery,rows:proof.selection},{database:'booking_db',query:roomsQuery,rows:proof.rooms}])
     const frozen=await (await staff.get(`/api/venues/${first.venueId}`)).json()
     expect(frozen.buffersLockedAt).toBeTruthy()
     const forbiddenBuffer=await mutation(staff,'PUT',`/api/venues/${first.venueId}`,{...frozen,setupMinutes:60,reason:'Must preserve confirmed buffers'})

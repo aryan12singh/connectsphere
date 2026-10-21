@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 403, statusMessage: 'Only Technical Support may view the technical review queue.' })
   const query = getQuery(event)
   const resolved = query.includeResolved === '1' ? '?includeResolved=1' : ''
-  const queue = await kongBffFetch<{ requests: Array<Record<string, any> & { eventRequestId: string }> }>(event, `/technical-requests${resolved}`)
+  const queue = await kongBffFetch<{ requests: Array<Record<string, any> & { eventRequestId: string, equipment?: Array<{ equipmentType: string, quantity: number, venueId?: string | null }> }> }>(event, `/technical-requests${resolved}`)
   if (!queue.requests.length) return queue
 
   // Collect all unique venue IDs from equipment lines across all requests

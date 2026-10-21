@@ -2,6 +2,8 @@ openapi: 3.0.3
 info:
   title: ConnectSphere Equipment Service
   version: 1.0.0
+  description: See docs/sprint3-integration-handoff.md
+    for assumptions, source ownership and the resolved two-action venue policy.
 paths:
   /technical-requests:
     get:

@@ -10,7 +10,7 @@
     "check": "find src -name '*.js' -type f -print0 | xargs -0 -n 1 node --check && DATA_MODE=memory NODE_ENV=test node -e 'require(\"./src/app\")'",
     "build": "npx prisma generate && npm run check",
     "test:unit": "DATA_MODE=memory NODE_ENV=test node --test tests/unit/*.test.js",
-    "test:integration": "DATA_MODE=memory NODE_ENV=test node --test --test-concurrency=1 tests/integration/*.test.js",
+    "test:integration": "DATA_MODE=memory NODE_ENV=test node --experimental-test-coverage --test-coverage-lines=75 --test-coverage-branches=45 --test-coverage-functions=70 --test-coverage-include='src/**/*.js' --test --test-concurrency=1 tests/integration/*.test.js",
     "test:coverage": "c8 --all --include='src/**/*.js' --reporter=text --reporter=json --reporter=json-summary --reporter=lcov --check-coverage --statements=81 --branches=81 --functions=81 --lines=81 node ../../tests/scripts/service-coverage.cjs"
   },
   "engines": {

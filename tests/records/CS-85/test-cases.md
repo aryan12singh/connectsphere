@@ -31,7 +31,7 @@ Source: [CS-85](https://spmg8.atlassian.net/browse/CS-85), Week 7 change 1 and t
 
 The domain inputs are explicit ISO instants and explicit non-negative whole-minute venue durations. They do not select a default or the proposed 480-minute business maximum, read a venue, persist bookings, enforce per-venue transactions, extend equipment reservations, interpret operating hours or expire holds. Those choices and adapters belong to CS-84/77/78/39 and their consumers.
 
-CS-77 remains the shared design prerequisite, CS-84 supplies the persisted settings, and Q3 supplies the final touching policy. Keep calculation reusable; integrate it into all search/calendar/submission/approval/block paths under CS-85 before claiming the whole story delivered. CS-39 owns atomic conflict enforcement. Source API/UI cases remain Not Executed until their actual boundaries exist and pass.
+Current integration, reconciled 17 October 2026: CS-84 supplies persisted settings; the agreed policy permits exact touching. Search, calendar, submission, approval and block paths consume the shared occupied interval; CS-39 owns atomic conflict enforcement. The original source tables retain their illustrative aliases. Use the operative shared-sheet mapping and dated execution records for the cases actually run, rather than inferring execution from a specification. The [policy register](../../../docs/venue-policy-decisions.md) records Q1 and resolved Q2; human acceptance and resulting-main CI remain separate.
 
 
 ## 17 October final evidence audit
@@ -39,3 +39,12 @@ CS-77 remains the shared design prerequisite, CS-84 supplies the persisted setti
 | Test Case ID | Acceptance proof | Execution layer | Date of Creation |
 |---|---|---|---|
 | TC-CS85-15 | Same-fixture search, actual mounted calendar, conflict explanation/ID, disabled submit and rejected direct write agree; no business effects are created. | Real HTTP services with isolated repositories plus actual mounted calendar. Production PostgreSQL occupied-window boundaries are separately in TC-CS85-30. | 2026-10-17 |
+
+## 17 October operating-hours regression
+
+| Test Case ID | Scenario and expected result | Execution layer | Date of Creation |
+|---|---|---|---|
+| TC-CS85-16 | Reject a repeated-hour interval that traverses closing time or time before opening, even when both endpoints appear inside hours. Accept fully open repeated hours, exact closing and valid spring-forward intervals. Check half-hour offsets, subminute overflow, local midnight and invalid ranges. | Native Booking unit; real Intl timezone conversion | 2026-10-17 |
+| TC-CS85-17 | The same New York 01:20 EDT → 01:10 EST interval is excluded from search and refused422 under01:00–01:30 hours with no writes.01:00–02:00 accepts the hold; narrowing the hours before approval refuses the Staff decision without new effects. | Real Venue/Event/Booking HTTP, isolated repositories | 2026-10-17 |
+| TC-CS85-18 | A refused repeated-hour request creates no PostgreSQL booking/activity/outbox. Opening the full interval creates exactly one of each and preserves the actual05:20Z–06:10Z instants. Upstream Event/Venue contexts are explicit fixtures. | Actual PostgreSQL16 Booking HTTP integration | 2026-10-17 |
+| TC-CS85-31 | Actual authenticated BFF/Staff hours maintenance rejects the closed interval and preserves a flagged tentative room on denied approval. The Coordinator sees the hours blocker. Opening the full interval permits approval; original UI, network result and database captures prove both outcomes. | Live desktop/mobile, all actual services and PostgreSQL | 2026-10-17 |

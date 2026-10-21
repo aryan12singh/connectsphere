@@ -8,8 +8,9 @@ Test IDs and cases follow the PO's sprint test sheet (`sprint_test_case_sheet.xl
 
 **How it works.** event-service writes a domain message to its outbox in the
 same transaction as the change. notification-service turns each message into
-in-app notices (`POST /internal/messages`, the same code the RabbitMQ consumer
-will call). The inbox is the channel of record; email is optional and not built.
+in-app notices. Since PR #11 the outbox relay publishes to RabbitMQ and the
+notification consumer calls the same delivery code as `POST /internal/messages`.
+The inbox is the channel of record; email is optional and not built.
 
 | Test Case ID | Scenario | Pre-conditions | Test Steps | Expected Result | Automation | Status |
 |---|---|---|---|---|---|---|
@@ -33,10 +34,27 @@ will call). The inbox is the channel of record; email is optional and not built.
 | TC-CS50-11 | Read notices kept 30 days after reading, hidden after; unread always shown | unit, PG |
 | TC-CS50-12 | Unknown message types ignored; malformed rejected (422); internal endpoint needs the key (403) | unit, contract |
 
-## Not covered yet
-- **RabbitMQ relay and consumer.** Waiting for CS-39's exchange/queue names.
-  Until then delivery is driven through `POST /internal/messages`. A recorded
-  outbox row alone is not proof of end-user delivery (card AC).
-- **Lead intake notice (CS-81)** and **Event confirmed (CS-31):** the
-  producers don't exist yet. The `EVENT_CONFIRMED` template is ready.
-- **Delivery-time target (2 min):** still a proposal on the card, so it is not a pass/fail gate.
+## Live RabbitMQ verification on main (2026-10-17, `7867f24`)
+
+Real event-service (PostgreSQL + outbox relay) → RabbitMQ 3.12 (exchange
+`connectsphere.events`, queue `notification-service.domain-events`) →
+real notification-service consumer (PostgreSQL), with a stand-in for
+auth/user-service only. No sample messages; every notice came from an API action.
+
+| Step | Result |
+|---|---|
+| Organiser submits a request | `REQUEST_SUBMITTED` + `COORDINATOR_ASSIGNED` in the Organiser's inbox, `ASSIGNED_TO_YOU` for the Coordinator; first notice after ~0.65 s |
+| Coordinator approves | `EVENT_APPROVED` linking to `/events/<event id>` (TC-CS50-01) |
+| Refused decision (stale version) | 422; no notice (TC-CS50-06) |
+| Reassign C1 → C2 | Organiser: "changed to Charlie Two"; old Coordinator: "no longer have access", no link; new Coordinator: assigned (TC-CS50-02) |
+| Unrelated Venue Staff | Empty inbox (TC-CS50-04) |
+| Broker stopped, request submitted, broker restarted | Request saved (201); 2 outbox rows waited unpublished; both delivered after restart; 0 left |
+| Same message republished through RabbitMQ | Still exactly 1 notice (TC-CS50-05) |
+
+The repository's own full runner (`scripts/run-event-review-ci.sh`, see
+`docs/sprint3-integration-handoff.md`) also covers outage/replay, the
+dead-letter queue and browser checks.
+
+## Still open
+- Lead intake notice (CS-81): producer not built.
+- Delivery-time target (2 min): still a proposal on the card, so not a pass/fail gate.

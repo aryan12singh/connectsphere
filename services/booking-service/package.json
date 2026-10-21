@@ -9,11 +9,11 @@
     "start": "node src/server.js",
     "test:unit": "DATA_MODE=memory NODE_ENV=test node --test tests/unit/*.test.js",
     "test:coverage": "c8 --all --include='src/**/*.js' --reporter=text --reporter=json --reporter=json-summary --reporter=lcov --check-coverage --statements=81 --branches=81 --functions=81 --lines=81 node ../../tests/scripts/service-coverage.cjs",
-    "test:coverage:unit": "DATA_MODE=memory NODE_ENV=test node --experimental-test-coverage --test --test-coverage-include='src/**/*.js' tests/unit/*.test.js",
+    "test:coverage:unit": "DATA_MODE=memory NODE_ENV=test node --experimental-test-coverage --test-coverage-lines=30 --test-coverage-branches=70 --test-coverage-functions=25 --test --test-coverage-include='src/**/*.js' tests/unit/*.test.js",
     "test:contract": "python3 -m unittest discover -s tests -p 'test_*.py' -v",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "test:integration": "node --experimental-test-coverage --test --test-coverage-include='src/**/*.js' tests/integration/*.test.js",
+    "test:integration": "node --experimental-test-coverage --test-coverage-lines=75 --test-coverage-branches=55 --test-coverage-functions=70 --test --test-coverage-include='src/**/*.js' tests/integration/*.test.js",
     "test:hold-spike": "node tests/spikes/hold-expiry-proof.cjs"
   },
   "engines": {
