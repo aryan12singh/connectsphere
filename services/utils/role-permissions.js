@@ -3,6 +3,7 @@
 // adapters; production authorization comes from auth-service at runtime.
 module.exports = Object.freeze({
   SAFETY_OFFICER:Object.freeze(['safety.view','safety.decide']),
+  EVENT_COORDINATOR_LEAD:Object.freeze(['assignments.view','events.view']),
   EVENT_COORDINATOR: Object.freeze([
     'event_requests.review', 'events.confirm', 'events.view', 'messages.send',
     'venue_bookings.create', 'venues.view','safety.submit','safety.rework','technical.submit','technical.view',

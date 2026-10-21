@@ -29,6 +29,7 @@ const PERMISSIONS = Object.freeze({
   'events.view': 'See events',
   'events.technical.metadata.view': 'View event metadata for technical requests',
   'events.confirm': 'Confirm events once arrangements are ready',
+  'assignments.view': 'Coordinator Lead: open the Unassigned Queue (assigning comes with CS-81/CS-30)',
 
   // Venues and bookings
   'venues.view': 'See venues',

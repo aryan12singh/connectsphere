@@ -24,6 +24,7 @@ datasource db {
 // Organiser or Attendee; Coordinator, Venue Staff and Technical Support are seeded.
 enum UserRole {
   SAFETY_OFFICER
+  EVENT_COORDINATOR_LEAD
   EVENT_ORGANISER
   EVENT_COORDINATOR
   VENUE_STAFF

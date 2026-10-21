@@ -102,47 +102,39 @@ Full merged-source PostgreSQL, browser execution and combined coverage remain
 unrun. See the
 [dated changes, evidence links and merge decisions](2026-10-21-attendance-evidence-main-merge.md).
 
-### 2026-10-18 — Booking / Equipment — combined coverage and canonical E2E cases
+### 21 October 2026 — Marc — CS-10 seven roles (Coordinator Lead) and story check
 
-Both services now enforce combined unit/integration coverage above 80% in all
-four categories, including instrumented Booking Python HTTP-contract children.
-Node 22 measurements: Booking 97.76% statements/lines, 82.29% branches and
-98.42% functions; Equipment 97.15% statements/lines, 88.54% branches and 100%
-functions. Every source file remains included. Booking's 82 Node + 15 Python
-tests and Equipment's 56 Node tests passed. Auth files remain untouched.
+Checked Marc's stories (CS-10, CS-26, CS-50, CS-51, CS-79) on main `a7749cb`.
+All suites pass when run like CI. Earlier reports of three CS-10 frontend
+failures came from running without `NUXT_AUTH_MODE=mock`, not a defect.
 
-The three E2E files now adopt all 41 recorded CS-40–42 cases with individual
-canonical IDs and a CI traceability check. Real boundary tests exposed and
-fixed current-assignment access, operation retries, versioned proof,
-replacement supply accounting, and stock-input hydration defects. See the
-[dated verification report](2026-10-18-booking-equipment-coverage.md) for final
-browser execution, artifacts, reproducible commands and the separate four
-CS-10 Auth-fixture failures in the wider frontend suite.
+**Gap fixed in CS-10:** the Week 7 *Event Coordinator Lead* role did not exist
+(six roles only). Decisions (Shadow, 21 Oct): role + landing only, with
+permissions `assignments.view` and `events.view`; queue contents and
+assign/reassign remain CS-81/CS-30; Q11 still pending.
+- `EVENT_COORDINATOR_LEAD` added to the shared role lists
+  (`services/utils/role-policy.js`, `role-permissions.js`), event-service
+  recognised roles, the BFF login allow-list and frontend role labels.
+- New permission `assignments.view` (auth-service catalogue). Migrations:
+  user-service `20261021000000_coordinator_lead` (enum value) and auth-service
+  `20261021000000_coordinator_lead` (default grants). Seeds and Keycloak realm
+  add Jordan Lim (`jordan.lim@connectsphere.sg`).
+- Frontend: Lead home `/queue` (landing page, guarded by role +
+  `assignments.view`) and an "Unassigned queue" nav item. Mock user `lead@example.com`.
+- `docs/access-matrix.md`: seven-role table.
+- Tests: 7-role matrix, landings, typed-route denials and Lead BFF session
+  (`CS-10.spec.ts`); sign-up refuses both new roles (auth-service); Lead cannot
+  approve and Safety Officer cannot edit (event-service PG).
 
-### 2026-10-17 — Equipment CS-40–42 — testing structure and coverage gate
+Results: frontend 393/393 with typecheck, e2e typecheck, coverage gate and
+build; auth 25/4; event 124/29; other services unchanged and passing. A
+browser check of the production build confirms the Lead landing and denials.
 
-Equipment service tests use module-focused unit files and HTTP app/router tests
-as integration tests; startup is verified separately. Its coverage command runs
-both layers and enforces 80% aggregate line/branch/function thresholds. The
-latest local run passed **41/41** and measured **86.79% lines, 84.46% branches,
-and 83.16% functions** across the complete Equipment source tree.
-
-CS-40–42 now have canonical Jira case records without testing-type/adoption
-status columns. The records retain the PO supplements (CS-40-14/15 and
-CS-41-12/13/14), the user-approved Booking-buffer interpretation, and explicit
-old-ID mappings without changing historical run evidence. Equipment now exposes
-availability, all-line reservation, operational-unavailability, internal
-readiness fencing, OpenAPI, Kong and BFF wiring. The Coordinator form retains
-physical-stock/text limits and direct `NOT_REQUIRED`; Technical Support has
-inventory and reservation controls using existing semantic UI variables.
-
-Booking's existing unit (35/35) and Python HTTP contract (15/15) suites pass,
-but its current service-wide unit-only coverage baseline remains below the
-requested >80% threshold. PostgreSQL Booking/E2E verification requires an
-isolated `booking_test` database and a rebuilt isolated Node 22 Docker stack;
-the shared development databases were deliberately not altered. This is not a
-claim that Booking's aggregate coverage or all story-specific E2E cases have
-completed; those remain the next required work items.
+**Existing volumes:** run the two new migrations (services do this on start),
+re-run the seed (`docker compose -f infra/docker-compose.yml run --rm seed`),
+and add Jordan Lim to Keycloak through partial import (Skip existing), as for
+the Safety Officer. Open: idle timeout defaults to 0 (off); the card's 30-minute
+example is configured by Technical Support in Settings.
 
 ### 18 October 2026 — Aryan — review and evidence cleanup
 
@@ -203,6 +195,48 @@ Open: TC-CS51-02 expects a `NEEDS_REPLACEMENT` flag; main flags a booking under
 a Staff block as `BUFFER_CONFLICT`. Agree with Aryan/PO. No `/venue-bookings/:id`
 (review) page exists for notice links (CS-38). Technical-request and
 cancellation/replacement notices are not built.
+
+### 2026-10-18 — Booking / Equipment — combined coverage and canonical E2E cases
+
+Both services now enforce combined unit/integration coverage above 80% in all
+four categories, including instrumented Booking Python HTTP-contract children.
+Node 22 measurements: Booking 97.76% statements/lines, 82.29% branches and
+98.42% functions; Equipment 97.15% statements/lines, 88.54% branches and 100%
+functions. Every source file remains included. Booking's 82 Node + 15 Python
+tests and Equipment's 56 Node tests passed. Auth files remain untouched.
+
+The three E2E files now adopt all 41 recorded CS-40–42 cases with individual
+canonical IDs and a CI traceability check. Real boundary tests exposed and
+fixed current-assignment access, operation retries, versioned proof,
+replacement supply accounting, and stock-input hydration defects. See the
+[dated verification report](2026-10-18-booking-equipment-coverage.md) for final
+browser execution, artifacts, reproducible commands and the separate four
+CS-10 Auth-fixture failures in the wider frontend suite.
+
+### 2026-10-17 — Equipment CS-40–42 — testing structure and coverage gate
+
+Equipment service tests use module-focused unit files and HTTP app/router tests
+as integration tests; startup is verified separately. Its coverage command runs
+both layers and enforces 80% aggregate line/branch/function thresholds. The
+latest local run passed **41/41** and measured **86.79% lines, 84.46% branches,
+and 83.16% functions** across the complete Equipment source tree.
+
+CS-40–42 now have canonical Jira case records without testing-type/adoption
+status columns. The records retain the PO supplements (CS-40-14/15 and
+CS-41-12/13/14), the user-approved Booking-buffer interpretation, and explicit
+old-ID mappings without changing historical run evidence. Equipment now exposes
+availability, all-line reservation, operational-unavailability, internal
+readiness fencing, OpenAPI, Kong and BFF wiring. The Coordinator form retains
+physical-stock/text limits and direct `NOT_REQUIRED`; Technical Support has
+inventory and reservation controls using existing semantic UI variables.
+
+Booking's existing unit (35/35) and Python HTTP contract (15/15) suites pass,
+but its current service-wide unit-only coverage baseline remains below the
+requested >80% threshold. PostgreSQL Booking/E2E verification requires an
+isolated `booking_test` database and a rebuilt isolated Node 22 Docker stack;
+the shared development databases were deliberately not altered. This is not a
+claim that Booking's aggregate coverage or all story-specific E2E cases have
+completed; those remain the next required work items.
 
 ### 17 October 2026 — integrated Venue, Safety and notification delivery
 

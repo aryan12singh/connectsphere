@@ -1,6 +1,6 @@
 const config=require('./config');
 const {fail}=require('./domain/validation');
-const ROLES=['EVENT_ORGANISER','EVENT_COORDINATOR','VENUE_STAFF','TECHNICAL_SUPPORT_STAFF','ATTENDEE','SAFETY_OFFICER'];
+const ROLES=['EVENT_ORGANISER','EVENT_COORDINATOR','VENUE_STAFF','TECHNICAL_SUPPORT_STAFF','ATTENDEE','SAFETY_OFFICER','EVENT_COORDINATOR_LEAD'];
 function rolesOf(user){const source=Array.isArray(user.roles)?user.roles:[user.role];return [...new Set(source.filter(r=>ROLES.includes(r)))];}
 async function internal(url,path,body){
  let r;try{r=await fetch(url+path,{method:body?'POST':'GET',headers:{'x-internal-api-key':config.internalApiKey,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(5000)});}catch{throw fail(503,'DEPENDENCY_UNAVAILABLE','A required service is unavailable. Please retry.');}

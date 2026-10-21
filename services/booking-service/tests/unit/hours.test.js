@@ -1,14 +1,6 @@
-const test = require('node:test');
+const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { withinHours } = require('../../src/hours');
-
-test('hours accepts a local opening window and rejects closed or out-of-hours windows', () => {
-  const operatingHours = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'].map(weekday => ({ weekday, isClosed: false, opensAt: '08:00', closesAt: '18:00' }));
-  const venue = { timeZone: 'Asia/Singapore', operatingHours };
-  assert.equal(withinHours({ startAt: '2028-11-20T01:00:00.000Z', endAt: '2028-11-20T02:00:00.000Z' }, venue), true);
-  assert.equal(withinHours({ startAt: '2028-11-19T23:00:00.000Z', endAt: '2028-11-20T02:00:00.000Z' }, venue), false);
-  assert.equal(withinHours({ startAt: 'bad', endAt: '2028-11-20T02:00:00.000Z' }, venue), false);
-});
 
 function venue(timeZone, opensAt, closesAt, closedDays = []) {
   return { timeZone, operatingHours: ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'].map(weekday => ({ weekday, opensAt, closesAt, isClosed: closedDays.includes(weekday) })) };
@@ -55,4 +47,12 @@ test('TC-CS85-16 invalid, reversed, zero-length or unbounded windows fail closed
     { startAt: '2026-01-01T00:00:00Z', endAt: '2027-01-03T00:00:00Z' },
   ]) assert.equal(withinHours(window, open), false);
   assert.equal(withinHours(fold, { ...open, timeZone: 'Invalid/Zone' }), false);
+});
+
+test('hours accepts a local opening window and rejects closed or out-of-hours windows', () => {
+  const operatingHours = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'].map(weekday => ({ weekday, isClosed: false, opensAt: '08:00', closesAt: '18:00' }));
+  const venue = { timeZone: 'Asia/Singapore', operatingHours };
+  assert.equal(withinHours({ startAt: '2028-11-20T01:00:00.000Z', endAt: '2028-11-20T02:00:00.000Z' }, venue), true);
+  assert.equal(withinHours({ startAt: '2028-11-19T23:00:00.000Z', endAt: '2028-11-20T02:00:00.000Z' }, venue), false);
+  assert.equal(withinHours({ startAt: 'bad', endAt: '2028-11-20T02:00:00.000Z' }, venue), false);
 });
