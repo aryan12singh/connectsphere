@@ -19,7 +19,9 @@ Date of Creation: 2026-10-17T18:00:00+08:00. Story: record and review one pooled
 | TC-CS40-13 | Accessible browser workflow | Desktop/mobile | Form, validation, review, refresh | Correct states and no false success | [E2E](../../../frontend/e2e/CS-40.spec.ts) | 2026-10-17T18:00:00+08:00 |
 | TC-CS40-14 | Stock ceiling (supplement) | Known physical stock | Request stock + 1 | Whole request rejected | [E2E](../../../frontend/e2e/CS-40.spec.ts) | 2026-10-17T18:00:00+08:00 |
 | TC-CS40-15 | Limits/declaration (supplement) | Current Coordinator | 1001 support, 501 placement, conflict | Exact validation; no partial write | [E2E](../../../frontend/e2e/CS-40.spec.ts) | 2026-10-17T18:00:00+08:00 |
+| TC-CS40-16 | Venue per line | Current Coordinator and available venue | Choose equipment, quantity and venue | Submission retains selected venue | [E2E](../../../frontend/e2e/CS-40.spec.ts) | 2026-10-21T14:01:09+08:00 |
+| TC-CS40-17 | Missing venue | Current Coordinator requests equipment | Leave venue empty and submit | Browser blocks submission with no write | [E2E](../../../frontend/e2e/CS-40.spec.ts) | 2026-10-21T14:01:09+08:00 |
 
 ## Historical ID mapping
 
-Earlier local 03 blank-reason maps to canonical **04**; local 04 reason visibility maps to **03**. Local 16/19 map to **06**, local 17/18 to supplements **14/15**, and local 08 is split across **08** assignment and **09** Safety read-only.
+The following mappings describe the earlier 17 October numbering, before the new venue cases 16/17 above. Earlier local 03 blank-reason maps to canonical **04**; local 04 reason visibility maps to **03**. Local 16/19 map to **06**, local 17/18 to supplements **14/15**, and local 08 is split across **08** assignment and **09** Safety read-only.

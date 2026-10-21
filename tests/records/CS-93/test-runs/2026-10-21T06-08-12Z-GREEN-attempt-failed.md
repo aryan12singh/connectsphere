@@ -1,0 +1,36 @@
+# CS-93 Test Execution — 2026-10-21T06:08:12.630Z
+
+Yellow section (IS212 / IEEE 829). Phase: GREEN-attempt-failed. Generated from actual Vitest JSON; missing cases remain Not Executed.
+
+Source: C:\Users\alansebastian\AppData\Local\Temp\connectsphere-pr16-evidence\frontend-green.json. Code revision/fingerprint: see outside run metadata; early diagnostic not fingerprinted / not supplied.
+
+Component tests use Nuxt fixtures. BFF tests use real H3/Express/Prisma/PostgreSQL with a deterministic identity service and a forwarding fixture at the Kong boundary. These are not live Keycloak or browser proof. See separate live evidence.
+
+| Test Case ID | Actual Result | Pass/Fail/Not Executed/Blocked | Remarks | Date of Execution |
+|---|---|---|---|---|
+| TC-CS93-01 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-02 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-03 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-04 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-05 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-06 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-07 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-08 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-09 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-10 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-11 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-12 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-20 | Assertions passed; see scenario and layer limitations | Pass | TC-CS93-20 shows current preparation blockers and disables Safety submission | 2026-10-21T06:08:12.630Z |
+| TC-CS93-21 | Assertions passed; see scenario and layer limitations | Pass | TC-CS93-21 approved venues alone never infer technical approval or enable Safety submission | 2026-10-21T06:08:12.630Z |
+| TC-CS93-22 | Assertions passed; see scenario and layer limitations | Pass | TC-CS93-22 hides preparation content after Event or current assignment changes | 2026-10-21T06:08:12.630Z |
+| TC-CS93-23 | Assertions passed; see scenario and layer limitations | Pass | TC-CS93-23 current Venue type and capacity override a Virtual booking snapshot in Safety factors | 2026-10-21T06:08:12.630Z |
+| TC-CS93-30 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-40 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-41 | Assertions passed; see scenario and layer limitations | Pass | TC-CS93-41 live Safety readiness enables the real versioned submit command | 2026-10-21T06:08:12.630Z |
+| TC-CS93-42 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-43 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-44 | Assertions passed; see scenario and layer limitations | Pass | TC-CS93-44 current source facts and terminal status gate confirmation while handover metadata preserves approvals | 2026-10-21T06:08:12.630Z |
+| TC-CS93-45 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-46 | No assertion executed | Not Executed |  | 2026-10-21T06:08:12.630Z |
+| TC-CS93-47 | Assertions passed; see scenario and layer limitations | Pass | TC-CS93-47 Technical Support stock stays read-only before and after hydration | 2026-10-21T06:08:12.630Z |
+| TC-CS93-48 | Assertions passed; see scenario and layer limitations | Pass | TC-CS93-48 Coordinator fact-review proof survives metadata/recheck versions but changes for actual venue Safety facts | 2026-10-21T06:08:12.630Z |

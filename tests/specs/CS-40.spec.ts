@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
-import { flushPromises } from '@vue/test-utils'
+import { flushPromises, type VueWrapper } from '@vue/test-utils'
 import { ref } from 'vue'
 import { createRequire } from 'node:module'
+import { Select } from '../../frontend/app/components/ui/select'
 
 const require = createRequire(import.meta.url)
 const { validateRequirements } = require('../../services/equipment-service/src/domain/technical-request') as {
@@ -19,6 +20,8 @@ const fixture = vi.hoisted(() => ({
 }))
 
 mockNuxtImport('useFetch', () => (url: string) => {
+  if (url === '/api/venues')
+    return { data: ref({ items: [{ id: 'venue-40', name: 'Main hall' }] }), error: ref(null) }
   if (url === '/api/technical-equipment-types')
     return { data: ref({ equipmentTypes: [{ id: 'projector', name: 'projector', total: 2, version: 1 }, { id: 'microphone', name: 'microphone', total: 4, version: 1 }] }), error: ref(null) }
   if (url === '/api/technical-requests' || url === '/api/technical-requests?includeResolved=1')
@@ -31,6 +34,12 @@ mockNuxtImport('useRequestFetch', () => () => fixture.fetch)
 mockNuxtImport('useRoute', () => () => ({ params: { id: fixture.routeId } }))
 mockNuxtImport('useUserSession', () => () => ({ user: fixture.user }))
 
+async function chooseEquipment(wrapper: VueWrapper, equipmentType: string) {
+  const selects = wrapper.findAllComponents(Select)
+  await selects[0]!.setValue(equipmentType)
+  await selects[1]!.setValue('venue-40')
+}
+
 describe('CS-40 — Technical requirements frontend', () => {
   it('TC-CS40-01 renders an editable request and submits the complete Coordinator requirements', async () => {
     fixture.data = ref(null)
@@ -41,17 +50,18 @@ describe('CS-40 — Technical requirements frontend', () => {
     expect(module, 'CS-40 technical requirements page should be implemented').not.toBeNull()
     const wrapper = await mountSuspended(module!.default)
     try {
+      await chooseEquipment(wrapper, 'projector')
       await wrapper.get('input[type="number"]').setValue('2')
       expect(wrapper.get('[data-testid="selected-equipment"]').text()).toContain('projector — 2')
-      await wrapper.get('textarea[aria-label="Placement and preparation details"]').setValue('Projector at the front of the hall')
-      await wrapper.get('input[type="checkbox"][aria-label="Technical support is required"]').setValue(true)
-      await wrapper.get('textarea[aria-label="Support details"]').setValue('Please assist with setup')
+      await wrapper.get('textarea#placement-details').setValue('Projector at the front of the hall')
+      await wrapper.findAll('[role="checkbox"]')[1]!.trigger('click')
+      await wrapper.get('textarea#support-details').setValue('Please assist with setup')
       await wrapper.get('form').trigger('submit')
       await flushPromises()
       expect(fixture.fetch).toHaveBeenCalledWith('/api/events/event-40/technical-request', expect.objectContaining({
         method: 'POST',
         body: expect.objectContaining({
-          equipment: [{ equipmentType: 'projector', quantity: 2 }],
+          equipment: [{ equipmentType: 'projector', quantity: 2, venueId: 'venue-40' }],
           supportRequired: true,
           supportDetails: 'Please assist with setup',
           placementDetails: 'Projector at the front of the hall',
@@ -71,7 +81,7 @@ describe('CS-40 — Technical requirements frontend', () => {
     expect(module, 'CS-40 technical requirements page should be implemented').not.toBeNull()
     const wrapper = await mountSuspended(module!.default)
     try {
-      await wrapper.get('textarea[aria-label="Placement and preparation details"]').setValue('Front of hall')
+      await wrapper.get('textarea#placement-details').setValue('Front of hall')
       await wrapper.get('form').trigger('submit')
       expect(fixture.fetch).not.toHaveBeenCalled()
       expect(wrapper.get('[role="alert"]').text()).toContain('Specify equipment or support, or mark requirements as not required')
@@ -89,8 +99,10 @@ describe('CS-40 — Technical requirements frontend', () => {
     const wrapper = await mountSuspended(module!.default)
     try {
       expect(wrapper.text()).toContain('Approved')
-      expect(wrapper.get('textarea[aria-label="Placement and preparation details"]').element.value).toBe('Front of hall')
+      expect((wrapper.get('textarea#placement-details').element as HTMLTextAreaElement).value).toBe('Front of hall')
       expect(wrapper.find('button[type="submit"]').exists()).toBe(false)
+      await wrapper.get('form').trigger('submit')
+      expect(fixture.fetch).not.toHaveBeenCalled()
     }
     finally { wrapper.unmount() }
   })
@@ -128,13 +140,14 @@ describe('CS-40 — Technical requirements frontend', () => {
     const module = await import('../../frontend/app/pages/technical-requirements/[id].vue').catch(() => null)
     const wrapper = await mountSuspended(module!.default)
     try {
+      await chooseEquipment(wrapper, 'projector')
       expect(wrapper.get('input[aria-label="projector quantity"]').attributes('max')).toBe('2')
-      await wrapper.get('input[aria-label="Technical support is required"]').setValue(true)
-      expect(wrapper.get('textarea[aria-label="Support details"]').attributes('maxlength')).toBe('1000')
-      await wrapper.get('input[aria-label="Technical support is required"]').setValue(false)
-      expect(wrapper.get('textarea[aria-label="Placement and preparation details"]').attributes('maxlength')).toBe('500')
-      await wrapper.get('textarea[aria-label="Placement and preparation details"]').setValue('No setup needed')
-      await wrapper.get('input[aria-label="No technical requirements are needed"]').setValue(true)
+      await wrapper.findAll('[role="checkbox"]')[1]!.trigger('click')
+      expect(wrapper.get('textarea#support-details').attributes('maxlength')).toBe('1000')
+      await wrapper.findAll('[role="checkbox"]')[1]!.trigger('click')
+      expect(wrapper.get('textarea#placement-details').attributes('maxlength')).toBe('500')
+      await wrapper.get('textarea#placement-details').setValue('No setup needed')
+      await wrapper.findAll('[role="checkbox"]')[0]!.trigger('click')
       await wrapper.get('form').trigger('submit')
       await flushPromises()
       expect(fixture.fetch).toHaveBeenCalledWith('/api/events/event-40/technical-request', expect.objectContaining({

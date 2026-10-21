@@ -1,4 +1,4 @@
-const { test, before, after } = require('node:test');
+const { test, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { readFileSync } = require('node:fs');
@@ -22,6 +22,10 @@ async function submit(equipment, status = 'PENDING_TECH_REVIEW') {
   return store.findRequest(eventRequestId);
 }
 before(async () => {
+  api = await start(require('../../src/app'));
+});
+
+beforeEach(async () => {
   await db.technicalReadinessFence.deleteMany();
   await db.equipmentReservation.deleteMany();
   await db.equipmentOperationalUnavailability.deleteMany();
@@ -31,7 +35,6 @@ before(async () => {
   for (const name of ['projector', 'speaker', 'microphone', 'lighting', 'stage']) {
     await db.equipmentStock.upsert({ where: { equipmentType: name }, create: { equipmentType: name, total: 5 }, update: { total: 5 } });
   }
-  api = await start(require('../../src/app'));
 });
 after(async () => { await api?.close(); await db.$disconnect(); });
 
@@ -49,16 +52,18 @@ test('equipment naming migration preserves stock while migrating the legacy cata
     await tx.$executeRawUnsafe(`INSERT INTO "EquipmentType" VALUES ('eq_projector', 'projector', '2020-01-01T00:00:00Z', CURRENT_TIMESTAMP), ('eq_camera', 'camera', '2019-01-01T00:00:00Z', CURRENT_TIMESTAMP)`);
     await tx.$executeRawUnsafe(`INSERT INTO equipment_stock VALUES ('projector', 17, 4, CURRENT_TIMESTAMP)`);
     await tx.$executeRawUnsafe(`INSERT INTO "TechnicalRequest" VALUES ('request-1', 'event-1')`);
-    for (const statement of migration.split(';').map(value => value.trim()).filter(Boolean)) await tx.$executeRawUnsafe(statement);
+    // This fixture contains simple statements; comments are not SQL delimiters.
+    const statements = migration.replace(/^--.*$/gm, '').split(';').map(value => value.trim()).filter(Boolean);
+    for (const statement of statements) await tx.$executeRawUnsafe(statement);
     const stock = await tx.$queryRawUnsafe('SELECT "equipmentType", total, version FROM equipment_stock ORDER BY "equipmentType"');
     assert.deepEqual(stock.map(row => [row.equipmentType, row.total, row.version]), [['camera', 0, 1], ['projector', 17, 4]]);
     const catalogCreatedAt = await tx.$queryRawUnsafe(`SELECT "createdAt" FROM equipment_stock WHERE "equipmentType"='projector'`);
     assert.equal(new Date(catalogCreatedAt[0].createdAt).toISOString(), '2020-01-01T00:00:00.000Z');
-    assert.equal((await tx.$queryRawUnsafe("SELECT to_regclass('technical_requests') AS name"))[0].name, 'technical_requests');
-    assert.equal((await tx.$queryRawUnsafe("SELECT to_regclass('technical_request_history') AS name"))[0].name, 'technical_request_history');
-    assert.equal((await tx.$queryRawUnsafe("SELECT to_regclass('outbox_events') AS name"))[0].name, 'outbox_events');
-    assert.equal((await tx.$queryRawUnsafe("SELECT to_regclass('idempotency_records') AS name"))[0].name, 'idempotency_records');
-    assert.equal((await tx.$queryRawUnsafe("SELECT to_regclass('equipment_availability_checks') AS name"))[0].name, null);
+    assert.equal((await tx.$queryRawUnsafe("SELECT to_regclass('technical_requests')::text AS name"))[0].name, 'technical_requests');
+    assert.equal((await tx.$queryRawUnsafe("SELECT to_regclass('technical_request_history')::text AS name"))[0].name, 'technical_request_history');
+    assert.equal((await tx.$queryRawUnsafe("SELECT to_regclass('outbox_events')::text AS name"))[0].name, 'outbox_events');
+    assert.equal((await tx.$queryRawUnsafe("SELECT to_regclass('idempotency_records')::text AS name"))[0].name, 'idempotency_records');
+    assert.equal((await tx.$queryRawUnsafe("SELECT to_regclass('equipment_availability_checks')::text AS name"))[0].name, null);
     const request = await tx.$queryRawUnsafe('SELECT id, "eventRequestId" FROM technical_requests');
     assert.deepEqual(request, [{ id: 'request-1', eventRequestId: 'event-1' }]);
     throw marker;
@@ -91,6 +96,8 @@ test('TC-CS42 PostgreSQL repeat reserve with a fresh action key reuses the curre
 });
 
 test('TC-CS41-04/05 live dated checks include reservations and operational unavailability without persisting snapshots or creating commitments', async () => {
+  const competing = await submit([{ equipmentType: 'projector', quantity: 2 }]);
+  await operations.reserve({ request: competing, window, actor: support, key: randomUUID(), hash: 'availability-fixture' });
   const request = await submit([{ equipmentType: 'projector', quantity: 3 }]);
   const operation = await operations.createOperation({ body: { equipmentType: 'projector', quantity: 1, reason: 'Repair', ...window }, actor: support });
   assert.equal(operation.version, 1);
@@ -105,6 +112,8 @@ test('TC-CS41-04/05 live dated checks include reservations and operational unava
 });
 
 test('TC-CS42-02/03 PostgreSQL shortages and obsolete approvals commit no reservation, history or action', async () => {
+  const competing = await submit([{ equipmentType: 'projector', quantity: 3 }]);
+  await operations.reserve({ request: competing, window, actor: support, key: randomUUID(), hash: 'shortage-fixture' });
   const request = await submit([{ equipmentType: 'speaker', quantity: 1 }, { equipmentType: 'projector', quantity: 5 }]);
   const input = { request, window, actor: support, key: randomUUID(), hash: 'shortage' };
   const before = await db.technicalRequestHistory.count({ where: { requestId: request.id } });

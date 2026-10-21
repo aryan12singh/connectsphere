@@ -199,6 +199,7 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
       </CardHeader>
       <CardContent class="flex flex-col gap-2">
         <p role="status" data-testid="technical-status" class="rounded-lg border p-3">Status: {{ statusLabel }}</p>
+        <p v-if="existing.status === 'NOT_REQUIRED'" class="text-sm text-muted-foreground">No Technical Support review or equipment reservation is required.</p>
         <p v-if="existing.status === 'REJECTED' && existing.decisionReason" class="rounded-lg bg-muted p-3">Technical Support feedback: {{ existing.decisionReason }}</p>
       </CardContent>
     </Card>
@@ -233,7 +234,7 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
                     </Select>
                   </td>
                   <td class="px-3 py-2">
-                    <Input v-model.number="row.quantity" type="number" min="0" :aria-label="`${row.equipmentType || 'equipment'} quantity`" />
+                    <Input v-model.number="row.quantity" type="number" min="0" :max="types.find(item => item.name === row.equipmentType)?.total" :aria-label="`${row.equipmentType || 'equipment'} quantity`" />
                   </td>
                   <td class="px-3 py-2">
                     <Select v-model="row.venueId">

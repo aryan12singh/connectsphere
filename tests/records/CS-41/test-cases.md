@@ -18,7 +18,13 @@ Date of Creation: 2026-10-17T18:00:00+08:00. Equipment uses Booking's occupied w
 | TC-CS41-12 | Buffered period (supplement) | Booking occupied windows | Pool earliest/latest | Venue buffers define period exactly | [E2E](../../../frontend/e2e/CS-41.spec.ts) | 2026-10-17T18:00:00+08:00 |
 | TC-CS41-13 | Allocation projection (supplement) | Confirmed + expired hold | Read private projection | Current versioned confirmed rows only | [E2E](../../../frontend/e2e/CS-41.spec.ts) | 2026-10-17T18:00:00+08:00 |
 | TC-CS41-14 | Inventory (supplement) | Support inventory | Edit/stale/Coordinator action | Versioned Support-only edit | [E2E](../../../frontend/e2e/CS-41.spec.ts) | 2026-10-17T18:00:00+08:00 |
+| TC-CS41-15 | Independent review columns | Desktop and mobile Support sessions | Scroll queue and details then resize | Desktop columns scroll independently; mobile stacks | [E2E](../../../frontend/e2e/CS-41.spec.ts) | 2026-10-21T14:01:09+08:00 |
+| TC-CS41-16 | Review detail projection | Support request with venue allocation | Open request detail | Legacy venue-allocation section is absent | [E2E](../../../frontend/e2e/CS-41.spec.ts) | 2026-10-21T14:01:09+08:00 |
+| TC-CS41-17 | Availability venue names | Support request with selected venue | Read dated equipment availability | Venue column displays resolved venue name | [E2E](../../../frontend/e2e/CS-41.spec.ts) | 2026-10-21T14:01:09+08:00 |
+| TC-CS41-18 | Reserved venue names | Approved Support request with venue | Reserve all lines and read detail | Reserved equipment retains venue column and name | [E2E](../../../frontend/e2e/CS-41.spec.ts) | 2026-10-21T14:01:09+08:00 |
 
 ## Historical ID mapping
 
 Earlier buffered-period/projection/inventory cases map to **12/13/14**. Earlier availability fixture incorrectly used unavailable two; canonical **04** uses reservation two plus operation one.
+
+The additional venue-display checks formerly named 11a/11b/11c now use distinct canonical cases 16/17/18; their assertions are retained.

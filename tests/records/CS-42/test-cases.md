@@ -16,6 +16,7 @@ Date of Creation: 2026-10-17T18:00:00+08:00. Equipment consumes Booking/Event/Sa
 | TC-CS42-10 | Broker/restart proof | Broker down/restart | Read/replay | Durable current proof/no duplicate | [E2E](../../../frontend/e2e/CS-42.spec.ts) | 2026-10-17T18:00:00+08:00 |
 | TC-CS42-11 | Retain dependencies | Booking/Safety dependency action | Refresh readiness | Commitment retained; reassessment explicit | [E2E](../../../frontend/e2e/CS-42.spec.ts) | 2026-10-17T18:00:00+08:00 |
 | TC-CS42-12 | Technical replacement | Existing reservation/revised approval | Replace reserve | Atomic replacement; failure preserves old; CS-46 cancel excluded | [E2E](../../../frontend/e2e/CS-42.spec.ts) | 2026-10-17T18:00:00+08:00 |
+| TC-CS42-13 | Pending reservation control | Request awaiting technical approval | Open Support detail | Reserve action is unavailable before approval | [E2E](../../../frontend/e2e/CS-42.spec.ts) | 2026-10-21T14:01:09+08:00 |
 
 ## Historical ID mapping
 

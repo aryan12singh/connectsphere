@@ -107,7 +107,7 @@ test('TC-CS41-10: invalid operations write nothing and exact command retries cre
   expect((await equipment.operation(event, 2, {}, key)).status()).toBe(409)
 })
 
-test('TC-CS41-11a: staff review detail no longer shows venue allocation portion', async ({ equipment, page }) => {
+test('TC-CS41-16: staff review detail no longer shows venue allocation portion', async ({ equipment, page }) => {
   await equipment.stock('projector', 5)
   const event = await equipment.event({ rooms: 2 })
   const staff = await equipment.actor(emails.staff)
@@ -119,7 +119,7 @@ test('TC-CS41-11a: staff review detail no longer shows venue allocation portion'
   await expect(page.getByText('Venue allocation', { exact: true })).toHaveCount(0)
 })
 
-test('TC-CS41-11b: equipment availability table shows venue column with venue name', async ({ equipment, page }) => {
+test('TC-CS41-17: equipment availability table shows venue column with venue name', async ({ equipment, page }) => {
   await equipment.stock('projector', 5)
   const event = await equipment.event({ rooms: 2 })
   const staff = await equipment.actor(emails.staff)
@@ -133,7 +133,7 @@ test('TC-CS41-11b: equipment availability table shows venue column with venue na
   await expect(page.getByRole('cell', { name: venue.name })).toBeVisible()
 })
 
-test('TC-CS41-11c: venue column also shows when request is reserved', async ({ equipment, page }) => {
+test('TC-CS41-18: venue column also shows when request is reserved', async ({ equipment, page }) => {
   await equipment.stock('projector', 5)
   const event = await equipment.event({ rooms: 2 })
   const staff = await equipment.actor(emails.staff)
