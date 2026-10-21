@@ -402,6 +402,9 @@ test('TC-CS41-14: stock is read-only in the stock tab and API inventory writes r
   await equipment.stock('projector', 5)
   const event = await equipment.event(); const support = await equipment.actor(emails.support)
   const before = (await (await support.get('/api/equipment/inventory')).json()).items.find((item: any) => item.equipmentType === 'projector')
+  const html = await (await support.get('/technical-requirements')).text()
+  const stockTab = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].find(button => button[0].includes('Manage equipment stock'))?.[0]
+  expect(stockTab?.match(/^<button\b[^>]*\sdisabled(?:=|\s|>)/), 'The stock tab must wait for hydration before accepting clicks').toBeTruthy()
   await signIn(page, emails.support); await page.goto('/technical-requirements')
   await page.getByRole('tab', { name: 'Manage equipment stock' }).click()
   await page.getByRole('combobox', { name: 'Equipment' }).click()

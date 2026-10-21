@@ -28,3 +28,5 @@ Date of Creation: 2026-10-17T18:00:00+08:00. Equipment uses Booking's occupied w
 Earlier buffered-period/projection/inventory cases map to **12/13/14**. Earlier availability fixture incorrectly used unavailable two; canonical **04** uses reservation two plus operation one.
 
 The additional venue-display checks formerly named 11a/11b/11c now use distinct canonical cases 16/17/18; their assertions are retained.
+
+TC-CS41-14 also verifies that the server-rendered stock tab remains disabled until hydration, so its first click opens the stock controls reliably (2026-10-21T16:12:00+08:00).

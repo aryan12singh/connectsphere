@@ -1,0 +1,15 @@
+# CS-40 — GREEN-attempt-failed browser execution
+
+Started UTC: 2026-10-21T08:11:55.081Z
+
+Runner: Automated Playwright, real production Nuxt/BFF/Kong/Keycloak/auth/PostgreSQL; synthetic checked-in accounts only. This is not independent human review or PO acceptance. Authentication setup honours gateway429 backoff; Playwright reruns are disabled.
+
+Source: 8480a3ade7fc5b7785de1932b741dc9f95f39879
+
+Full run: 1 passed, 2 unexpected, 0 flaky, 12 skipped.
+
+| Browser case | Project | Result | Duration ms | Reruns |
+|---|---|---|---|---|
+| TC-CS40-13: keyboard-accessible browser validation, review and refresh preserve current state | desktop | PASS | 135039 | 0 |
+
+Machine-readable results and HTML/failure screenshots are retained with the run's evidence. The normal, failure and boundary expectations in the named browser cases remain explicit. Earlier failed attempts are retained. Main story specifications remain in tests/specs and tests/records/CS-40/test-cases.md.

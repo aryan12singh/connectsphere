@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { BookmarkIcon, ChevronLeftIcon, ChevronRightIcon, ClockIcon, SearchIcon, UserIcon } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,8 @@ type RequestItem = {
 const props = defineProps<{ requests: RequestItem[], selectedId: string }>()
 const emit = defineEmits<{ select: [request: RequestItem] }>()
 const search = ref('')
+const pageReady = ref(false)
+onMounted(() => { pageReady.value = true })
 const page = ref(1)
 const pageSize = 5
 const filtered = computed(() => props.requests.filter((request) =>
@@ -50,6 +52,7 @@ function statusClass(status: string) {
       <SearchIcon aria-hidden="true" class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         v-model="search"
+        :disabled="!pageReady"
         aria-label="Search technical requests"
         placeholder="Search for an event..."
         class="pl-9"
@@ -61,6 +64,7 @@ function statusClass(status: string) {
       v-for="request in visible"
       :key="request.eventRequestId"
       type="button"
+      :disabled="!pageReady"
       variant="outline"
       :aria-current="selectedId === request.eventRequestId ? 'true' : undefined"
       :class="cn('h-auto w-full min-w-0 max-w-full flex-col items-stretch justify-start gap-2 whitespace-normal rounded-xl p-4 text-left shadow-sm', selectedId === request.eventRequestId ? 'border-primary bg-secondary' : 'bg-card hover:bg-muted/50')"
@@ -92,10 +96,10 @@ function statusClass(status: string) {
     <div class="flex items-center justify-between gap-2 text-sm text-muted-foreground">
       <span>Page {{ page }} of {{ pageCount }}</span>
       <div class="flex gap-2">
-        <Button variant="outline" size="icon" aria-label="Previous page" :disabled="page <= 1" @click="page--">
+        <Button variant="outline" size="icon" aria-label="Previous page" :disabled="!pageReady || page <= 1" @click="page--">
           <ChevronLeftIcon aria-hidden="true" />
         </Button>
-        <Button variant="outline" size="icon" aria-label="Next page" :disabled="page >= pageCount" @click="page++">
+        <Button variant="outline" size="icon" aria-label="Next page" :disabled="!pageReady || page >= pageCount" @click="page++">
           <ChevronRightIcon aria-hidden="true" />
         </Button>
       </div>

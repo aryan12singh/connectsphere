@@ -20,4 +20,6 @@ Date of Creation: 2026-10-17T18:00:00+08:00. Equipment consumes Booking/Event/Sa
 
 ## Historical ID mapping
 
+Reservation UI regression checks (2026-10-21T16:12:00+08:00): TC-CS42-01 also verifies that a successful reservation is visible while queue metadata refresh is pending, survives a failed refresh with a reload notice, and keeps availability values under their matching column headings. TC-CS42-02 rejects a failed command without a success state. TC-CS42-03 preserves a newer version returned by a successful refresh. These component checks are in [the story spec](../../../tests/specs/CS-42.spec.ts); live browser evidence remains separate.
+
 Earlier touching-boundary coverage maps to **05**. Earlier full reservation/Safety flow maps to **01**; foreign CS-41 and CS-93 IDs do not belong in this story's E2E file.

@@ -48,6 +48,7 @@ const requestReserved = computed(() => selected.value?.reserved === true)
 const actionError = ref('')
 const saving = ref(false)
 const actionResult = ref('')
+const refreshWarning = ref('')
 const pageReady = ref(false)
 const availability = ref<Availability | null>(null)
 const availabilityError = ref('')
@@ -187,13 +188,27 @@ async function decide(decision: 'APPROVED' | 'REJECTED') {
 
 async function reserve() {
   if (!selected.value || saving.value) return
+  const target = { eventRequestId: selected.value.eventRequestId, version: selected.value.version }
   saving.value = true
   actionError.value = ''
   actionResult.value = ''
+  refreshWarning.value = ''
   try {
-    await useRequestFetch()(`/api/equipment/requests/${encodeURIComponent(selected.value.eventRequestId)}/reserve`, { method: 'POST', body: { version: selected.value.version }, headers: { 'Idempotency-Key': crypto.randomUUID() } })
-    await refresh()
-    actionResult.value = 'Complete current equipment reservation saved.'
+    await useRequestFetch()(`/api/equipment/requests/${encodeURIComponent(target.eventRequestId)}/reserve`, { method: 'POST', body: { version: target.version }, headers: { 'Idempotency-Key': crypto.randomUUID() } })
+    // The write is confirmed. Queue enrichment must not delay or erase it.
+    if (data.value) data.value = { ...data.value, requests: data.value.requests.map(request => request.eventRequestId === target.eventRequestId && request.version === target.version ? { ...request, reserved: true } : request) }
+    if (selected.value?.eventRequestId === target.eventRequestId && selected.value.version === target.version) actionResult.value = 'Complete current equipment reservation saved.'
+    const confirmedQueue = data.value
+    try {
+      await refresh()
+      if (error.value) throw error.value
+    }
+    catch {
+      if (!data.value?.requests.length) data.value = confirmedQueue
+      error.value = undefined
+      refreshWarning.value = 'Equipment reservation saved. Reload to refresh the request list.'
+    }
+    if (selected.value?.eventRequestId !== target.eventRequestId || selected.value.version !== target.version) actionResult.value = ''
   } catch (error) { actionError.value = error instanceof Error ? error.message : 'Unable to reserve all requested equipment.' }
   finally { saving.value = false }
 }
@@ -205,11 +220,12 @@ useHead({ title: 'Manage technical availability | ConnectSphere' })
   <main class="mx-auto flex min-h-dvh w-full min-w-0 flex-col gap-6 px-5 py-8 md:px-12 lg:fixed lg:inset-x-0 lg:top-16 lg:h-[calc(100dvh-4rem)] lg:min-h-0 lg:overflow-hidden">
     <h1 class="text-[32px] leading-10 font-semibold tracking-tight">Manage technical availability</h1>
     <p v-if="actionResult" role="status" class="text-sm text-muted-foreground">{{ actionResult }}</p>
+    <Alert v-if="refreshWarning"><p class="col-start-2">{{ refreshWarning }}</p></Alert>
     <Alert v-if="error" variant="destructive"><p class="col-start-2">The technical review queue is unavailable.</p></Alert>
     <Tabs v-else default-value="review" class="w-full min-w-0 lg:flex-1 lg:flex-col lg:min-h-0">
       <TabsList aria-label="Technical availability views" class="h-auto w-fit max-w-full self-start flex-wrap justify-start gap-1 rounded-none border-b bg-transparent p-0">
-        <TabsTrigger value="review" class="h-auto flex-none rounded-none px-3 py-2">Review technical requests</TabsTrigger>
-        <TabsTrigger value="stock" class="h-auto flex-none rounded-none px-3 py-2">Manage equipment stock</TabsTrigger>
+        <TabsTrigger value="review" :disabled="!pageReady" class="h-auto flex-none rounded-none px-3 py-2">Review technical requests</TabsTrigger>
+        <TabsTrigger value="stock" :disabled="!pageReady" class="h-auto flex-none rounded-none px-3 py-2">Manage equipment stock</TabsTrigger>
       </TabsList>
 
       <TabsContent value="review" class="mt-5 w-full min-w-0 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
@@ -289,7 +305,6 @@ useHead({ title: 'Manage technical availability | ConnectSphere' })
                       <TableRow v-for="line in availability.lines" :key="line.equipmentType" :class="!requestReserved && line.shortfall ? 'bg-destructive/10' : ''">
                         <TableHead scope="row" class="font-medium text-foreground">{{ equipmentLabel(line.equipmentType) }}</TableHead>
                         <TableCell>{{ line.requested }}</TableCell>
-                        <TableCell>{{ selected.equipment.find(item => item.equipmentType === line.equipmentType)?.venueName || '—' }}</TableCell>
                         <template v-if="!requestReserved">
                           <TableCell>{{ line.available }}</TableCell>
                           <TableCell>{{ line.shortfall }}</TableCell>
@@ -299,6 +314,7 @@ useHead({ title: 'Manage technical availability | ConnectSphere' })
                             </Badge>
                           </TableCell>
                         </template>
+                        <TableCell>{{ selected.equipment.find(item => item.equipmentType === line.equipmentType)?.venueName || '—' }}</TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -332,7 +348,7 @@ useHead({ title: 'Manage technical availability | ConnectSphere' })
               <Alert v-if="actionError" variant="destructive"><p class="col-start-2">{{ actionError }}</p></Alert>
               <div class="flex flex-wrap justify-end gap-2.5">
                 <Button v-if="canDecide" type="button" :disabled="saving || !pageReady" @click="decide(decisionSelection)">Submit decision</Button>
-                <Button v-else-if="selected.status === 'APPROVED'" type="button" :disabled="saving || requestReserved" @click="reserve">{{ requestReserved ? 'Reserved' : 'Reserve complete request' }}</Button>
+                <Button v-else-if="selected.status === 'APPROVED'" type="button" :disabled="saving || !pageReady || requestReserved" @click="reserve">{{ requestReserved ? 'Reserved' : 'Reserve complete request' }}</Button>
               </div>
             </Card>
           </section>
