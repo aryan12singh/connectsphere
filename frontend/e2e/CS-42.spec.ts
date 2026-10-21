@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { test, expect, emails, snapshot, fault, internal, mutation, reviewDatabase, reservePath, serviceAction } from './equipment-fixtures'
+import { test, expect, emails, snapshot, fault, internal, mutation, reviewDatabase, reservePath, serviceAction } from './fixtures/equipment-fixtures'
 import { signIn } from './helpers'
-import { createVenue, hold } from './venue-fixtures'
+import { createVenue, hold } from './fixtures/venue-fixtures'
 
 test('TC-CS42-01: Support reserves every approved line with provenance and one logical action', async ({ equipment, page }, info) => {
   await equipment.stock('projector', 5); await equipment.stock('speaker', 5)
@@ -26,17 +26,12 @@ test('TC-CS42-01: Support reserves every approved line with provenance and one l
   await page.screenshot({ path: info.outputPath('TC-CS42-01-reserved.png'), fullPage: true })
 })
 
-test('TC-CS42-13: reservation action remains available before approval and shows the service rejection', async ({ equipment, page }) => {
+test('TC-CS42-13: reservation action is unavailable before approval', async ({ equipment, page }) => {
   const event = await equipment.event()
   await equipment.submit(event)
   await signIn(page, emails.support); await page.goto('/technical-requirements')
   await page.getByRole('button', { name: new RegExp(`Event request ${event.id}`) }).click()
-  const reserveButton = page.getByRole('button', { name: 'Reserve complete request', exact: true })
-  await expect(reserveButton).toBeEnabled()
-  const reservationResponse = page.waitForResponse(response => response.url().includes(`/api/equipment/requests/${event.id}/reserve`) && response.request().method() === 'POST')
-  await reserveButton.click()
-  expect((await reservationResponse).status()).toBe(409)
-  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reserve complete request', exact: true })).toHaveCount(0)
 })
 
 test('TC-CS42-02: any short line returns all shortages without reserving sufficient lines', async ({ equipment }) => {

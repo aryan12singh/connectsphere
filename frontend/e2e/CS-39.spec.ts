@@ -1,6 +1,6 @@
 import {expect} from '@playwright/test'
 import {test,session,emails,signIn,mutation} from './helpers'
-import {createVenue,planningEvent,roomInput,reviewDatabase,databaseEvidence} from './venue-fixtures'
+import {createVenue,planningEvent,roomInput,reviewDatabase,databaseEvidence} from './fixtures/venue-fixtures'
 test('TC-CS39-30 TC-CS39-32 LIVE simultaneous room requests commit one winner with no orphan',async({page,playwright,owner},info)=>{
   const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner)
   try {

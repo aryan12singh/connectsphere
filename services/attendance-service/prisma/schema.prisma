@@ -1,0 +1,43 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Event {
+  id                String   @id @default(cuid())
+  eventId           String   @unique
+  title             String
+  description       String
+  status            String   @default("CONFIRMED")
+  startAt           DateTime @db.Timestamptz(3)
+  endAt             DateTime @db.Timestamptz(3)
+  timeZone          String   @default("Asia/Singapore")
+  primaryVenueId    String?
+  primaryVenueName  String?
+  registrationLimit Int?
+  registrationWindow Json?
+  organiserId       String?
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+  registrations     Registration[]
+
+  @@map("events")
+}
+
+model Registration {
+  id          String   @id @default(cuid())
+  eventId     String
+  userId      String
+  status      String   @default("CONFIRMED")
+  registeredAt DateTime @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  event       Event    @relation(fields: [eventId], references: [eventId], onDelete: Cascade)
+
+  @@map("registrations")
+  @@unique([eventId, userId], name: "Registrations_eventId_userId_key")
+}

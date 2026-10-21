@@ -112,6 +112,7 @@ services:
       - event-service
       - notification-service
       - equipment-service
+      - attendance-service
 
   # ── Built services ────────────────────────────────────────────────────
 
@@ -279,13 +280,15 @@ services:
         condition: service_started
       venue-service:
         condition: service_started
+      attendance-service:
+        condition: service_started
 
   attendance-service:
-    profiles: ["not-built-yet"]
     build: ../services/attendance-service
     restart: unless-stopped
     environment:
       PORT: 3000
+      DATA_MODE: prisma
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/attendance_db
       AUTH_SERVICE_URL: http://auth-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}

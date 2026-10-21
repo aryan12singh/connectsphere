@@ -143,7 +143,7 @@ services:
     routes:
       - name: attendance-routes
         paths: ["/attendances"]
-        strip_path: false
+        strip_path: true
 
   - name: messaging-service
     url: http://messaging-service:3000

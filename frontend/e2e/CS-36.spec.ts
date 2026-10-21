@@ -1,7 +1,7 @@
 import {expect} from '@playwright/test'
 import {randomUUID} from 'node:crypto'
 import {test,session,emails,signIn} from './helpers'
-import {createVenue,planningEvent} from './venue-fixtures'
+import {createVenue,planningEvent} from './fixtures/venue-fixtures'
 test('TC-CS36-30 LIVE current Coordinator sees full and explicit partial matches and an empty result',async({page,playwright,owner},info)=>{
   const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner),prefix=`Search evidence ${randomUUID()}`
   try {

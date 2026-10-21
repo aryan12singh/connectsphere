@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto'
 import {createRequire} from 'node:module'
 import {readFileSync} from 'node:fs'
 import {created,validRequest,assignedSession,mutation} from './helpers'
-const require=createRequire(new URL('../../services/event-service/package.json',import.meta.url))
+const require=createRequire(new URL('../../../services/event-service/package.json',import.meta.url))
 const {Pool,types}=require('pg')
 export async function planningEvent(request:APIRequest,owner:APIRequestContext,overrides:Record<string,unknown>={}) {
   const submitted=await created(owner,'submit',validRequest({expectedAttendance:80,minimumCapacity:80,accessibilityNeeds:[],venueRequirements:'Projector',...overrides}))
@@ -32,7 +32,7 @@ export async function hold(coordinator:APIRequestContext,eventId:string,venueId:
   const response=await mutation(coordinator,'POST','/api/bookings',roomInput(eventId,venueId,overrides))
   expect(response.status()).toBe(200);return response.json()
 }
-export async function reviewDatabase<T>(service:'venue'|'booking'|'event'|'equipment'|'notification',work:(pool:any)=>Promise<T>):Promise<T> {
+export async function reviewDatabase<T>(service:'venue'|'booking'|'event'|'equipment'|'notification'|'attendance',work:(pool:any)=>Promise<T>):Promise<T> {
   const file=process.env.CSE2E_COMPOSE_FILE
   if(!file || !/^csreview-aryan-ci-[a-z0-9-]+$/.test(JSON.parse(readFileSync(file,'utf8')).name))throw Error('Only the current disposable review database may be used')
   const url=new URL(process.env.AUTH_DATABASE_URL ?? '')

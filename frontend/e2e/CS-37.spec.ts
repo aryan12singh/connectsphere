@@ -1,6 +1,6 @@
 import {expect} from '@playwright/test'
 import {test,session,emails,signIn,mutation} from './helpers'
-import {createVenue,planningEvent,hold,reviewDatabase,databaseEvidence} from './venue-fixtures'
+import {createVenue,planningEvent,hold,reviewDatabase,databaseEvidence} from './fixtures/venue-fixtures'
 test('TC-CS37-30 LIVE persisted deadline immediately blocks approval while the hold row remains',async({page,playwright,owner},info)=>{
   const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner)
   try {

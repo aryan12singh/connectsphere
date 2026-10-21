@@ -1,19 +1,106 @@
 <script setup lang="ts">
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { computed, onMounted, ref } from 'vue'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { Alert } from '@/components/ui/alert'
+import { Separator } from '@/components/ui/separator'
+import { useUserSession } from '#imports'
+
 const { user } = useUserSession()
-useHead({ title: 'Attendee home | ConnectSphere' })
-const { data: profile, error } = await useFetch(`/api/users/${user.value?.id}`)
+useHead({ title: 'Your events | ConnectSphere' })
+
+const { data: events, error, refresh } = await useFetch<{ events: Array<{
+  id: string, eventId: string, title: string, description: string,
+  status: string, startAt: string, endAt: string, timeZone: string,
+  primaryVenueId: string | null, primaryVenueName: string | null,
+  registrationLimit: number | null, registrationWindow: { startAt: string, endAt: string } | null,
+  organiserId: string | null, createdAt: string, updatedAt: string
+}> }>('/api/attendances/events')
+
+const eventList = computed(() => events.value?.events ?? [])
+const loading = ref(!events.value && !error.value)
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat('en-SG', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+}
+
+function statusBadge(status: string) {
+  if (status === 'CONFIRMED') return 'bg-success-soft text-success'
+  if (status === 'CANCELLED') return 'bg-destructive/10 text-destructive'
+  return 'bg-warning-soft text-warning'
+}
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-3xl px-5 py-8 md:px-8">
-    <h1 class="text-3xl font-semibold">Attendee home</h1>
-    <p class="mt-2 text-muted-foreground">Welcome, {{ user?.name }}.</p>
-    <Card class="mt-6">
-      <CardHeader><CardTitle>Your account</CardTitle></CardHeader>
+  <main class="mx-auto w-full max-w-5xl px-5 py-8 md:px-8">
+    <div class="flex flex-col gap-2">
+      <h1 class="text-3xl font-semibold">Your events</h1>
+      <p class="text-sm text-muted-foreground">Track your confirmed events and view confirmed arrangements.</p>
+    </div>
+
+    <p v-if="error" role="alert" class="mt-4 text-destructive">Unable to load events. Please try again later.</p>
+
+    <Separator v-if="loading || (!error && eventList.length === 0)" class="mt-6" />
+
+    <Card v-if="eventList.length === 0 && !error" class="mt-6">
+      <CardHeader>
+        <CardTitle>No events yet</CardTitle>
+      </CardHeader>
+      <CardContent class="flex flex-col items-center gap-3 py-8">
+        <p class="text-sm text-muted-foreground">There are no confirmed events available for you right now.</p>
+        <Button as-child variant="outline">
+          <NuxtLink to="/">Back home</NuxtLink>
+        </Button>
+      </CardContent>
+    </Card>
+
+    <Card v-if="eventList.length > 0" class="mt-6">
+      <CardHeader>
+        <CardTitle>Confirmed events</CardTitle>
+        <CardDescription>Events you can attend</CardDescription>
+      </CardHeader>
       <CardContent>
-        <p v-if="error" role="alert">Your profile is unavailable. Please try again.</p>
-        <dl v-else class="grid gap-3"><div><dt class="text-sm text-muted-foreground">Email</dt><dd>{{ profile?.email }}</dd></div><div><dt class="text-sm text-muted-foreground">Name</dt><dd>{{ profile?.name }}</dd></div></dl>
+        <div class="overflow-x-auto rounded-lg border">
+          <Table class="w-full text-sm">
+            <TableHeader>
+              <TableRow class="bg-muted">
+                <TableHead scope="col" class="px-4 py-3">Event</TableHead>
+                <TableHead scope="col" class="px-4 py-3">Date &amp; time</TableHead>
+                <TableHead scope="col" class="px-4 py-3">Primary location</TableHead>
+                <TableHead scope="col" class="px-4 py-3">Capacity</TableHead>
+                <TableHead scope="col" class="px-4 py-3">Status</TableHead>
+                <TableHead scope="col" class="px-4 py-3"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow v-for="event in eventList" :key="event.id" class="border-b">
+                <TableCell class="px-4 py-3">
+                  <div class="font-medium">{{ event.title }}</div>
+                  <p class="text-xs text-muted-foreground">Event {{ event.eventId }}</p>
+                </TableCell>
+                <TableCell class="px-4 py-3">
+                  <time>{{ formatDate(event.startAt) }}</time>
+                  <p class="text-xs text-muted-foreground">{{ event.timeZone }}</p>
+                </TableCell>
+                <TableCell class="px-4 py-3">
+                  <div class="font-medium">{{ event.primaryVenueName || 'TBD' }}</div>
+                  <span class="text-xs text-muted-foreground">Primary venue</span>
+                </TableCell>
+                <TableCell class="px-4 py-3">
+                  {{ event.registrationLimit }} attendees
+                </TableCell>
+                <TableCell class="px-4 py-3">
+                  <Badge :class="statusBadge(event.status)">{{ event.status }}</Badge>
+                </TableCell>
+                <TableCell class="px-4 py-3">
+                  <NuxtLink :to="`/attendances/events/${event.eventId}`" class="underline text-sm text-primary">Event {{ event.eventId }}</NuxtLink>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
     </Card>
   </main>

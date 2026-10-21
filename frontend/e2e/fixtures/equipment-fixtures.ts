@@ -1,4 +1,4 @@
-import { test as base, expect, type APIRequest, type APIRequestContext } from '@playwright/test'
+import { test as base, expect, type APIRequest, type APIRequestContext, type WorkerInfo } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
@@ -51,9 +51,11 @@ export async function fault(event: TechnicalEvent, kind: 'TechRequestSubmitted' 
 
 class EquipmentFixtures {
   private sessions = new Map<string, APIRequestContext>()
+  private eventRequestIds = new Set<string>()
+  private operationStartAt = new Set<string>()
+  private stockBefore = new Map<string, number>()
   private sequence = 0
-  private dateOffset = Number(process.env.CSE2E_DATE_OFFSET ?? Math.floor(Date.now() / 1000) % 100_000)
-  constructor(private request: APIRequest, private worker: number) {}
+  constructor(private request: APIRequest, private dateOffset: number) {}
   async actor(email: string) {
     if (!this.sessions.has(email)) this.sessions.set(email, await session(this.request, email))
     return this.sessions.get(email)!
@@ -63,12 +65,20 @@ class EquipmentFixtures {
     const read = await support.get('/api/equipment/inventory')
     expect(read.status()).toBe(200)
     const item = (await read.json()).items.find((item: any) => item.equipmentType === type)
+    if (!this.stockBefore.has(type)) this.stockBefore.set(type, item.total)
     const saved = await mutation(support, 'PUT', `/api/equipment/inventory/${type}`, { version: item.version, total })
     expect(saved.status()).toBe(200)
     return saved.json()
   }
+  async establishBaseline() {
+    // The seed database intentionally starts with no usable equipment.  Each
+    // test receives the same small, explicit catalogue instead of inheriting
+    // stock written by an earlier spec.
+    await this.stock('projector', 5)
+    await this.stock('speaker', 5)
+  }
   async event(options: { date?: string, rooms?: number, startAt?: string, endAt?: string, eventName?: string } = {}): Promise<TechnicalEvent> {
-    const date = options.date ?? new Date(Date.UTC(2038, 0, 1 + this.dateOffset + this.worker * 500 + this.sequence++)).toISOString().slice(0, 10)
+    const date = options.date ?? new Date(Date.UTC(2038, 0, 1 + this.dateOffset + this.sequence++)).toISOString().slice(0, 10)
     const owner = await this.actor(emails.owner)
     const submitted = await created(owner, 'submit', validRequest({ eventName: options.eventName ?? `E2E ${randomUUID()}`, proposedDate: date, expectedAttendance: 80, minimumCapacity: 80, accessibilityNeeds: [] }))
     const contact = await (await owner.get(`/api/events/${submitted.id}/coordinator`)).json()
@@ -87,6 +97,7 @@ class EquipmentFixtures {
       expect(decision.status()).toBe(200)
       rooms.push(await decision.json())
     }
+    this.eventRequestIds.add(submitted.id)
     return { id: submitted.id, eventId: approved.eventId, coordinator, email: contact.email, date, rooms, venueId, period: { startAt: new Date(Date.parse(options.startAt ?? `${date}T02:00:00.000Z`) - 30 * 60_000).toISOString(), endAt: new Date(Date.parse(options.endAt ?? `${date}T04:00:00.000Z`) + 45 * 60_000).toISOString() } }
   }
   async submit(event: TechnicalEvent, lines: Line[] = [{ equipmentType: 'projector', quantity: 2 }], extra: Record<string, unknown> = {}) {
@@ -112,13 +123,49 @@ class EquipmentFixtures {
     return result.json()
   }
   async operation(event: TechnicalEvent, quantity = 1, extra: Record<string, unknown> = {}, key = randomUUID()) {
+    this.operationStartAt.add(event.period.startAt)
     return mutation(await this.actor(emails.support), 'POST', '/api/equipment/operations', { equipmentType: 'projector', quantity, reason: 'Scheduled maintenance', ...event.period, ...extra }, key)
+  }
+  async cleanup() {
+    await reviewDatabase('equipment', async pool => {
+      const eventRequestIds = [...this.eventRequestIds]
+      if (eventRequestIds.length) {
+        await pool.query('DELETE FROM equipment_reservations WHERE "eventRequestId" = ANY($1::text[])', [eventRequestIds])
+        await pool.query('DELETE FROM technical_readiness_fences WHERE "eventRequestId" = ANY($1::text[])', [eventRequestIds])
+        await pool.query('DELETE FROM outbox_events WHERE "actionKey" LIKE ANY($1::text[])', [eventRequestIds.map(id => `%:${id}:%`)])
+        await pool.query('DELETE FROM technical_requests WHERE "eventRequestId" = ANY($1::text[])', [eventRequestIds])
+      }
+      const operationStartAt = [...this.operationStartAt]
+      if (operationStartAt.length) await pool.query('DELETE FROM equipment_operational_unavailability WHERE "startAt" = ANY($1::timestamptz[])', [operationStartAt])
+    })
+    if (this.stockBefore.size) {
+      const support = await this.actor(emails.support)
+      for (const [type, total] of this.stockBefore) {
+        const read = await support.get('/api/equipment/inventory')
+        expect(read.status()).toBe(200)
+        const item = (await read.json()).items.find((candidate: any) => candidate.equipmentType === type)
+        const restored = await mutation(support, 'PUT', `/api/equipment/inventory/${type}`, { version: item.version, total })
+        expect(restored.status()).toBe(200)
+      }
+    }
+    this.eventRequestIds.clear()
+    this.operationStartAt.clear()
+    this.stockBefore.clear()
   }
   async dispose() { for (const session of this.sessions.values()) await session.dispose() }
 }
-export const test = base.extend<{}, { equipment: EquipmentFixtures }>({
+function fixtureDateOffset(info: WorkerInfo) {
+  let hash = 0
+  for (const character of `${info.project.name}:${info.workerIndex}`) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+  return hash % 20_000
+}
+export const test = base.extend<{ isolateEquipment: void }, { equipment: EquipmentFixtures }>({
   equipment: [async ({ playwright }, use, info) => {
-    const fixtures = new EquipmentFixtures(playwright.request, info.workerIndex)
+    const fixtures = new EquipmentFixtures(playwright.request, fixtureDateOffset(info))
     try { await use(fixtures) } finally { await fixtures.dispose() }
   }, { scope: 'worker' }],
+  isolateEquipment: [async ({ equipment }, use) => {
+    await equipment.establishBaseline()
+    try { await use() } finally { await equipment.cleanup() }
+  }, { auto: true }],
 })

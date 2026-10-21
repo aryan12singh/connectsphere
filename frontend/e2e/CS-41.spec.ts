@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { test, expect, emails, availabilityPath, snapshot, internal, mutation, reviewDatabase, serviceAction } from './equipment-fixtures'
+import { test, expect, emails, availabilityPath, snapshot, internal, mutation, reviewDatabase, serviceAction } from './fixtures/equipment-fixtures'
 import { signIn } from './helpers'
-import { createVenue, hold } from './venue-fixtures'
+import { createVenue, hold } from './fixtures/venue-fixtures'
 
 test('TC-CS41-01: every line reports requested, available and shortfall with whole-request fulfilment', async ({ equipment }) => {
   await equipment.stock('projector', 5); await equipment.stock('speaker', 4)

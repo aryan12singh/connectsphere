@@ -1,6 +1,17 @@
 import { randomUUID } from 'node:crypto'
-import { test, expect, emails, body, path, snapshot, fault, internal, mutation, reviewDatabase } from './equipment-fixtures'
+import { test, expect, emails, body, path, snapshot, fault, internal, mutation, reviewDatabase } from './fixtures/equipment-fixtures'
 import { signIn, field } from './helpers'
+
+async function chooseEquipment(page: import('@playwright/test').Page, index: number, type: string, quantity: number, selectVenue = true) {
+  const row = page.locator('tbody tr').nth(index)
+  await row.getByRole('combobox', { name: 'Equipment type' }).click()
+  await page.getByRole('option', { name: type, exact: true }).click()
+  await row.getByRole('spinbutton', { name: `${type} quantity` }).fill(String(quantity))
+  if (selectVenue) {
+    await row.getByRole('combobox', { name: 'Venue' }).click()
+    await page.getByRole('option').first().click()
+  }
+}
 
 test('TC-CS40-01: Coordinator submits pooled equipment and support through the browser', async ({ equipment, page }, info) => {
   await equipment.stock('projector', 5); await equipment.stock('speaker', 5)
@@ -9,16 +20,18 @@ test('TC-CS40-01: Coordinator submits pooled equipment and support through the b
   page.on('pageerror', error => errors.push(error.message))
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
   const ssr = await event.coordinator.get(`/technical-requirements/${event.id}`)
-  expect(await ssr.text()).toMatch(/<button[^>]*disabled[^>]*>Submit requirements<\/button>/)
+  expect(await ssr.text()).toMatch(/<button[^>]*disabled[^>]*>[\s\S]*?Submit requirements[\s\S]*?<\/button>/)
   await signIn(page, event.email); await page.goto(`/technical-requirements/${event.id}`)
   await expect(page).toHaveTitle('Technical requirements | ConnectSphere')
   await expect(page.getByRole('heading', { name: 'Technical requirements', exact: true })).toBeVisible()
-  await field(page, 'projector quantity').fill('2'); await field(page, 'speaker quantity').fill('1')
+  await chooseEquipment(page, 0, 'projector', 2)
+  await page.getByRole('button', { name: '+ Add equipment line', exact: true }).click()
+  await chooseEquipment(page, 1, 'speaker', 1)
   await expect(page.getByTestId('selected-equipment')).toHaveText('Selected equipment: projector — 2, speaker — 1')
   await page.getByLabel('Technical support is required').check()
-  await page.getByLabel('Support details').fill('Setup assistance')
-  await page.getByLabel('Placement and preparation details').fill('Projector at the front')
-  await page.getByRole('button', { name: 'Submit requirements', exact: true }).press('Enter')
+  await page.getByLabel('Technical support needed').fill('Setup assistance')
+  await page.getByLabel('Placement notes').fill('Projector at the front')
+  await page.getByRole('button', { name: 'Submit requirements', exact: true }).click()
   await expect(page.getByText('Submitted for Technical Support review', { exact: true })).toBeVisible()
   const saved = await snapshot(event)
   expect(saved.requests[0]).toMatchObject({ version: 1, status: 'PENDING_TECH_REVIEW' })
@@ -106,7 +119,7 @@ test('TC-CS40-08: former and foreign Coordinators lose access after current assi
   expect((await event.coordinator.get(path(event))).status()).toBe(403)
   expect((await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 3 }]))).status()).toBe(403)
   expect((await current.get(path(event))).status()).toBe(200)
-  expect((await mutation(current, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 3 }]))).status()).toBe(200)
+  expect((await mutation(current, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 3, venueId: event.venueId }]))).status()).toBe(200)
 })
 
 test('TC-CS40-09: permitted Safety review reads Equipment proof but cannot submit or decide it', async ({ equipment }) => {
@@ -119,7 +132,7 @@ test('TC-CS40-09: permitted Safety review reads Equipment proof but cannot submi
   const officer = await equipment.actor(emails.officer)
   const read = await officer.get(`/api/safety/rounds/${current.round.id}`)
   expect(read.status()).toBe(200)
-  expect((await read.json()).snapshot.equipment).toEqual([{ equipmentType: 'projector', quantity: 2 }])
+  expect((await read.json()).snapshot.equipment).toEqual([expect.objectContaining({ equipmentType: 'projector', quantity: 2, venueId: event.venueId })])
   expect((await mutation(officer, 'POST', path(event), body([]))).status()).toBe(403)
   expect((await mutation(officer, 'POST', `${path(event)}/decision`, { decision: 'APPROVED', version: 1 })).status()).toBe(403)
 })
@@ -127,7 +140,7 @@ test('TC-CS40-09: permitted Safety review reads Equipment proof but cannot submi
 test('TC-CS40-10: two rooms share one pooled Event requirement without duplicated demand', async ({ equipment }) => {
   const event = await equipment.event({ rooms: 2 })
   const record = await equipment.submit(event, [{ equipmentType: 'projector', quantity: 3 }], { placementDetails: 'Room A: one; Room B: two projectors' })
-  expect(record.equipment).toEqual([{ equipmentType: 'projector', quantity: 3 }])
+  expect(record.equipment).toEqual([expect.objectContaining({ equipmentType: 'projector', quantity: 3, venueId: event.venueId })])
   expect((await snapshot(event)).requests).toHaveLength(1)
 })
 
@@ -147,13 +160,13 @@ test('TC-CS40-11: concurrent approve/reject and retries produce one authoritativ
 test('TC-CS40-12: transactional submission failure rolls back and retry creates one durable outbox action', async ({ equipment }) => {
   const event = await equipment.event(); const before = await snapshot(event); const key = randomUUID()
   await fault(event, 'TechRequestSubmitted', async () => {
-    expect((await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 1 }]), key)).status()).toBe(500)
+    expect((await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 1, venueId: event.venueId }]), key)).status()).toBe(500)
     expect(await snapshot(event)).toEqual(before)
   })
-  expect((await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 1 }]), key)).status()).toBe(200)
+  expect((await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 1, venueId: event.venueId }]), key)).status()).toBe(200)
   const committed = await snapshot(event)
   expect(committed.outbox).toHaveLength(1)
-  expect((await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 1 }]), key)).status()).toBe(200)
+  expect((await mutation(event.coordinator, 'POST', path(event), body([{ equipmentType: 'projector', quantity: 1, venueId: event.venueId }]), key)).status()).toBe(200)
   expect(await snapshot(event)).toEqual(committed)
 })
 
@@ -161,11 +174,11 @@ test('TC-CS40-13: keyboard-accessible browser validation, review and refresh pre
   await equipment.stock('projector', 5)
   const event = await equipment.event()
   await signIn(page, event.email); await page.goto(`/technical-requirements/${event.id}`)
-  await page.getByLabel('Placement and preparation details').fill('Accessible lectern')
-  await page.getByRole('button', { name: 'Submit requirements', exact: true }).press('Enter')
+  await page.getByLabel('Placement notes').fill('Accessible lectern')
+  await page.getByRole('button', { name: 'Submit requirements', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Specify equipment or support')
-  await field(page, 'projector quantity').fill('1')
-  await page.getByRole('button', { name: 'Submit requirements', exact: true }).press('Enter')
+  await chooseEquipment(page, 0, 'projector', 1)
+  await page.getByRole('button', { name: 'Submit requirements', exact: true }).click()
   await expect(page.getByTestId('technical-status')).toContainText('Pending')
   await page.reload(); await expect(field(page, 'projector quantity')).toHaveValue('1')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
@@ -189,7 +202,7 @@ test('TC-CS40-13: keyboard-accessible browser validation, review and refresh pre
   await expect(decisionCard.getByText('All requested equipment is available.', { exact: true })).toHaveCount(0)
   await decisionCard.getByRole('button', { name: 'Reserve complete request' }).click()
   await expect(decisionCard.getByRole('button', { name: 'Reserved', exact: true })).toBeDisabled()
-  await expect(decisionCard.getByRole('columnheader')).toHaveText(['Equipment', 'Requested'])
+  await expect(decisionCard.getByRole('columnheader')).toHaveText(['Equipment', 'Requested', 'Venue'])
   const reservedSnapshot = await snapshot(event)
   expect((await equipment.reserve(event)).status()).toBe(200)
   expect(await snapshot(event)).toEqual(reservedSnapshot)
@@ -199,7 +212,7 @@ test('TC-CS40-13: keyboard-accessible browser validation, review and refresh pre
   await expect(page.getByRole('heading', { name: 'Decision', exact: true })).toBeVisible()
   await expect(page.getByText('Saved decision: Approved', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Reserved', exact: true })).toBeDisabled()
-  await expect(page.getByRole('columnheader')).toHaveText(['Equipment', 'Requested'])
+  await expect(page.getByRole('columnheader')).toHaveText(['Equipment', 'Requested', 'Venue'])
   await page.screenshot({ path: info.outputPath('TC-CS40-13-browser.png'), fullPage: true })
 })
 
@@ -214,8 +227,8 @@ test('TC-CS40-15: field limits and contradictory declarations reject every parti
   const event = await equipment.event(); const before = await snapshot(event)
   await signIn(page, event.email); await page.goto(`/technical-requirements/${event.id}`)
   await page.getByLabel('Technical support is required').check()
-  await expect(page.getByLabel('Support details')).toHaveAttribute('maxlength', '1000')
-  await expect(page.getByLabel('Placement and preparation details')).toHaveAttribute('maxlength', '500')
+  await expect(page.getByLabel('Technical support needed')).toHaveAttribute('maxlength', '1000')
+  await expect(page.getByLabel('Placement notes')).toHaveAttribute('maxlength', '500')
   const invalid = body([{ equipmentType: 'projector', quantity: 1 }], { supportRequired: true, supportDetails: 's'.repeat(1001), placementDetails: 'p'.repeat(501), notRequired: true })
   expect((await mutation(event.coordinator, 'POST', path(event), invalid)).status()).toBe(422)
   expect(await snapshot(event)).toEqual(before)
@@ -225,22 +238,22 @@ test('TC-CS40-16: venue can be selected per equipment row', async ({ equipment, 
   await equipment.stock('projector', 5)
   const event = await equipment.event()
   await signIn(page, event.email); await page.goto(`/technical-requirements/${event.id}`)
-  await field(page, 'projector quantity').fill('2')
+  await chooseEquipment(page, 0, 'projector', 2, false)
   await page.getByRole('combobox', { name: 'Venue' }).click()
   await page.getByRole('option').first().click()
-  await page.getByLabel('Placement and preparation details').fill('Projector at the front')
-  await page.getByRole('button', { name: 'Submit requirements', exact: true }).press('Enter')
+  await page.getByLabel('Placement notes').fill('Projector at the front')
+  await page.getByRole('button', { name: 'Submit requirements', exact: true }).click()
   await expect(page.getByTestId('technical-status')).toContainText('Pending')
   const saved = await snapshot(event)
-  expect(saved.requests[0].equipment[0].venueId).toBeTruthy()
+  expect(saved.requests[0].requirements.equipment[0].venueId).toBeTruthy()
 })
 
 test('TC-CS40-17: missing venue is blocked in the browser', async ({ equipment, page }) => {
   await equipment.stock('projector', 5)
   const event = await equipment.event()
   await signIn(page, event.email); await page.goto(`/technical-requirements/${event.id}`)
-  await field(page, 'projector quantity').fill('2')
-  await page.getByLabel('Placement and preparation details').fill('Projector at the front')
-  await page.getByRole('button', { name: 'Submit requirements', exact: true }).press('Enter')
+  await chooseEquipment(page, 0, 'projector', 2, false)
+  await page.getByLabel('Placement notes').fill('Projector at the front')
+  await page.getByRole('button', { name: 'Submit requirements', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Select a venue')
 })

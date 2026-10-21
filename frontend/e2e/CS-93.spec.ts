@@ -1,6 +1,6 @@
 import {expect} from '@playwright/test'
 import {test,session,emails,signIn,mutation} from './helpers'
-import {createVenue,planningEvent,hold} from './venue-fixtures'
+import {createVenue,planningEvent,hold} from './fixtures/venue-fixtures'
 test('TC-CS93-30 LIVE Coordinator preparation shows current venue facts without enabling an unverified Safety action',async({page,playwright,owner},info)=>{
   const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner)
   try {

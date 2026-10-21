@@ -20,7 +20,7 @@ type RequestItem = {
   status: string
   reserved: boolean
   decisionReason?: string | null
-  equipment: { equipmentType: string, quantity: number, venueId?: string | null }[]
+  equipment: { equipmentType: string, quantity: number, venueId?: string | null, venueName?: string | null }[]
   supportRequired: boolean
   supportDetails: string
   placementDetails: string

@@ -38,7 +38,7 @@ const types = computed(() => typesData.value?.equipmentTypes ?? [])
 type Venue = { id: string, name: string }
 type Row = { equipmentType: string, quantity: number | string, venueId: string }
 const rows = ref<Row[]>([])
-function emptyRow(): Row { return { equipmentType: '', quantity: 1, venueId: '' } }
+function emptyRow(): Row { return { equipmentType: '', quantity: 0, venueId: '' } }
 const { data: venuesData, error: venuesError } = await useFetch<any>('/api/venues')
 const venues = computed(() => {
   const value = venuesData.value
@@ -274,12 +274,12 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
             <span>Technical support is required</span>
           </label>
           <div v-if="supportRequired" class="flex flex-col gap-2">
-            <label class="text-sm font-medium">Technical support needed</label>
-            <Textarea v-model="supportDetailsRef" maxlength="1000" />
+            <label for="support-details" class="text-sm font-medium">Technical support needed</label>
+            <Textarea id="support-details" v-model="supportDetailsRef" maxlength="1000" />
           </div>
           <div class="flex flex-col gap-2">
-            <label class="text-sm font-medium">Placement notes</label>
-            <Textarea v-model="placementDetails" maxlength="500" />
+            <label for="placement-details" class="text-sm font-medium">Placement notes</label>
+            <Textarea id="placement-details" v-model="placementDetails" maxlength="500" />
           </div>
         </CardContent>
       </Card>

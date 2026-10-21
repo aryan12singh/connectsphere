@@ -1,6 +1,6 @@
 import {expect} from '@playwright/test'
 import {test,session,emails,signIn,mutation} from './helpers'
-import {createVenue,planningEvent,hold,reviewDatabase,databaseEvidence} from './venue-fixtures'
+import {createVenue,planningEvent,hold,reviewDatabase,databaseEvidence} from './fixtures/venue-fixtures'
 
 test('TC-CS93-45 TC-CS94-43 TC-CS95-41 LIVE multi-room Safety review, actionable feedback, privacy, new round and per-room preparation',async({page,browser,playwright,owner},info)=>{
  test.setTimeout(360000)

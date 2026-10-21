@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { test, field, signIn, session, mutation, emails } from './helpers'
-import { createVenue, databaseEvidence, reviewDatabase } from './venue-fixtures'
+import { createVenue, databaseEvidence, reviewDatabase } from './fixtures/venue-fixtures'
 
 test('TC-CS33-12 TC-CS33-13 TC-CS33-16 LIVE invalid venue time zones show field guidance and preserve the record/history with an unobstructed retry', async ({ page, playwright }, info) => {
   const staff = await session(playwright.request, emails.staff)
