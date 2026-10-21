@@ -18,7 +18,7 @@ test('TC-CS93-45 TC-CS94-43 TC-CS95-41 LIVE multi-room Safety review, actionable
   const requestId=p.event.id,eventId=p.event.eventId
   const technical=await mutation(p.coordinator,'POST',`/api/events/${requestId}/technical-request`,{version:1,equipment:[],supportRequired:false,notRequired:true,placementDetails:'No portable equipment or technical support required'})
   expect(technical.status()).toBe(200)
-  expect((await mutation(support,'POST',`/api/events/${requestId}/technical-request/decision`,{version:1,decision:'APPROVED'})).status()).toBe(200)
+  expect(await technical.json()).toMatchObject({status:'NOT_REQUIRED',decidedById:expect.any(String),decidedAt:expect.any(String)})
   await signIn(page,p.contact.email);await page.goto(`/events/${eventId}`)
   const panel=page.getByRole('region',{name:'Safety preparation',exact:true})
   await expect(panel.getByRole('button',{name:'Send for Safety Check',exact:true})).toBeDisabled()

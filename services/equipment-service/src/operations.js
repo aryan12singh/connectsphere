@@ -39,17 +39,17 @@ async function stockMap() {
   return new Map(data.items.map(item => [item.equipmentType, item.total]));
 }
 
-async function availability({ request, window, excludeEventRequestId = null }) {
+async function availability({ request, window, excludeEventRequestId = null, db = prisma }) {
   const normalized = period(window);
-  const stocks = await stockMap();
+  const stocks = config.dataMode === 'prisma' ? new Map((await db.equipmentStock.findMany()).map(row => [row.equipmentType, row.total])) : await stockMap();
   if (config.dataMode !== 'prisma') {
     const lines = lineResult(request.requirements, stocks, memory.reservations.filter(row => row.eventRequestId !== excludeEventRequestId), memory.operations, normalized);
     const result = { requestVersion: request.version, period: normalized, lines, fulfillable: lines.every(line => line.shortfall === 0), checkedAt: new Date().toISOString() };
     return result;
   }
   const [reservations, operations] = await Promise.all([
-    prisma.equipmentReservation.findMany({ where: { active: true, ...(excludeEventRequestId ? { eventRequestId: { not: excludeEventRequestId } } : {}) } }),
-    prisma.equipmentOperationalUnavailability.findMany(),
+    db.equipmentReservation.findMany({ where: { active: true, ...(excludeEventRequestId ? { eventRequestId: { not: excludeEventRequestId } } : {}) } }),
+    db.equipmentOperationalUnavailability.findMany(),
   ]);
   const lines = lineResult(request.requirements, stocks, reservations, operations, normalized);
   const result = { requestVersion: request.version, period: normalized, lines, fulfillable: lines.every(line => line.shortfall === 0), checkedAt: new Date().toISOString() };
@@ -73,6 +73,7 @@ async function reserve({ request, window, actor, key, hash, sourceVersions = {} 
     }
     const check = await availability({ request, window: normalized, excludeEventRequestId: request.eventRequestId });
     if (!check.fulfillable) throw Object.assign(new Error('Equipment is unavailable for one or more lines.'), { status: 409, code: 'EQUIPMENT_SHORTFALL', lines: check.lines });
+    await require('./readiness').invalidateRequest(request.eventRequestId);
     const old = memory.reservations.filter(row => row.eventRequestId === request.eventRequestId && row.active);
     const rows = request.requirements.equipment.map(line => ({ id: crypto.randomUUID(), eventRequestId: request.eventRequestId, eventId: request.planningEventId || request.eventRequestId, requestVersion: request.version, equipmentType: line.equipmentType, quantity: line.quantity, ...normalized, active: true, actorId: actor.id, sourceVersions, createdAt: new Date().toISOString() }));
     old.forEach(row => { row.active = false; });
@@ -82,6 +83,7 @@ async function reserve({ request, window, actor, key, hash, sourceVersions = {} 
     return value;
   }
   try { return await prisma.$transaction(async tx => {
+    await require('./readiness').lock(tx, request.eventRequestId);
     const replay = key && await tx.idempotencyRecord.findUnique({ where: { actorId_key: { actorId: actor.id, key } } });
     if (replay) {
       if (replay.requestHash !== hash) throw Object.assign(new Error('This action key was already used for a different request.'), { status: 409, code: 'IDEMPOTENCY_CONFLICT' });
@@ -112,6 +114,7 @@ async function reserve({ request, window, actor, key, hash, sourceVersions = {} 
     ]);
     const check = { lines: lineResult(request.requirements, new Map(stocks.map(row => [row.equipmentType, row.total])), reservations, operations, normalized) };
     if (check.lines.some(line => line.shortfall)) throw Object.assign(new Error('Equipment is unavailable for one or more lines.'), { status: 409, code: 'EQUIPMENT_SHORTFALL', lines: check.lines });
+    await require('./readiness').invalidateRequest(request.eventRequestId, tx);
     await tx.equipmentReservation.updateMany({ where: { eventRequestId: request.eventRequestId, active: true }, data: { active: false } });
     const rows = [];
     for (const line of request.requirements.equipment) rows.push(await tx.equipmentReservation.create({ data: { id: crypto.randomUUID(), eventRequestId: request.eventRequestId, eventId: request.planningEventId || request.eventRequestId, requestVersion: request.version, equipmentType: line.equipmentType, quantity: line.quantity, startAt: new Date(normalized.startAt), endAt: new Date(normalized.endAt), actorId: actor.id, sourceVersions } }));
@@ -120,7 +123,7 @@ async function reserve({ request, window, actor, key, hash, sourceVersions = {} 
     await tx.outboxEvent.create({ data: { actionKey: `EquipmentReserved:${request.eventRequestId}:v${request.version}`, eventType: 'EquipmentReserved', payload: value } });
     if (key) await tx.idempotencyRecord.create({ data: { actorId: actor.id, key, requestHash: hash, responseBody: value } });
     return value;
-  }, { isolationLevel: 'Serializable' }); }
+  }, { isolationLevel: 'ReadCommitted', timeout: 15000 }); }
   catch (error) {
     if (!['P2034', 'P2002'].includes(error.code)) throw error;
     const replay = key && await prisma.idempotencyRecord.findUnique({ where: { actorId_key: { actorId: actor.id, key } } });
@@ -160,6 +163,8 @@ async function createOperation({ body, actor, key }) {
   const known = current.items.map(item => item.equipmentType);
   const value = validateOperation(body, known, stock?.total || 0);
   if (config.dataMode !== 'prisma') {
+    const affected = memory.reservations.filter(row => row.active && row.equipmentType === value.equipmentType && Date.parse(row.startAt) < Date.parse(value.endAt) && Date.parse(row.endAt) > Date.parse(value.startAt));
+    for (const eventRequestId of new Set(affected.map(row => row.eventRequestId))) await require('./readiness').invalidateRequest(eventRequestId);
     const item = { id: crypto.randomUUID(), ...value, actorId: actor.id, version: 1, createdAt: new Date().toISOString() };
     memory.operations.push(item);
     if (key) memory.idempotency.set(`${actor.id}:${key}`, { hash, value: item });
@@ -167,6 +172,8 @@ async function createOperation({ body, actor, key }) {
   }
   try { return await prisma.$transaction(async tx => {
     await tx.$queryRaw`SELECT "equipmentType" FROM equipment_stock WHERE "equipmentType"=${value.equipmentType} FOR UPDATE`;
+    const affected = await tx.equipmentReservation.findMany({ where: { active: true, equipmentType: value.equipmentType, startAt: { lt: new Date(value.endAt) }, endAt: { gt: new Date(value.startAt) } } });
+    for (const eventRequestId of new Set(affected.map(row => row.eventRequestId))) await require('./readiness').invalidateRequest(eventRequestId, tx);
     const saved = await tx.equipmentOperationalUnavailability.create({ data: { id: crypto.randomUUID(), equipmentType: value.equipmentType, quantity: value.quantity, reason: value.reason, startAt: new Date(value.startAt), endAt: new Date(value.endAt), actorId: actor.id } });
     if (key) await tx.idempotencyRecord.create({ data: { actorId: actor.id, key, requestHash: hash, responseBody: JSON.parse(JSON.stringify(saved)) } });
     return saved;

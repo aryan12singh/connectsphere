@@ -14,6 +14,8 @@ const coordinator = { id: 'pg-coordinator', role: 'EVENT_COORDINATOR' };
 const support = { id: 'pg-support', role: 'TECHNICAL_SUPPORT_STAFF' };
 const window = { startAt: '2035-01-01T10:00:00.000Z', endAt: '2035-01-01T12:00:00.000Z' };
 const requirements = equipment => ({ equipment, supportRequired: false, supportDetails: '', placementDetails: 'At the lectern', notRequired: false });
+const contexts = new Map();
+test.mock.method(require('../../src/eventContext'), 'eventContext', async eventId => contexts.get(eventId) || ({ eventId, eventRequestId: eventId, requirementsRevision: 'revision-1' }));
 async function submit(equipment, status = 'PENDING_TECH_REVIEW') {
   const eventRequestId = `pg-${randomUUID()}`;
   const saved = await store.saveSubmission({ eventRequestId, actor: coordinator, value: { version: 1, status, requirements: requirements(equipment) }, hash: 'submit', context: { eventId: eventRequestId, requirementsRevision: 'revision-1' } });
@@ -26,6 +28,7 @@ before(async () => {
 });
 
 beforeEach(async () => {
+  contexts.clear();
   await db.technicalReadinessFence.deleteMany();
   await db.equipmentReservation.deleteMany();
   await db.equipmentOperationalUnavailability.deleteMany();
@@ -144,6 +147,7 @@ test('TC-CS42-09 a failed durable outbox insert rolls back all reservation lines
 test('TC-CS42-10 persisted readiness fences validate tokens, survive reconnect and release exactly once', async () => {
   const request = await submit([], 'NOT_REQUIRED');
   const token = randomUUID();
+  contexts.set(request.eventRequestId, { eventId: request.eventRequestId, eventRequestId: request.eventRequestId, requirementsRevision: 'revision-1', safetyToken: token, safetyGeneration: 1, safetyState: 'PREPARING' });
   await assert.rejects(() => readiness.prepare(request.eventRequestId, {}), error => error.code === 'VALIDATION_FAILED');
   assert.equal((await readiness.prepare(request.eventRequestId, { token, generation: 1 })).status, 'NOT_REQUIRED');
   await db.$disconnect();
@@ -151,8 +155,102 @@ test('TC-CS42-10 persisted readiness fences validate tokens, survive reconnect a
   assert.equal((await readiness.release(request.eventRequestId, token)).released, true);
   assert.equal((await readiness.release(request.eventRequestId, token)).released, false);
   const internal = { 'x-internal-api-key': 'change-me-dev-internal-key' };
-  assert.equal((await api.http(`/internal/events/${request.eventRequestId}/readiness/prepare`, { method: 'POST', headers: internal, body: { token, generation: 2 } })).status, 200);
-  assert.equal((await api.http(`/internal/events/${request.eventRequestId}/readiness/release`, { method: 'POST', headers: internal, body: { token } })).body.released, true);
+  // A released token cannot be reactivated with another generation.
+  const reactivated = await api.http(`/internal/events/${request.eventRequestId}/readiness/prepare`, { method: 'POST', headers: internal, body: { token, generation: 1 } });
+  assert.equal(reactivated.status, 409);
+  assert.equal(reactivated.body.error.code, 'TECHNICAL_REQUIREMENTS_STALE');
+  assert.equal((await api.http(`/internal/events/${request.eventRequestId}/readiness/release`, { method: 'POST', headers: internal, body: { token } })).body.released, false);
+});
+
+test('CS-93 technical edits invalidate Event Safety proof before committing and fail closed without acknowledgement', async t => {
+  const request = await submit([], 'NOT_REQUIRED');
+  const token = randomUUID();
+  const context = { eventId: request.eventRequestId, eventRequestId: request.eventRequestId, requirementsRevision: 'revision-1', safetyToken: token, safetyGeneration: 1, safetyState: 'PREPARING' };
+  contexts.set(request.eventRequestId, context);
+  await readiness.prepare(request.eventRequestId, { token, generation: 1 });
+  let acknowledge = false;
+  const calls = [];
+  t.mock.method(global, 'fetch', async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body) });
+    return { ok: acknowledge, json: async () => ({ currentToken: null, invalidated: true, state: 'STALE' }) };
+  });
+  const input = { eventRequestId: request.eventRequestId, actor: coordinator, value: { version: 2, status: 'NOT_REQUIRED', requirements: { ...request.requirements, placementDetails: 'Keep walkway clear' } }, context };
+  await assert.rejects(() => store.saveSubmission(input), error => error.code === 'SAFETY_FENCE_UNAVAILABLE');
+  assert.equal((await store.findRequest(request.eventRequestId)).version, 1);
+  assert.equal((await db.technicalReadinessFence.findUnique({ where: { token } })).active, true);
+  acknowledge = true;
+  await store.saveSubmission(input);
+  assert.equal(calls.length, 2);
+  assert.ok(calls[1].url.endsWith(`/internal/events/${request.eventRequestId}/readiness-invalidations`));
+  assert.equal(calls[1].body.token, token);
+  assert.equal((await db.technicalReadinessFence.findUnique({ where: { token } })).active, false);
+});
+
+test('CS-41 overlapping repair invalidates an already prepared Safety token before changing availability', async t => {
+  const request = await submit([{ equipmentType: 'projector', quantity: 2 }]);
+  await operations.reserve({ request, window, actor: support, sourceVersions: { requirementsRevision: 'revision-1' } });
+  const token = randomUUID();
+  contexts.set(request.eventRequestId, { eventId: request.eventRequestId, eventRequestId: request.eventRequestId, requirementsRevision: 'revision-1', safetyToken: token, safetyGeneration: 1, safetyState: 'PREPARING' });
+  await readiness.prepare(request.eventRequestId, { token, generation: 1 });
+  let called = false;
+  t.mock.method(global, 'fetch', async (_url, options) => {
+    assert.equal(JSON.parse(options.body).token, token);
+    assert.equal(await db.equipmentOperationalUnavailability.count(), 0);
+    called = true;
+    return { ok: true, json: async () => ({ currentToken: null, invalidated: true }) };
+  });
+  await operations.createOperation({ body: { ...window, equipmentType: 'projector', quantity: 4, reason: 'Repair' }, actor: support });
+  assert.equal(called, true);
+  assert.equal((await db.technicalReadinessFence.findUnique({ where: { token } })).active, false);
+});
+
+test('CS-93 a technical edit waiting for preparation sees and invalidates the newly committed fence', async t => {
+  const request = await submit([], 'NOT_REQUIRED');
+  const token = randomUUID();
+  let unlock, locked;
+  const gate = new Promise(resolve => { unlock = resolve; });
+  const acquired = new Promise(resolve => { locked = resolve; });
+  const preparing = db.$transaction(async tx => {
+    await readiness.lock(tx, request.eventRequestId);
+    locked();
+    await gate;
+    await tx.technicalReadinessFence.create({ data: { token, eventId: request.eventRequestId, eventRequestId: request.eventRequestId, proof: { fingerprint: 'prepared-before-edit' } } });
+  });
+  await acquired;
+  let called = false;
+  t.mock.method(global, 'fetch', async () => { called = true; return { ok: true, json: async () => ({ currentToken: null, invalidated: true }) }; });
+  const editing = store.saveSubmission({ eventRequestId: request.eventRequestId, actor: coordinator, value: { version: 2, status: 'NOT_REQUIRED', requirements: request.requirements } });
+  try {
+    let waiting = false;
+    for (let attempt = 0; attempt < 100 && !waiting; attempt++) {
+      const rows = await db.$queryRaw`SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname=current_database() AND wait_event='advisory'`;
+      waiting = rows[0].count > 0;
+      if (!waiting) await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(waiting, true, 'The edit must actually wait for the preparation lock');
+  }
+  finally { unlock(); }
+  await preparing;
+  await editing;
+  assert.equal(called, true, 'The waiting edit must observe the fence committed before its lock was acquired');
+  assert.equal((await db.technicalReadinessFence.findUnique({ where: { token } })).active, false);
+});
+
+test('CS-93 reducing inventory invalidates prepared Safety proof and refuses the write when Event is unavailable', async t => {
+  const request = await submit([{ equipmentType: 'projector', quantity: 2 }]);
+  await operations.reserve({ request, window, actor: support });
+  const token = randomUUID();
+  contexts.set(request.eventRequestId, { eventId: request.eventRequestId, eventRequestId: request.eventRequestId, requirementsRevision: 'revision-1', safetyToken: token, safetyGeneration: 1, safetyState: 'PREPARING' });
+  await readiness.prepare(request.eventRequestId, { token, generation: 1 });
+  const inventory = require('../../src/inventory');
+  const stock = await db.equipmentStock.findUnique({ where: { equipmentType: 'projector' } });
+  let acknowledge = false;
+  t.mock.method(global, 'fetch', async () => ({ ok: acknowledge, json: async () => ({ currentToken: null, invalidated: true }) }));
+  await assert.rejects(() => inventory.update('projector', { total: 0, version: stock.version }), error => error.code === 'SAFETY_FENCE_UNAVAILABLE');
+  assert.equal((await db.equipmentStock.findUnique({ where: { equipmentType: 'projector' } })).total, 5);
+  acknowledge = true;
+  await inventory.update('projector', { total: 0, version: stock.version });
+  assert.equal((await db.technicalReadinessFence.findUnique({ where: { token } })).active, false);
 });
 
 test('TC-CS41-10 operational retries persist exactly one command and reject changed payload reuse', async () => {

@@ -57,6 +57,7 @@ async function saveSubmission({ eventRequestId, actor, value, key, hash, context
     const existing = memory.requests.get(eventRequestId);
     if (existing && value.version !== existing.version + 1) return { conflict: true };
     if (!existing && value.version !== 1) return { conflict: true };
+    await require('./readiness').invalidateRequest(eventRequestId);
     const record = {
       eventRequestId, planningEventId: context?.eventId || null, requirementsRevision: context?.requirementsRevision || null, coordinatorId: actor.id, version: value.version,
       status: value.status, requirements: value.requirements,
@@ -74,9 +75,11 @@ async function saveSubmission({ eventRequestId, actor, value, key, hash, context
   }
   try {
     return await prisma.$transaction(async tx => {
+      await require('./readiness').lock(tx, eventRequestId);
       const current = await tx.technicalRequest.findUnique({ where: { eventRequestId } });
       if (current && value.version !== current.version + 1) return { conflict: true };
       if (!current && value.version !== 1) return { conflict: true };
+      await require('./readiness').invalidateRequest(eventRequestId, tx);
       const record = current
         ? await tx.technicalRequest.update({
             where: { id: current.id, version: current.version },
@@ -90,7 +93,7 @@ async function saveSubmission({ eventRequestId, actor, value, key, hash, context
       const result = requestView(record);
       if (key) await tx.idempotencyRecord.create({ data: { actorId: actor.id, key, requestHash: hash, responseBody: result } });
       return { record, result };
-    }, { isolationLevel: 'Serializable' });
+    }, { isolationLevel: 'ReadCommitted', timeout: 15000 });
   }
   catch (error) {
     if (error.code === 'P2002' || error.code === 'P2034') return { conflict: true };
@@ -103,6 +106,7 @@ async function saveDecision({ eventRequestId, actor, decision, reason, version, 
   if (config.dataMode !== 'prisma') {
     const current = memory.requests.get(eventRequestId);
     if (!current || current.version !== version || current.status !== 'PENDING_TECH_REVIEW' && current.status !== 'SUBMITTED') return { conflict: true };
+    await require('./readiness').invalidateRequest(eventRequestId);
     const next = { ...current, status: decision, decisionReason: decision === 'REJECTED' ? reason : null, decidedById: actor.id, decidedAt: now, updatedAt: now };
     memory.requests.set(eventRequestId, next);
     const actionKey = `TechRequestDecided:${eventRequestId}:v${version}`;
@@ -114,8 +118,10 @@ async function saveDecision({ eventRequestId, actor, decision, reason, version, 
   }
   try {
     return await prisma.$transaction(async tx => {
+      await require('./readiness').lock(tx, eventRequestId);
       const current = await tx.technicalRequest.findUnique({ where: { eventRequestId } });
       if (!current || current.version !== version || current.status !== 'PENDING_TECH_REVIEW' && current.status !== 'SUBMITTED') return { conflict: true };
+      await require('./readiness').invalidateRequest(eventRequestId, tx);
       const changed = await tx.technicalRequest.updateMany({
         where: { id: current.id, version, status: current.status },
         data: { status: decision, decisionReason: decision === 'REJECTED' ? reason : null, decidedById: actor.id, decidedAt: new Date(now) },
@@ -128,7 +134,7 @@ async function saveDecision({ eventRequestId, actor, decision, reason, version, 
       const result = requestView(record);
       if (key) await tx.idempotencyRecord.create({ data: { actorId: actor.id, key, requestHash: hash, responseBody: result } });
       return { result };
-    }, { isolationLevel: 'Serializable' });
+    }, { isolationLevel: 'ReadCommitted', timeout: 15000 });
   }
   catch (error) {
     if (error.code === 'P2002' || error.code === 'P2034') return { conflict: true };

@@ -53,7 +53,7 @@ test('Prisma store creates and updates versioned requests atomically and maps co
   const idempotency = new Map();
   let transactionError = null;
   let decisionUpdateCount = 1;
-  let serializable = false;
+  let freshSnapshot = false;
   const tx = {
     equipmentStock: {
       async upsert({ where, create }) { if (!stocks.has(where.equipmentType)) { const now = new Date(); stocks.set(where.equipmentType, { ...create, total: create.total ?? 0, version: 1, createdAt: now, updatedAt: now }); } },
@@ -72,6 +72,7 @@ test('Prisma store creates and updates versioned requests atomically and maps co
       },
     },
     technicalRequestHistory: { async create() {} },
+    technicalReadinessFence: { async findMany() { return []; } },
     outboxEvent: { async create() {} },
     idempotencyRecord: {
       async findUnique({ where }) { return idempotency.get(`${where.actorId_key.actorId}:${where.actorId_key.key}`) || null; },
@@ -81,7 +82,7 @@ test('Prisma store creates and updates versioned requests atomically and maps co
   };
   require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
     ...tx,
-    async $transaction(run, options) { serializable = options?.isolationLevel === 'Serializable'; if (transactionError) { const error = transactionError; transactionError = null; throw error; } return run(tx); },
+    async $transaction(run, options) { freshSnapshot = options?.isolationLevel === 'ReadCommitted'; if (transactionError) { const error = transactionError; transactionError = null; throw error; } return run(tx); },
   } };
   stocks.set('camera', { equipmentType: 'camera', total: 3, version: 7, createdAt: new Date('2020-01-01T00:00:00.000Z'), updatedAt: new Date('2026-10-18T00:00:00.000Z') });
   config.dataMode = 'prisma';
@@ -103,7 +104,7 @@ test('Prisma store creates and updates versioned requests atomically and maps co
   const actor = { id: 'coord-prisma', role: 'EVENT_COORDINATOR' };
   const value = { version: 1, status: 'PENDING_TECH_REVIEW', requirements: { equipment: [], supportRequired: true, supportDetails: 'assist', placementDetails: 'front', notRequired: false } };
   assert.equal((await prismaStore.saveSubmission({ eventRequestId, actor, value, hash: 'h' })).result.version, 1);
-  assert.equal(serializable, true);
+  assert.equal(freshSnapshot, true);
   assert.equal((await prismaStore.findRequest(eventRequestId)).version, 1);
   assert.equal((await prismaStore.listRequests()).length, 1);
   assert.equal((await prismaStore.findIdempotency(actor.id, 'missing')), null);

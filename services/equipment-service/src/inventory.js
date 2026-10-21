@@ -27,6 +27,10 @@ async function update(equipmentType, body) {
   if (config.dataMode !== 'prisma') {
     const current = currentItem;
     if (current.version !== body.version) throw Object.assign(new Error('Inventory changed. Refresh before editing.'), { status: 409, code: 'STALE_VERSION' });
+    if (body.total < current.total) {
+      const affected = require('./operations')._memory.reservations.filter(row => row.active && row.equipmentType === equipmentType);
+      for (const eventRequestId of new Set(affected.map(row => row.eventRequestId))) await require('./readiness').invalidateRequest(eventRequestId);
+    }
     const saved = { ...current, equipmentType, total: body.total, version: current.version + 1, updatedAt: new Date().toISOString() };
     memory.set(equipmentType, saved);
     return saved;
@@ -36,8 +40,12 @@ async function update(equipmentType, body) {
     await tx.$queryRaw`SELECT "equipmentType" FROM equipment_stock WHERE "equipmentType"=${equipmentType} FOR UPDATE`;
     const current = await tx.equipmentStock.findUnique({ where: { equipmentType } });
     if (current.version !== body.version) throw Object.assign(new Error('Inventory changed. Refresh before editing.'), { status: 409, code: 'STALE_VERSION' });
+    if (body.total < current.total) {
+      const affected = await tx.equipmentReservation.findMany({ where: { active: true, equipmentType } });
+      for (const eventRequestId of new Set(affected.map(row => row.eventRequestId))) await require('./readiness').invalidateRequest(eventRequestId, tx);
+    }
     return tx.equipmentStock.update({ where: { equipmentType }, data: { total: body.total, version: { increment: 1 } } });
-  });
+  }, { timeout: 15000 });
 }
 
 module.exports = { inventory, update };
