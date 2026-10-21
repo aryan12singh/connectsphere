@@ -1,5 +1,5 @@
 import { test, created, validRequest, assignedSession, session, emails, mutation, signIn, venueService } from './helpers'
-import {createVenue,planningEvent,hold,reviewDatabase,databaseEvidence} from './venue-fixtures'
+import {createVenue,planningEvent,hold,reviewDatabase,databaseEvidence} from './fixtures/venue-fixtures'
 import { expect } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 

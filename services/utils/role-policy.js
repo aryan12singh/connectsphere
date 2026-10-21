@@ -18,6 +18,7 @@ const ACTION_ROLES = Object.freeze({
   // reassigning are added by CS-81/CS-30. A Lead is NOT a Coordinator: it never
   // gets event_requests.review, events.confirm or venue booking powers (Q11).
   'assignments.view':['EVENT_COORDINATOR_LEAD'],
+  'events.technical.metadata.view': ['TECHNICAL_SUPPORT_STAFF'],
   'safety.view':['SAFETY_OFFICER'],
   'safety.decide':['SAFETY_OFFICER'],
   'safety.submit':['EVENT_COORDINATOR'],

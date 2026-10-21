@@ -1,6 +1,6 @@
 import {expect} from '@playwright/test'
 import {test,session,emails,signIn,mutation} from './helpers'
-import {createVenue,planningEvent,hold,roomInput,reviewDatabase,databaseEvidence} from './venue-fixtures'
+import {createVenue,planningEvent,hold,roomInput,reviewDatabase,databaseEvidence} from './fixtures/venue-fixtures'
 test('TC-CS38-30 LIVE Coordinator hold becomes confirmed on Staff approval without an extra Coordinator action',async({page,playwright,owner},info)=>{
   const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner)
   try {

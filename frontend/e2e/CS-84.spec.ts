@@ -1,6 +1,6 @@
 import {expect} from '@playwright/test'
 import {test,session,emails,signIn} from './helpers'
-import {createVenue,planningEvent,hold,reviewDatabase,databaseEvidence} from './venue-fixtures'
+import {createVenue,planningEvent,hold,reviewDatabase,databaseEvidence} from './fixtures/venue-fixtures'
 import {mutation} from './helpers'
 test('TC-CS84-39 TC-CS84-41 LIVE coordinated legacy buffers preserve approvals and first-confirmation flexibility',async({page,playwright,owner},info)=>{
   const staff=await session(playwright.request,emails.staff),a=await planningEvent(playwright.request,owner),b=await planningEvent(playwright.request,owner)

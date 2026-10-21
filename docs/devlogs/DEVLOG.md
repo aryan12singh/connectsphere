@@ -80,6 +80,28 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 2026-10-21 — Attendance, test evidence and main integration
+
+Delivered the CS-47 attendee read model, title-based event heading and
+test-scoped Attendance fixtures under `frontend/e2e/fixtures/`. Retained the
+three explicit dependency stubs and recorded the actual partial/targeted
+CS-40–42 and runnable CS-47 browser results. Published 21 successful-case
+screenshots, seven raw Playwright reports and four summaries to the requested
+Drive folder and linked only the four requested stories in the test sheet.
+
+Merged the older remote Equipment branch while preserving the newer local
+source, then integrated main's venue-policy, daylight-saving and coverage
+changes. Resolved fixture paths and coverage-script layout conflicts, preserved
+both development histories and the combined 81% Booking/Equipment gates, and
+fixed a pre-existing technical-request response type annotation.
+
+Merged-source checks passed: Booking unit 67/67, Equipment unit 35/35,
+Attendance unit 22/22, focused CS-38/85 frontend 58/58, both frontend typechecks
+and Playwright test collection. Booking's native unit coverage gate also passed.
+Full merged-source PostgreSQL, browser execution and combined coverage remain
+unrun. See the
+[dated changes, evidence links and merge decisions](2026-10-21-attendance-evidence-main-merge.md).
+
 ### 21 October 2026 — Marc — CS-10 seven roles (Coordinator Lead) and story check
 
 Checked Marc's stories (CS-10, CS-26, CS-50, CS-51, CS-79) on main `a7749cb`.
@@ -173,6 +195,48 @@ Open: TC-CS51-02 expects a `NEEDS_REPLACEMENT` flag; main flags a booking under
 a Staff block as `BUFFER_CONFLICT`. Agree with Aryan/PO. No `/venue-bookings/:id`
 (review) page exists for notice links (CS-38). Technical-request and
 cancellation/replacement notices are not built.
+
+### 2026-10-18 — Booking / Equipment — combined coverage and canonical E2E cases
+
+Both services now enforce combined unit/integration coverage above 80% in all
+four categories, including instrumented Booking Python HTTP-contract children.
+Node 22 measurements: Booking 97.76% statements/lines, 82.29% branches and
+98.42% functions; Equipment 97.15% statements/lines, 88.54% branches and 100%
+functions. Every source file remains included. Booking's 82 Node + 15 Python
+tests and Equipment's 56 Node tests passed. Auth files remain untouched.
+
+The three E2E files now adopt all 41 recorded CS-40–42 cases with individual
+canonical IDs and a CI traceability check. Real boundary tests exposed and
+fixed current-assignment access, operation retries, versioned proof,
+replacement supply accounting, and stock-input hydration defects. See the
+[dated verification report](2026-10-18-booking-equipment-coverage.md) for final
+browser execution, artifacts, reproducible commands and the separate four
+CS-10 Auth-fixture failures in the wider frontend suite.
+
+### 2026-10-17 — Equipment CS-40–42 — testing structure and coverage gate
+
+Equipment service tests use module-focused unit files and HTTP app/router tests
+as integration tests; startup is verified separately. Its coverage command runs
+both layers and enforces 80% aggregate line/branch/function thresholds. The
+latest local run passed **41/41** and measured **86.79% lines, 84.46% branches,
+and 83.16% functions** across the complete Equipment source tree.
+
+CS-40–42 now have canonical Jira case records without testing-type/adoption
+status columns. The records retain the PO supplements (CS-40-14/15 and
+CS-41-12/13/14), the user-approved Booking-buffer interpretation, and explicit
+old-ID mappings without changing historical run evidence. Equipment now exposes
+availability, all-line reservation, operational-unavailability, internal
+readiness fencing, OpenAPI, Kong and BFF wiring. The Coordinator form retains
+physical-stock/text limits and direct `NOT_REQUIRED`; Technical Support has
+inventory and reservation controls using existing semantic UI variables.
+
+Booking's existing unit (35/35) and Python HTTP contract (15/15) suites pass,
+but its current service-wide unit-only coverage baseline remains below the
+requested >80% threshold. PostgreSQL Booking/E2E verification requires an
+isolated `booking_test` database and a rebuilt isolated Node 22 Docker stack;
+the shared development databases were deliberately not altered. This is not a
+claim that Booking's aggregate coverage or all story-specific E2E cases have
+completed; those remain the next required work items.
 
 ### 17 October 2026 — integrated Venue, Safety and notification delivery
 

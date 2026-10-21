@@ -143,7 +143,7 @@ services:
     routes:
       - name: attendance-routes
         paths: ["/attendances"]
-        strip_path: false
+        strip_path: true
 
   - name: messaging-service
     url: http://messaging-service:3000
@@ -163,6 +163,6 @@ services:
     url: http://equipment-service:3000
     routes:
       - name: technical-requests
-        paths: ["/equipment-types", "/equipment-inventory", "/technical-requests", "~/event-requests/[^/]+/technical-request(?:/decision|/reservations)?$"]
+        paths: ["/equipment-types", "/equipment-inventory", "/equipment-operational-unavailability", "/technical-requests", "~/event-requests/[^/]+/technical-request(?:/decision|/availability|/reservations)?$"]
         strip_path: false
         regex_priority: 200

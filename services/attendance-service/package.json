@@ -1,0 +1,30 @@
+{
+  "name": "attendance-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ConnectSphere attendee-facing event information service",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "check": "find src -name '*.js' -type f -print0 | xargs -0 -n 1 node --check && DATA_MODE=memory NODE_ENV=test node -e 'require(\"./src/app\")'",
+    "build": "npm run check",
+    "test:unit": "DATA_MODE=memory NODE_ENV=test node --test tests/unit/*.test.js",
+    "test:integration": "DATA_MODE=memory NODE_ENV=test node --test --test-concurrency=1 tests/integration/*.test.js",
+    "test:coverage": "c8 --all --include='src/**/*.js' --reporter=text --reporter=json --reporter=json-summary --reporter=lcov --check-coverage --statements=81 --branches=81 --functions=81 --lines=81 node ../../tests/scripts/service-coverage.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^6.19.3",
+    "@prisma/client": "^6.19.3",
+    "dotenv": "^16.6.1",
+    "express": "^5.3.0",
+    "helmet": "^8.3.0",
+    "prisma": "^6.19.3"
+  },
+  "devDependencies": {
+    "c8": "^10.1.3"
+  }
+}

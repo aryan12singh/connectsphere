@@ -14,5 +14,5 @@ export function recognisedRoles(user: { role?: string, roles?: string[] } | null
   return [...new Set(roles)] as Role[]
 }
 export function roleHome(role: string) {
-  return ({ EVENT_COORDINATOR_LEAD: '/queue', SAFETY_OFFICER:'/safety-checks', VENUE_STAFF: '/venue', ATTENDEE: '/attendee', TECHNICAL_SUPPORT_STAFF: '/technical-support' } as Record<string, string>)[role] ?? '/'
+  return ({ EVENT_COORDINATOR_LEAD: '/queue', SAFETY_OFFICER:'/safety-checks', VENUE_STAFF: '/venue', ATTENDEE: '/attendee', TECHNICAL_SUPPORT_STAFF: '/technical-requirements' } as Record<string, string>)[role] ?? '/'
 }

@@ -3,7 +3,7 @@ import { idempotencyHeaders, kongBffFetch } from '../../../../utils/kongBff'
 
 export default defineEventHandler(async (event) => {
   const session = await requireUserSession(event)
-  if (!(session.user?.roles ?? [session.user?.role]).includes('TECHNICAL_SUPPORT_STAFF'))
+  if (session.user?.role !== 'TECHNICAL_SUPPORT_STAFF')
     throw createError({ statusCode: 403, statusMessage: 'Only Technical Support may decide technical requirements.' })
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'Event request ID is required.' })

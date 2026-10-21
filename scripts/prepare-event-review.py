@@ -17,7 +17,7 @@ if existing.strip():p.error('Project already exists; use its recorded compose fi
 # Force checked-in development settings; never inherit a hosted DB or supplied secrets.
 env=dict(os.environ,INTERNAL_API_KEY='change-me-dev-internal-key',KEYCLOAK_CLIENT_SECRET='dev-auth-service-secret',RABBITMQ_USER='connectsphere',RABBITMQ_PASSWORD='connectsphere-dev-only')
 c=json.loads(subprocess.check_output(['docker','compose','-f',str(root/'infra/docker-compose.yml'),'config','--format','json'],env=env,text=True))
-keep=['postgres','keycloak','kong','user-service','auth-service','event-service','venue-service','booking-service','notification-service','equipment-service','rabbitmq','seed']
+keep=['postgres','keycloak','kong','user-service','auth-service','event-service','venue-service','booking-service','attendance-service','notification-service','equipment-service','rabbitmq','seed']
 c['services']={name:c['services'][name] for name in keep};c['name']=a.project;c['networks']={'default':{}};c['volumes']={'pgdata':{},'rabbitdata':{}}
 for name,service in c['services'].items():
  for key in ['container_name','profiles']:service.pop(key,None)

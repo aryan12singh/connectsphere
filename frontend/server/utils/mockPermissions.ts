@@ -7,7 +7,7 @@ import type { BackendRole } from './mockUserDb'
 export const MOCK_ROLE_PERMISSIONS: Record<BackendRole, string[]> = {
   SAFETY_OFFICER: ['safety.view', 'safety.decide'],
   EVENT_COORDINATOR_LEAD: ['assignments.view', 'events.view'],
-  TECHNICAL_SUPPORT_STAFF: ['technical.view', 'technical.review', 'venues.view', 'audit.view', 'permissions.manage', 'settings.manage', 'users.manage', 'users.view'],
+  TECHNICAL_SUPPORT_STAFF: ['technical.view', 'technical.review', 'events.technical.metadata.view', 'venues.view', 'audit.view', 'permissions.manage', 'settings.manage', 'users.manage', 'users.view'],
   EVENT_ORGANISER: ['event_requests.create', 'events.view', 'messages.send'],
   EVENT_COORDINATOR: ['safety.submit', 'safety.rework', 'technical.submit', 'technical.view', 'event_requests.review', 'events.confirm', 'events.view', 'messages.send', 'venue_bookings.create', 'venues.view'],
   VENUE_STAFF: ['events.view', 'messages.send', 'venue_bookings.decide', 'venues.manage', 'venues.view'],

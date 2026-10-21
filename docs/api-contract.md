@@ -17,6 +17,7 @@ backend build against this in parallel. Per-service detail is in each service's 
 | user-service | `services/user-service/docs/openapi.yaml` (public routes at the end) | `GET /users/*` only |
 | event-service | `services/event-service/docs/openapi.yaml` | `/event-requests/*`, `/events/*` |
 | venue-service | `services/venue-service/swagger.html` (owned by the venue epic) | `/venues/*` |
+| equipment-service | `services/equipment-service/docs/openapi.yaml` | `/equipment-types`, `/equipment-inventory/*`, `/technical-requests/*`, `/event-requests/*/technical-request/*` |
 
 Later services (booking, equipment, notification, attendance) document their own API in the
 story that scaffolds them. CS-57 checks the final documentation.
@@ -192,7 +193,48 @@ The existing auth routes keep their paths. What changes in the **session / role 
 
 Booking-service forwards the verified caller token to `GET /events/{id}/booking-access` before Coordinator creation/detail/edit/list/history. Event-service returns only the actual Event ID for its current Coordinator. Wrong/removed assignment denies 403; unavailable assignment validation returns 503 without writes. Venue Staff operational windows retain decision-only handling. CS-30 reassignment and confirmation remain separate workflows.
 
+## 12. Equipment requests, availability and reservations (CS-40–42)
+
+This section is the shared wire contract for the existing Equipment service. It combines the Jira acceptance criteria with the Product Owner's CS-40–42 prototype; explicitly adopted prototype values below are product requirements, not visual-only suggestions.
+
+### Technical request state and version
+
+`TechnicalRequest.status` is one of `PENDING_TECH_REVIEW`, `APPROVED`, `REJECTED`, or `NOT_REQUIRED`. `PENDING_TECH_REVIEW` is the wire label for the submitted state previously represented as `SUBMITTED`; readers may accept `SUBMITTED` for existing persisted rows while they are migrated. `NOT_REQUIRED` is a Coordinator's explicit, versioned declaration that neither equipment nor support is needed. It records the current Coordinator as actor and the declaration time, and does not create a reservation. A request that includes equipment or support cannot be `NOT_REQUIRED`. Support-only requests require Technical Support approval. Only the current assigned Coordinator may edit or declare no requirements; only Technical Support may approve, reject, configure stock, mark it unavailable, check availability, or reserve.
+
+Every material edit increments `version` and returns the current request state. Mutating calls preserve `version` in JSON. Services may also accept `If-Match: "<version>"`; if both are sent they must agree. A stale version returns 409 `STALE_VERSION` with no partial state change. Existing history is retained when a new version supersedes old approval. Safety may read only through the existing permitted Event review relationship and has no Equipment write access.
+
+### Prototype validation limits
+
+* Equipment type must exist in the service catalog. Each requested quantity is a positive whole number no greater than that type's physical total stock. Period-specific availability is checked separately; a valid physical quantity may still have a shortfall for its requested period.
+* Venue allocations are whole numbers greater than or equal to zero. For each equipment type, the venue allocation sum must equal the pooled requested quantity. A venue is counted once in the request; pooled stock is not duplicated for each venue.
+* `supportDetails` is at most 1000 characters; `placementDetails` is at most 500 characters. Rejection reason is required, trimmed, and 1–500 characters.
+* An operational unavailability entry names a known type, a positive whole quantity no greater than total stock, an offset-aware start/end with start before end, a required reason, actor and current inventory version.
+
+### Equipment period and availability
+
+The Equipment period is the pooled interval from the earliest `occupiedStartAt` to the latest `occupiedEndAt` among current Event bookings receiving equipment. Booking service computes each occupied interval using that venue's current `setupMinutes` and `turnaroundMinutes`; Equipment adds no separate fixed buffer. The projection carries each booking and venue version so availability and reservation can detect changed source context. Expired tentative holds and cancelled/rejected bookings do not supply a current allocation. A missing or stale allocation context prevents a fresh availability authority or reservation.
+
+The Technical Support queue's existing `GET /technical-requests` response includes `equipmentPeriod`, derived by Equipment from Booking's current allocation projection (null for requests without equipment or when current allocation context cannot be resolved). The BFF combines these records with Event's `GET /event-requests/technical-metadata?ids=...` projection, authorized by `events.technical.metadata.view` for Technical Support only. That projection contains event title, event period, time zone and current Coordinator display name; it does not grant `events.view` or return submission timestamps.
+
+`GET /event-requests/{id}/technical-request/availability` is a read-only check. For every requested type it returns `requested`, `available`, and non-negative `shortfall`, plus the pooled period and `checkedAt`. Availability subtracts overlapping active reservations and operational unavailability for the half-open occupied interval. Touching intervals follow the same explicit overlap policy as Booking. A check creates no reservation and does not authorize a later write. `fulfillable` is true only when every requested line has zero shortfall.
+
+`POST /event-requests/{id}/technical-request/reservations` reserves the complete current approved request with its `version` and an `Idempotency-Key`. The service rechecks requirements, source versions, stock, operational windows and reservations while holding per-type database locks. Any short line returns 409 `EQUIPMENT_SHORTFALL` with all line shortfalls and makes no reservation. Successful replacement is atomic and records the Event, type, quantity, buffered period, actor, time, request version, and booking/venue source revisions. A repeated key and same request replays the response; same key with changed input returns 409 `IDEMPOTENCY_CONFLICT`.
+
+`PUT /equipment-inventory/{type}` is a versioned Technical Support stock edit. An operational unavailability write is versioned and period-bound; it flags affected reservations and makes them fail fresh readiness checks without silently deleting their reservation records. Venue expiry, a single venue cancellation, or Safety rework does not release Equipment. Whole-Event cancellation uses the owning Event lifecycle's one-time release operation.
+
+Operational-unavailability commands accept `Idempotency-Key`: exact retries by
+the same actor return the same operation, including concurrent retries; changed
+data with that key returns 409. Current-version readiness reports
+`EQUIPMENT_OPERATION_CHANGED` when operational supply no longer fulfils an
+existing reservation, retaining its rows and history. Explicitly approved
+technical revisions require matching current-version reservation lines; atomic
+replacement excludes that Event's previous units from competing demand and
+preserves the old commitments if replacement fails. Serializable reservation
+contention returns 409 `CONCURRENT_RESERVATION` for a fresh availability check.
+
+The service also exposes internal-only `GET /internal/events/{id}/equipment-allocation-context` from Booking to Equipment. It is authenticated with `x-internal-api-key` and is never routed by Kong.
+
 
 ## 17 October 2026 integration amendment
 
-Event owns Safety review, current-proof confirmation and separate Preparation. Kong additionally routes `/safety-checks`, `/preparation-work`, `/equipment-inventory`, `/technical-requests` and request-scoped technical decisions/reservations. No `/internal/*` route is public. [Integration handoff](sprint3-integration-handoff.md) documents the stable RabbitMQ contract, maintenance/readiness fencing, inventory defaults, source ownership and the resolved two-action venue policy. Booking summary `policy.pendingClarifications` is now empty: Coordinator request creates `TENTATIVELY_HELD`, and Staff approval changes that booking to `CONFIRMED`, without another Coordinator action. Parent Event confirmation remains separate. Existing request/owner privacy and fixed role-plus-capability checks still apply.
+Event owns Safety review, current-proof confirmation and separate Preparation. Kong additionally routes `/safety-checks`, `/preparation-work`, `/equipment-inventory`, `/technical-requests` and request-scoped technical decisions/reservations. No `/internal/*` route is public. [Integration handoff](sprint3-integration-handoff.md) documents the stable RabbitMQ contract, maintenance/readiness fencing, inventory defaults, source ownership and the resolved two-action venue policy. Booking summary `policy.pendingClarifications` is now empty: Coordinator request creates `TENTATIVELY_HELD`, and Staff approval changes that booking to `CONFIRMED`, without another Coordinator action. Parent Event confirmation remains separate. Existing request/owner privacy and fixed role-plus-capability checks still apply. For CS-40–42, the detailed request statuses, prototype validation limits, period-specific availability, and venue-buffer inheritance are defined in §12 above.

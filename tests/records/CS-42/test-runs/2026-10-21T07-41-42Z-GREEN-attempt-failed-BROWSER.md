@@ -1,0 +1,27 @@
+# CS-42 — GREEN-attempt-failed browser execution
+
+Started UTC: 2026-10-21T07:41:42.693Z
+
+Runner: Automated Playwright, real production Nuxt/BFF/Kong/Keycloak/auth/PostgreSQL; synthetic checked-in accounts only. This is not independent human review or PO acceptance. Authentication setup honours gateway429 backoff; Playwright reruns are disabled.
+
+Source: 8480a3ade7fc5b7785de1932b741dc9f95f39879
+
+Full run: 21 passed, 3 unexpected, 0 flaky, 12 skipped.
+
+| Browser case | Project | Result | Duration ms | Reruns |
+|---|---|---|---|---|
+| TC-CS42-01: Support reserves every approved line with provenance and one logical action | desktop | FAILED | 82134 | 0 |
+| TC-CS42-13: reservation action is unavailable before approval | desktop | NOT EXECUTED | 0 | 0 |
+| TC-CS42-02: any short line returns all shortages without reserving sufficient lines | desktop | NOT EXECUTED | 0 | 0 |
+| TC-CS42-03: pending, superseded and obsolete approvals cannot reserve equipment | desktop | NOT EXECUTED | 0 | 0 |
+| TC-CS42-04: every non-Support reservation attempt is denied without side effects | desktop | NOT EXECUTED | 0 | 0 |
+| TC-CS42-05: reservation rechecks buffered touching, overlapping and operational windows | desktop | NOT EXECUTED | 0 | 0 |
+| TC-CS42-06: multiple rooms reserve the pooled Event quantity once | desktop | NOT EXECUTED | 0 | 0 |
+| TC-CS42-07: two simultaneous Events demanding two of stock three cannot overcommit | desktop | NOT EXECUTED | 0 | 0 |
+| TC-CS42-08: retrying one command returns the same reservation without new actions | desktop | NOT EXECUTED | 0 | 0 |
+| TC-CS42-09: an outbox failure rolls back every reservation line and retry recovers once | desktop | NOT EXECUTED | 0 | 0 |
+| TC-CS42-10: broker outage and Equipment restart preserve durable proof and retry identity | desktop | NOT EXECUTED | 0 | 0 |
+| TC-CS42-11: individual Booking changes, expiry and Safety rework retain Equipment commitments | desktop | NOT EXECUTED | 0 | 0 |
+| TC-CS42-12: an approved technical revision replaces atomically and failed replacement retains old commitments | desktop | NOT EXECUTED | 0 | 0 |
+
+Machine-readable results and HTML/failure screenshots are retained with the run's evidence. The normal, failure and boundary expectations in the named browser cases remain explicit. Earlier failed attempts are retained. Main story specifications remain in tests/specs and tests/records/CS-42/test-cases.md.

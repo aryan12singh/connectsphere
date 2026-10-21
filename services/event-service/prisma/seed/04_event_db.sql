@@ -99,6 +99,45 @@ SELECT md5('act:'||l)::uuid::text, r, a, f, t, at::"ActorType", NULLIF(who,''), 
 ) AS x(l,r,a,f,t,at,who,d,ts)
 ON CONFLICT ("id") DO NOTHING;
 
+-- Technical Review demo requests (the Booking and Equipment seeds share these
+-- stable IDs). These are approved Planning Events so their confirmed venue
+-- bookings and equipment periods can be resolved through the live services.
+INSERT INTO "event_requests"
+ ("id","organiserId","organisationId","status","version","eventName","purpose","description","startAt","endAt","timeZone","expectedAttendance","minimumCapacity","preferredLayout","venueType","venueRequirements","accessibilityNeeds","accessibilityDetails","equipmentNeeds","technicalDetails","currentCoordinatorId","submittedAt","decidedById","decidedAt","decisionReason","createdAt","updatedAt")
+VALUES
+ ('e1000000-0000-4000-8000-000000000008','a1000000-0000-4000-8000-000000000001','b1000000-0000-4000-8000-000000000001','APPROVED',3,
+  'Product Showcase','Customer event','Product demos and keynote presentations.','2027-03-16 09:00+08','2027-03-16 17:00+08','Asia/Singapore',180,150,'THEATRE','Convention centre','Clear sightlines for the presentation.',
+  ARRAY['step_free_access']::text[],'Wheelchair spaces near the front',ARRAY['projector','microphones']::text[],'Projector and two handheld microphones.','a1000000-0000-4000-8000-000000000005','2026-10-05 03:00:00+00','a1000000-0000-4000-8000-000000000005','2026-10-06 03:00:00+00','Venue and event plan confirmed.','2026-10-05 02:00:00+00','2026-10-06 03:00:00+00'),
+ ('e1000000-0000-4000-8000-000000000009','a1000000-0000-4000-8000-000000000002','b1000000-0000-4000-8000-000000000001','APPROVED',3,
+  'Community Film Night','Community screening','Outdoor film screening with live introductions.','2027-03-18 17:00+08','2027-03-18 19:30+08','Asia/Singapore',240,200,'THEATRE','Event hall','Audio coverage across the audience area.',
+  ARRAY[]::text[],NULL,ARRAY['speaker','lighting']::text[],'Speaker system and stage lighting.','a1000000-0000-4000-8000-000000000006','2026-10-05 04:00:00+00','a1000000-0000-4000-8000-000000000006','2026-10-06 04:00:00+00','Venue and event plan confirmed.','2026-10-05 02:30:00+00','2026-10-06 04:00:00+00')
+ON CONFLICT ("id") DO NOTHING;
+
+INSERT INTO "events"
+ ("id","eventRequestId","organiserId","organisationId","title","description","startAt","endAt","timeZone","status","version","createdAt","updatedAt")
+VALUES
+ ('f1000000-0000-4000-8000-000000000008','e1000000-0000-4000-8000-000000000008','a1000000-0000-4000-8000-000000000001','b1000000-0000-4000-8000-000000000001',
+  'Product Showcase','Product demos and keynote presentations.','2027-03-16 09:00+08','2027-03-16 17:00+08','Asia/Singapore','ARRANGEMENT_PENDING',1,'2026-10-06 03:00:00+00','2026-10-06 03:00:00+00'),
+ ('f1000000-0000-4000-8000-000000000009','e1000000-0000-4000-8000-000000000009','a1000000-0000-4000-8000-000000000002','b1000000-0000-4000-8000-000000000001',
+  'Community Film Night','Outdoor film screening with live introductions.','2027-03-18 17:00+08','2027-03-18 19:30+08','Asia/Singapore','ARRANGEMENT_PENDING',1,'2026-10-06 04:00:00+00','2026-10-06 04:00:00+00')
+ON CONFLICT ("id") DO NOTHING;
+
+INSERT INTO "coordinator_assignments" ("id","eventRequestId","coordinatorId","reason","assignedById","assignedAt","revokedAt","revokedById") VALUES
+ ('11000000-0000-4000-8000-000000000008','e1000000-0000-4000-8000-000000000008','a1000000-0000-4000-8000-000000000005','AUTO',NULL,'2026-10-05 03:00:00+00',NULL,NULL),
+ ('11000000-0000-4000-8000-000000000009','e1000000-0000-4000-8000-000000000009','a1000000-0000-4000-8000-000000000006','AUTO',NULL,'2026-10-05 04:00:00+00',NULL,NULL)
+ON CONFLICT ("id") DO NOTHING;
+
+INSERT INTO "activity_log" ("id","eventRequestId","action","fromStatus","toStatus","actorType","actorId","details","createdAt") VALUES
+ ('12000000-0000-4000-8000-000000000081','e1000000-0000-4000-8000-000000000008','REQUEST_CREATED',NULL,'DRAFT','USER','a1000000-0000-4000-8000-000000000001','{"source":"technical-review-demo"}'::jsonb,'2026-10-05 02:00:00+00'),
+ ('12000000-0000-4000-8000-000000000082','e1000000-0000-4000-8000-000000000008','SUBMITTED','DRAFT','SUBMITTED','USER','a1000000-0000-4000-8000-000000000001','{}'::jsonb,'2026-10-05 03:00:00+00'),
+ ('12000000-0000-4000-8000-000000000083','e1000000-0000-4000-8000-000000000008','COORDINATOR_ASSIGNED',NULL,NULL,'SYSTEM',NULL,'{"coordinatorId":"a1000000-0000-4000-8000-000000000005","rule":"AUTO"}'::jsonb,'2026-10-05 03:00:00+00'),
+ ('12000000-0000-4000-8000-000000000084','e1000000-0000-4000-8000-000000000008','APPROVED','SUBMITTED','APPROVED','USER','a1000000-0000-4000-8000-000000000005','{"eventId":"f1000000-0000-4000-8000-000000000008"}'::jsonb,'2026-10-06 03:00:00+00'),
+ ('12000000-0000-4000-8000-000000000091','e1000000-0000-4000-8000-000000000009','REQUEST_CREATED',NULL,'DRAFT','USER','a1000000-0000-4000-8000-000000000002','{"source":"technical-review-demo"}'::jsonb,'2026-10-05 02:30:00+00'),
+ ('12000000-0000-4000-8000-000000000092','e1000000-0000-4000-8000-000000000009','SUBMITTED','DRAFT','SUBMITTED','USER','a1000000-0000-4000-8000-000000000002','{}'::jsonb,'2026-10-05 04:00:00+00'),
+ ('12000000-0000-4000-8000-000000000093','e1000000-0000-4000-8000-000000000009','COORDINATOR_ASSIGNED',NULL,NULL,'SYSTEM',NULL,'{"coordinatorId":"a1000000-0000-4000-8000-000000000006","rule":"AUTO"}'::jsonb,'2026-10-05 04:00:00+00'),
+ ('12000000-0000-4000-8000-000000000094','e1000000-0000-4000-8000-000000000009','APPROVED','SUBMITTED','APPROVED','USER','a1000000-0000-4000-8000-000000000006','{"eventId":"f1000000-0000-4000-8000-000000000009"}'::jsonb,'2026-10-06 04:00:00+00')
+ON CONFLICT ("id") DO NOTHING;
+
 COMMIT;
 
 -- Sanity checks (optional):

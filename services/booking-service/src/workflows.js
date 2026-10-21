@@ -7,6 +7,7 @@ const { withinHours } = require('./hours');
 const { instant } = require('./time');
 const clock = require('./clock');
 const { occupiedWindow,occupiedWindowsOverlap } = require('./occupiedWindow');
+const { equipmentAllocations } = require('./equipmentAllocations');
 const { validateHoldDeadline,holdWarningDue } = require('./holdClock');
 const { isStaff } = require('./policy');
 const { hasPermission } = require('../../utils/role-policy');
@@ -315,6 +316,24 @@ async function summary(req,eventId,{allowMissingEvent=false,transaction}={}) {
   return transaction!==undefined?project(transaction):store.withLocks([eventLock(eventId)],project);
 }
 
+async function equipmentAllocationContext(eventId) {
+  const context=await planningContext(eventId);
+  planning(context);
+  const checkedAt=clock.now();
+  const rows=await store.listBookings(undefined,{eventId});
+  const current=rows.filter(row=>row.status==='CONFIRMED'
+    || row.status==='TENTATIVELY_HELD' && effective(row,checkedAt));
+  const venues=[];
+  for(const venueId of [...new Set(current.map(row=>row.venueId))]) venues.push(await venueContext(venueId));
+  return {
+    eventId,
+    currentCoordinatorId:context.currentCoordinatorId,
+    eventStatus:context.status,
+    checkedAt:checkedAt.toISOString(),
+    allocations:equipmentAllocations(current,venues,checkedAt.toISOString()),
+  };
+}
+
 function managedFlag(flag) { return ['VENUE_MAINTENANCE_PENDING','BUFFER_CONFLICT','CAPACITY','LAYOUT','VENUE_TYPE','INACTIVE','OUTSIDE_OPERATING_HOURS','EVENT_NOT_FOUND','REQUIREMENTS_CHANGED'].includes(flag) || /^(FACILITY|ACCESSIBILITY):/.test(flag); }
 async function recheckContext(eventId) {
   if(!eventId) return null;
@@ -460,4 +479,4 @@ async function availability(req,query) {
   const checkedAt=clock.now();
   return {items:items.filter(row=>effective(row,checkedAt)),conflictDetection:'server',checkedAt:checkedAt.toISOString(),policy:{allowTouching:config.allowTouching}};
 }
-module.exports={requestExtension,selectPrimaryVenue,create,decision,extend,replace,summary,search,availability,recheck,staffRecheck,conflictReport,recheckInTransaction,version,activeHold,contextFor,planning,needs,gaps,checkedNeeds,conflicts,effective,windowFor,venueRequirements,venueLock,eventLock,fail};
+module.exports={requestExtension,selectPrimaryVenue,create,decision,extend,replace,summary,equipmentAllocationContext,search,availability,recheck,staffRecheck,conflictReport,recheckInTransaction,version,activeHold,contextFor,planning,needs,gaps,checkedNeeds,conflicts,effective,windowFor,venueRequirements,venueLock,eventLock,fail};

@@ -1,5 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+
+test('availability permits an omitted range but rejects invalid end or reversed intervals', () => {
+  const { availabilityRange, filterAvailability } = require('../../src/availability');
+  assert.deepEqual(availabilityRange(), {});
+  assert.deepEqual(availabilityRange({ endAt: 'invalid' }), { endAt: ['End time must be an ISO date-time'] });
+  assert.deepEqual(availabilityRange({ startAt: '2028-01-01T01:00:00Z', endAt: '2028-01-01T00:00:00Z' }), { endAt: ['End time must be after start time'] });
+  assert.deepEqual(filterAvailability([{ id: 'a' }]), [{ id: 'a' }]);
+});
 const { availabilityRange, filterAvailability } = require('../../src/availability');
 
 test('CS-34 TC-CS34-05: availability requires a positive ISO date-time range', () => {

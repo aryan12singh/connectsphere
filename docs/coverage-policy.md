@@ -45,6 +45,25 @@ The executable floors live in each service's `test:coverage` and
 | Equipment | 95 / 60 / 95 | 75 / 45 / 70 |
 | Notification | 80 / 60 / 80 | 65 / 45 / 60 |
 
+### 21 October 2026 integration with the expanded Equipment branch
+
+The Booking and Equipment suites have since expanded beyond the baseline above.
+Their `test:coverage` commands retain the all-source c8 gate introduced on this
+branch: **81% statements, lines, branches and functions**, measured across unit,
+HTTP integration and PostgreSQL tests, plus Booking's Python HTTP contracts.
+Every `src/**/*.js` file remains in that combined denominator. These commands
+remain the CI coverage entry points; they replace the corresponding baseline
+unit-only commands in the table rather than lowering the combined gate.
+
+Booking also exposes the baseline native unit floors through
+`test:coverage:unit`. Both services retain main's separate integration floors
+shown above. Equipment's integration command uses its current
+`tests/integration/*.test.js` layout, including the PostgreSQL suite, instead of
+the retired `tests/postgres` path. The baseline Equipment unit-only 95/60/95
+measurement describes the earlier, smaller source tree and is not a measurement
+of this expanded combined suite. Dedicated `<service>_test` databases are still
+required for combined coverage and PostgreSQL verification.
+
 Node's native test runner counts loaded source matching `src/**/*.js`, not an
 inventory of every unimported file. Event also includes shared production role
 helpers at `../utils/**/*.js`; its earlier report included test files and is not

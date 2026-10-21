@@ -112,6 +112,7 @@ services:
       - event-service
       - notification-service
       - equipment-service
+      - attendance-service
 
   # ── Built services ────────────────────────────────────────────────────
 
@@ -238,11 +239,16 @@ services:
       DATA_MODE: prisma
       AUTH_SERVICE_URL: http://auth-service:3000
       EVENT_SERVICE_URL: http://event-service:3000
+      BOOKING_SERVICE_URL: http://booking-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
+    ports:
+      - "3005:3000"
     depends_on:
       postgres:
         condition: service_healthy
       auth-service:
+        condition: service_started
+      event-service:
         condition: service_started
 
   # One-shot demo-data loader. Waits for each service to create its tables
@@ -257,6 +263,7 @@ services:
       PGPASSWORD: connectsphere
     volumes:
       - ./seed/run-seeds.sh:/run-seeds.sh:ro
+      - ./seed/validate-technical-review-seeds.sh:/validate-technical-review-seeds.sh:ro
       - ../services:/seed/services:ro
     depends_on:
       postgres:
@@ -269,15 +276,19 @@ services:
         condition: service_started
       booking-service:
         condition: service_started
+      equipment-service:
+        condition: service_started
       venue-service:
+        condition: service_started
+      attendance-service:
         condition: service_started
 
   attendance-service:
-    profiles: ["not-built-yet"]
     build: ../services/attendance-service
     restart: unless-stopped
     environment:
       PORT: 3000
+      DATA_MODE: prisma
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/attendance_db
       AUTH_SERVICE_URL: http://auth-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}

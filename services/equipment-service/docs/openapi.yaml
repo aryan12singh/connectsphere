@@ -1,346 +1,75 @@
----
 openapi: 3.0.3
 info:
-  title: ConnectSphere Equipment integration
-  version: 0.2.0
-  description: 17 October 2026 implemented integration. See docs/sprint3-integration-handoff.md
+  title: ConnectSphere Equipment Service
+  version: 1.0.0
+  description: See docs/sprint3-integration-handoff.md
     for assumptions, source ownership and the resolved two-action venue policy.
-servers:
-- url: http://localhost:8000
-security:
-- bearerAuth: []
 paths:
-  "/equipment-types":
+  /technical-requests:
     get:
-      summary: Catalogue types
-      description: Permitted planning roles. Catalogue presence is not stock.
-      responses:
-        '200':
-          description: Current or saved/replayed result
-        '401':
-          description: Authentication required
-        '403':
-          description: Role, capability or current relationship denied
-        '409':
-          description: Stale proof/version, incomplete readiness or invalid lifecycle
-        '422':
-          description: Validation failure
-        '503':
-          description: Required source/storage unavailable
-  "/equipment-inventory":
-    get:
-      summary: Actual stock
-      description: Technical Support with technical.review.
-      responses:
-        '200':
-          description: Current or saved/replayed result
-        '401':
-          description: Authentication required
-        '403':
-          description: Role, capability or current relationship denied
-        '409':
-          description: Stale proof/version, incomplete readiness or invalid lifecycle
-        '422':
-          description: Validation failure
-        '503':
-          description: Required source/storage unavailable
-  "/equipment-inventory/{type}":
-    put:
-      summary: Update versioned stock
-      description: Technical Support; current version and mandatory key. Cannot reduce
-        below committed concurrent peak.
-      responses:
-        '200':
-          description: Current or saved/replayed result
-        '401':
-          description: Authentication required
-        '403':
-          description: Role, capability or current relationship denied
-        '409':
-          description: Stale proof/version, incomplete readiness or invalid lifecycle
-        '422':
-          description: Validation failure
-        '503':
-          description: Required source/storage unavailable
+      summary: List Technical Support requests with backend-derived equipment periods
       parameters:
-      - name: type
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          maxLength: 200
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              "$ref": "#/components/schemas/Stock"
-  "/technical-requests":
-    get:
-      summary: Technical review queue
-      description: Current Event source context, source needs and unknown coverage
-        items.
+        - in: query
+          name: includeResolved
+          schema: { type: string, enum: ['0', '1'] }
       responses:
-        '200':
-          description: Current or saved/replayed result
-        '401':
-          description: Authentication required
-        '403':
-          description: Role, capability or current relationship denied
-        '409':
-          description: Stale proof/version, incomplete readiness or invalid lifecycle
-        '422':
-          description: Validation failure
-        '503':
-          description: Required source/storage unavailable
-  "/event-requests/{id}/technical-request":
+        '200': { description: Queue records include equipmentPeriod (null when no equipment or allocation context is unavailable) }
+        '403': { description: Technical Support access required }
+  /event-requests/{eventRequestId}/technical-request/availability:
     get:
-      summary: Read source-bound requirements
-      description: Current assigned Coordinator or Technical Support. Officer read
-        requires actual Event-owned Safety review. Original creator does not retain
-        relationship access.
-      responses:
-        '200':
-          description: Current or saved/replayed result
-        '401':
-          description: Authentication required
-        '403':
-          description: Role, capability or current relationship denied
-        '409':
-          description: Stale proof/version, incomplete readiness or invalid lifecycle
-        '422':
-          description: Validation failure
-        '503':
-          description: Required source/storage unavailable
+      summary: Check current pooled equipment availability without committing stock
       parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
+        - in: path
+          name: eventRequestId
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Current period, per-line availability and fulfillability }
+        '403': { description: Technical Support access required }
+  /event-requests/{eventRequestId}/technical-request/reservations:
     post:
-      summary: Submit requirements
-      description: Current Coordinator, approved open Planning Event. Validate source
-        requirements and explicit equipment/support/placement.
-      responses:
-        '200':
-          description: Current or saved/replayed result
-        '401':
-          description: Authentication required
-        '403':
-          description: Role, capability or current relationship denied
-        '409':
-          description: Stale proof/version, incomplete readiness or invalid lifecycle
-        '422':
-          description: Validation failure
-        '503':
-          description: Required source/storage unavailable
-        '201':
-          description: Durable record created
+      summary: Atomically reserve all lines in the approved current request
       parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          maxLength: 200
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              "$ref": "#/components/schemas/Submission"
-  "/event-requests/{id}/technical-request/decision":
+        - in: path
+          name: eventRequestId
+          required: true
+          schema: { type: string }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Reservation saved or replayed }
+        '409': { description: Stale approval, idempotency conflict, or all-line shortage list }
+  /equipment-operational-unavailability:
     post:
-      summary: Decide current requirements
-      description: Technical Support. Versioned per-need classification for unknown
-        needs. Real source coverage; explicit no-equipment review. Approval does not
-        reserve.
-      responses:
-        '200':
-          description: Current or saved/replayed result
-        '401':
-          description: Authentication required
-        '403':
-          description: Role, capability or current relationship denied
-        '409':
-          description: Stale proof/version, incomplete readiness or invalid lifecycle
-        '422':
-          description: Validation failure
-        '503':
-          description: Required source/storage unavailable
+      summary: Record a bounded Technical Support operational unavailability
       parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          maxLength: 200
+        - in: header
+          name: Idempotency-Key
+          description: Exact retries return the same operation; reuse with different data returns 409.
+          required: false
+          schema: { type: string }
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              "$ref": "#/components/schemas/Decision"
-  "/event-requests/{id}/technical-request/reservations":
-    post:
-      summary: Reserve complete current request
-      description: Technical Support. Source/version/current approval rechecked. Sorted
-        stock locks, half-open Event window and peak concurrency. All or none; 409
-        includes shortfalls. Same-key durable replay. No hold-expiry equipment release.
+              type: object
+              required: [equipmentType, quantity, reason, startAt, endAt]
+              properties:
+                equipmentType: { type: string }
+                quantity: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+                startAt: { type: string, format: date-time }
+                endAt: { type: string, format: date-time }
       responses:
-        '200':
-          description: Current or saved/replayed result
-        '401':
-          description: Authentication required
-        '403':
-          description: Role, capability or current relationship denied
-        '409':
-          description: Stale proof/version, incomplete readiness or invalid lifecycle
-        '422':
-          description: Validation failure
-        '503':
-          description: Required source/storage unavailable
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: Idempotency-Key
-        in: header
-        required: true
-        schema:
-          type: string
-          maxLength: 200
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              "$ref": "#/components/schemas/Reservation"
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-  schemas:
-    Submission:
-      type: object
-      properties:
-        version:
-          type: integer
-          minimum: 1
-        equipment:
-          type: array
-          items:
-            type: object
-            properties:
-              equipmentType:
-                type: string
-                enum:
-                - projector
-                - microphone
-                - speaker
-                - lighting
-                - stage
-              quantity:
-                type: integer
-                minimum: 1
-            required:
-            - equipmentType
-            - quantity
-        supportRequired:
-          type: boolean
-        supportDetails:
-          type: string
-        notRequired:
-          type: boolean
-        placementDetails:
-          type: string
-      required:
-      - version
-      - equipment
-      - supportRequired
-      - notRequired
-      - placementDetails
-    Decision:
-      type: object
-      properties:
-        version:
-          type: integer
-          minimum: 1
-        decision:
-          type: string
-          enum:
-          - APPROVED
-          - REJECTED
-        reason:
-          type: string
-        coverageResolution:
-          type: array
-          items:
-            type: object
-            properties:
-              need:
-                type: string
-              mode:
-                type: string
-                enum:
-                - EQUIPMENT
-                - SUPPORT_ONLY
-              note:
-                type: string
-                minLength: 10
-                maxLength: 2000
-              equipmentTypes:
-                type: array
-                items:
-                  type: string
-            required:
-            - need
-            - mode
-            - note
-      required:
-      - version
-      - decision
-    Stock:
-      type: object
-      properties:
-        version:
-          type: integer
-          minimum: 1
-        total:
-          type: integer
-          minimum: 0
-          maximum: 1000000
-      required:
-      - version
-      - total
-    Reservation:
-      type: object
-      properties:
-        version:
-          type: integer
-          minimum: 1
-        release:
-          type: boolean
-          description: Explicit terminal Event release. Approved empty current requirements
-            also release superseded stock.
-      required:
-      - version
+        '201': { description: Operational status recorded }
+        '409': { description: The action key was reused with different data }
+        '422': { description: Unknown type, invalid quantity, reason or period }
+  /internal/events/{eventId}/readiness:
+    get:
+      summary: Internal current technical readiness proof for Event/Safety
+      description: Requires current-version reservation lines. Operational supply shortfalls return PENDING with EQUIPMENT_OPERATION_CHANGED while retaining reservations and history.
+      responses:
+        '200': { description: Current proof; never routed publicly }

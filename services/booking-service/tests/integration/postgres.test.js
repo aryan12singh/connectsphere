@@ -7,12 +7,21 @@ const prisma = require('../../src/db');
 const defaults = require('../../../utils/role-permissions');
 let api, booking, actor, assigned = true, assignmentUnavailable = false;
 const venueOverrides=new Map();
+const planningOverrides=new Map();
+let catalogueItems=[];
+let invalidationStatus=200;
 const nativeFetch = global.fetch;
 global.fetch = async (url, options) => {
   if (String(url).endsWith('/internal/sessions/validate')) return { ok: true, json: async () => ({ valid: true, user: actor, permissions: actor.permissions }) };
+  if (String(url).includes('/readiness-invalidations')) return { ok: invalidationStatus===200, status: invalidationStatus, json: async()=>({currentToken:null}) };
+  if (String(url).endsWith('/venues/internal/catalogue')) return {ok:true,status:200,json:async()=>({items:catalogueItems})};
+  if (String(url).endsWith('/maintenance')) return {ok:true,status:200,json:async()=>({id:decodeURIComponent(new URL(url).pathname.split('/')[3]),version:2})};
+  if (String(url).endsWith('/legacy-buffers')) return {ok:true,status:200,json:async()=>({id:decodeURIComponent(new URL(url).pathname.split('/')[3]),version:JSON.parse(options.body).version+1,legacyBufferConfigurationPending:false,buffersLockedAt:null})};
+  if (String(url).endsWith('/buffer-fence-recovery')) return {ok:true,status:200,json:async()=>({id:decodeURIComponent(new URL(url).pathname.split('/')[3]),version:JSON.parse(options.body).input.version+1,buffersLockedAt:null})};
+  if (options?.method==='DELETE' && String(url).includes('/internal/venues/')) return {ok:true,status:204};
   if (String(url).includes('/booking-access') && assignmentUnavailable) throw new Error('Isolated upstream outage');
   if (String(url).includes('/booking-access')) return { ok: assigned && String(url).includes('/assigned-event/'), status: assigned && String(url).includes('/assigned-event/') ? 200 : 403, json: async () => ({ id: 'assigned-event' }) };
-  if (String(url).includes('/planning-context')) return {ok:true,status:200,json:async()=>({id:'assigned-event',eventRequestId:'request-fixture',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',organiserId:'organiser',startAt:'2026-10-01T00:00:00.000Z',endAt:'2026-12-31T23:59:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',venueType:'PHYSICAL',accessibilityNeeds:[],venueRequirements:'',equipmentNeeds:[]})};
+  if (String(url).includes('/planning-context')) return {ok:true,status:200,json:async()=>({id:'assigned-event',eventRequestId:'request-fixture',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',organiserId:'organiser',startAt:'2026-10-01T00:00:00.000Z',endAt:'2026-12-31T23:59:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',venueType:'PHYSICAL',accessibilityNeeds:[],venueRequirements:'',equipmentNeeds:[],...(planningOverrides.get(decodeURIComponent(new URL(url).pathname.split('/')[3])) || {})})};
   if (String(url).endsWith('/buffer-lock')) {const id=decodeURIComponent(new URL(url).pathname.split('/')[3]),before=await (await global.fetch(new URL('/venues/'+id+'/internal',url))).json(),saved={...before,version:before.buffersLockedAt?before.version:before.version+1,buffersLockedAt:before.buffersLockedAt || new Date().toISOString()};venueOverrides.set(id,saved);return {ok:true,status:200,json:async()=>saved};}
   if (String(url).includes('/venues/') && String(url).endsWith('/internal')) {const id=decodeURIComponent(new URL(url).pathname.split('/')[2]);return {ok:true,status:200,json:async()=>({id,name:'Isolated venue',version:1,capacity:100,venueType:'PHYSICAL',isActive:true,setupMinutes:0,turnaroundMinutes:0,supportedLayouts:['THEATRE'],facilities:[],accessibilityTags:[],timeZone:'Asia/Singapore',operatingHours:['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].map(weekday=>({weekday,isClosed:false,opensAt:'00:00',closesAt:'23:59'})),...(venueOverrides.get(id) || {})})};}
   return nativeFetch(url, options);
@@ -305,4 +314,113 @@ test('TC-CS37-29 PostgreSQL extension request survives restart and competing Sta
   assert.equal(await prisma.bookingOutbox.count({where:{aggregateId:held.body.id,kind:'VenueHoldExtended'}}),1)
   assert.equal(await prisma.venueBookingActivity.count({where:{bookingId:held.body.id,action:'HOLD_EXTENDED'}}),1)
   coordinatorActor();assert.equal((await api.http(path+'/request',{method:'POST',headers,body:{version:3,expiresAt:new Date(Date.parse(expiresAt)+3600000).toISOString(),reason:'Second request'}})).status,409)
+});
+
+test('TC-CS41-13 Booking internal allocation projection is private, versioned and excludes expired tentative holds',async()=>{
+  coordinatorActor();
+  const venueId='pg-equipment-projection-'+randomUUID();
+  const confirmed=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+'confirmed'},body:independentValues(venueId)});
+  assert.equal(confirmed.status,201);
+  actor={id:'staff',role:'VENUE_STAFF',roles:['VENUE_STAFF'],permissions:[...defaults.VENUE_STAFF]};
+  assert.equal((await api.http(`/venue-bookings/${confirmed.body.id}/decision`,{method:'PUT',headers,body:{version:1,status:'CONFIRMED',reason:'Current room'}})).status,200);
+  coordinatorActor();
+  const expired=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+'expired'},body:{...independentValues(venueId),startAt:'2026-12-23T02:00:00.000Z',endAt:'2026-12-23T03:00:00.000Z'}});
+  assert.equal(expired.status,201);
+  await prisma.venueBookingRequest.update({where:{id:expired.body.id},data:{expiresAt:new Date(Date.now()-1000)}});
+  const path='/internal/events/assigned-event/equipment-allocation-context';
+  assert.equal((await api.http(path)).status,403);
+  const result=await api.http(path,{headers:{'x-internal-api-key':'change-me-dev-internal-key'}});
+  assert.equal(result.status,200);
+  assert.ok(result.body.allocations.some(row=>row.bookingId===confirmed.body.id));
+  assert.ok(!result.body.allocations.some(row=>row.bookingId===expired.body.id));
+  const row=result.body.allocations.find(row=>row.bookingId===confirmed.body.id);
+  assert.equal(row.bookingVersion,2);assert.ok(row.venueVersion >= 1);
+});
+
+test('Booking internal readiness endpoints reject unauthorised and stale operations without changing fences',async()=>{
+  const base='/internal/events/assigned-event/readiness';
+  assert.equal((await api.http(base)).status,403);
+  const preview=await api.http(base,{headers:{'x-internal-api-key':'change-me-dev-internal-key'}});
+  assert.equal(preview.status,200);
+  const invalid=await api.http(base+'/prepare',{method:'POST',headers:{'x-internal-api-key':'change-me-dev-internal-key'},body:{token:'token',generation:0}});
+  assert.equal(invalid.status,422);
+  const release=await api.http(base+'/release',{method:'POST',headers:{'x-internal-api-key':'change-me-dev-internal-key'},body:{token:''}});
+  assert.equal(release.status,422);
+});
+
+test('Booking readiness persists one exact proof, fences changed resources and releases idempotently', async () => {
+  const eventId='readiness-'+randomUUID(),venueId='readiness-venue-'+randomUUID(),token=randomUUID();
+  const internal={'x-internal-api-key':'change-me-dev-internal-key'};
+  planningOverrides.set(eventId,{id:eventId,safetyToken:token,safetyGeneration:1,safetyState:'PREPARING'});
+  const context=await (await global.fetch('http://fixture/internal/events/'+eventId+'/planning-context')).json();
+  const requirements=require('../../src/workflows').venueRequirements(context);
+  const room=await prisma.venueBookingRequest.create({data:{eventId,venueId,requestedById:'coordinator',idempotencyKey:randomUUID(),title:'Ready room',reason:'Proof fixture',status:'CONFIRMED',requestedStart:new Date('2026-12-21T02:00:00Z'),requestedEnd:new Date('2026-12-21T04:00:00Z'),expectedAttendance:80,layout:'THEATRE',requirements,requirementsFingerprint:require('../../src/store').fingerprint(requirements),venueVersion:1}});
+  const base='/internal/events/'+eventId+'/readiness';
+  const prepared=await api.http(base+'/prepare',{method:'POST',headers:internal,body:{token,generation:1}});
+  assert.equal(prepared.status,200);assert.equal(prepared.body.venueReady,true);
+  assert.equal((await api.http(base+'/prepare',{method:'POST',headers:internal,body:{token,generation:1}})).body.fingerprint,prepared.body.fingerprint);
+  assert.equal(await prisma.eventReadinessFence.count({where:{token}}),1);
+  await prisma.$disconnect();
+  assert.equal((await prisma.eventReadinessFence.findUnique({where:{token}})).active,true);
+  assert.equal((await api.http(base+'/prepare',{method:'POST',headers:internal,body:{token:'stale-token',generation:1}})).body.error.code,'SAFETY_SUPERSEDED');
+  venueOverrides.set(venueId,{version:2});
+  assert.equal((await api.http(base+'/prepare',{method:'POST',headers:internal,body:{token,generation:1}})).body.error.code,'READINESS_CHANGED');
+  invalidationStatus=503;
+  try {await assert.rejects(()=>require('../../src/store').withLocks(['booking:venue:'+venueId],tx=>require('../../src/readiness').invalidateVenue(venueId,tx,'Venue change')),error=>error.code==='SAFETY_FENCE_UNAVAILABLE');}
+  finally {invalidationStatus=200;}
+  assert.equal((await prisma.eventReadinessFence.findUnique({where:{token}})).active,true);
+  await require('../../src/store').withLocks(['booking:venue:'+venueId],tx=>require('../../src/readiness').invalidateVenue(venueId,tx,'Venue change'));
+  assert.equal((await prisma.eventReadinessFence.findUnique({where:{token}})).active,false);
+  assert.equal((await api.http(base+'/release',{method:'POST',headers:internal,body:{token}})).body.released,true);
+  assert.equal((await prisma.venueBookingRequest.findUnique({where:{id:room.id}})).status,'CONFIRMED');
+});
+
+test('Booking venue search validates source versions and ranks complete matches before partial alternatives', async () => {
+  coordinatorActor();
+  const venueId='search-'+randomUUID();
+  const sample=await (await global.fetch('http://fixture/venues/'+venueId+'/internal')).json();
+  catalogueItems=[{...sample,name:'Alpha complete',address:'Central',facilities:['MIC']},{...sample,id:venueId+'partial',name:'Beta partial',facilities:[]},{...sample,id:venueId+'inactive',isActive:false}];
+  const base='/venue-bookings/events/assigned-event/venue-search';
+  const found=await api.http(base+'?startAt=2026-12-27T02:00:00Z&endAt=2026-12-27T03:00:00Z&facilities=MIC',{headers});
+  assert.equal(found.status,200);assert.deepEqual(found.body.items.map(row=>row.match),['FULL','PARTIAL']);
+  assert.equal((await api.http(base+'?location=unmatched',{headers})).body.total,0);
+  for(const query of ['startAt=bad','expectedAttendance=invalid','startAt=2020-01-01T00:00:00Z','bookingId=','bookingId=missing'])assert.ok([404,422].includes((await api.http(base+'?'+query,{headers})).status));
+  const held=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':randomUUID()},body:independentValues(venueId)});
+  assert.equal(held.status,201);
+  assert.equal((await api.http(base+'?bookingId='+held.body.id,{headers})).status,422);
+  assert.equal((await api.http(base+'?bookingId='+held.body.id+'&bookingVersion=2',{headers})).status,409);
+  const alternatives=await api.http(base+'?bookingId='+held.body.id+'&bookingVersion=1',{headers});
+  assert.equal(alternatives.status,200);assert.ok(alternatives.body.items.every(row=>row.id!==venueId));
+  catalogueItems=[];
+});
+
+test('Booking private command boundary validates maintenance, recovery, rechecks and notification context', async () => {
+  const internal={'x-internal-api-key':'change-me-dev-internal-key'};
+  for(const [method,path] of [['PUT','/internal/venue-maintenance/v'],['PUT','/internal/buffer-fence-recovery/v'],['PUT','/internal/legacy-buffers/v'],['POST','/internal/venue-removals/v'],['POST','/internal/venue-rechecks']])assert.equal((await api.http(path,{method,headers:internal,body:{}})).status,422);
+  assert.equal((await api.http('/internal/notification-context/missing',{headers:internal})).status,404);
+  const result=await api.http('/internal/notification-context/'+booking.id,{headers:internal});
+  assert.equal(result.status,200);assert.equal(result.body.status,'CONFIRMED');assert.equal(result.body.decisionVersion,2);
+  const status=await api.http('/internal/buffer-status/pg-venue',{headers:internal});assert.equal(status.status,200);assert.equal(status.body.everConfirmed,true);
+  assert.equal((await api.http('/internal/legacy-buffer-context/pg-venue',{headers:internal})).status,409);
+});
+
+test('Booking private commands coordinate valid maintenance, buffer configuration, removals and rechecks', async () => {
+  const internal={'x-internal-api-key':'change-me-dev-internal-key'},staff={id:'staff',role:'VENUE_STAFF'};
+  const venueId='commands-'+randomUUID();
+  const maintained=await api.http('/internal/venue-maintenance/'+venueId,{method:'PUT',headers:internal,body:{actor:staff,kind:'VENUE',input:{version:1,name:'Updated'},operationId:randomUUID()}});
+  assert.equal(maintained.status,200);assert.equal(maintained.body.version,2);
+  const recovered=await api.http('/internal/buffer-fence-recovery/'+venueId,{method:'PUT',headers:internal,body:{actor:staff,input:{version:1},operationId:randomUUID()}});
+  assert.equal(recovered.status,200);assert.equal(recovered.body.buffersLockedAt,null);
+  venueOverrides.set(venueId,{legacyBufferConfigurationPending:true});
+  const preview=await api.http('/internal/legacy-buffer-context/'+venueId,{headers:internal});assert.equal(preview.status,200);assert.deepEqual(preview.body.affectedEvents,[]);
+  const configured=await api.http('/internal/legacy-buffers/'+venueId,{method:'PUT',headers:internal,body:{actor:staff,version:1,communications:[],operationId:randomUUID()}});
+  assert.equal(configured.status,200);assert.equal(configured.body.legacyBufferConfigurationPending,false);
+  const rechecked=await api.http('/internal/venue-rechecks',{method:'POST',headers:internal,body:{actor:staff,venueId,version:1,reason:'Current source version'}});
+  assert.equal(rechecked.status,200);assert.deepEqual(rechecked.body.changed,[]);
+  assert.equal((await api.http('/internal/venue-rechecks',{method:'POST',headers:internal,body:{actor:staff,venueId,version:2,reason:'Version not available'}})).status,409);
+  const removed=await api.http('/internal/venue-removals/'+venueId,{method:'POST',headers:internal,body:{actor:staff,operationId:randomUUID()}});
+  assert.equal(removed.status,200);assert.equal(removed.body.deleted,true);
+  const blocked=await api.http('/internal/venue-removals/pg-venue',{method:'POST',headers:internal,body:{actor:staff,operationId:randomUUID()}});
+  assert.equal(blocked.status,409);assert.ok(blocked.body.blockingCount>0);
+  assert.equal((await api.http('/internal/venue-links/pg-venue',{headers:internal})).status,200);
 });

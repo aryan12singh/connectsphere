@@ -1,2 +1,6 @@
-import { requestCall, requestPath } from '../../../utils/eventBff'
-export default defineEventHandler(async(event)=>requestCall(event,requestPath(event)+'/coordinator'))
+import { kongBffFetch, segmentPath } from '../../../utils/kongBff'
+export default defineEventHandler(async(event)=>{
+ const id=getRouterParam(event,'id')
+ if(!id)throw createError({statusCode:400,statusMessage:'Request ID is required'})
+ return kongBffFetch(event,`/event-requests/${segmentPath([id])}/coordinator`)
+})

@@ -42,6 +42,7 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             services/event-service/package-lock.json
+            services/equipment-service/package-lock.json
             services/venue-service/package-lock.json
             services/booking-service/package-lock.json
             services/notification-service/package-lock.json
@@ -139,6 +140,8 @@ jobs:
             database: notification_test
           - service: equipment-service
             database: equipment_test
+          - service: attendance-service
+            database: attendance_test
     services:
       postgres:
         image: postgres:16
@@ -165,7 +168,7 @@ jobs:
           cache-dependency-path: services/${{ matrix.service }}/package-lock.json
       - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy
       - run: npm run test:coverage | tee "$RUNNER_TEMP/coverage.txt"
-      - run: npm run test:contract 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
+      - run: npm run test:contract --if-present 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
       - name: PostgreSQL HTTP integration and source coverage
         run: npm run test:integration | tee "$RUNNER_TEMP/postgres-coverage.txt"
       - name: Hold expiry PostgreSQL spike
@@ -181,6 +184,7 @@ jobs:
           retention-days: 30
           path: |
             ${{ runner.temp }}/coverage.txt
+            services/${{ matrix.service }}/coverage/
             ${{ runner.temp }}/http-contracts.txt
             ${{ runner.temp }}/postgres-coverage.txt
             ${{ runner.temp }}/hold-expiry.txt
@@ -258,6 +262,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             services/event-service/package-lock.json
+            services/equipment-service/package-lock.json
             frontend/package-lock.json
       - name: Install locked browser and smoke dependencies
         run: |

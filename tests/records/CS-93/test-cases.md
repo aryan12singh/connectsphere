@@ -83,13 +83,15 @@ These cases supplement the preserved earlier specifications. Current contracts a
 |---|---|---|
 | TC-CS93-44 | Terminal/source-stale Safety confirmation is denied; current approved facts permit confirmation; handover metadata preserves sign-offs. | Actual Event module with isolated adapters; no live-locking claim. |
 | TC-CS93-45 | With two of three required rooms approved the UI blocks submit; the last approval enables the real current-proof submission. | Production desktop/mobile browser + actual PG; current source needs explicitly require no equipment. |
-| TC-CS93-46 | Coordinator submits required equipment; Technical Support changes stock, approves and reserves the complete request; Officer sees the current reserved equipment proof. | Authenticated production desktop/mobile browser + actual Equipment/Event PostgreSQL; verifies request quantities, stock versions, reservation window and Safety snapshot linkage. |
+| TC-CS93-46 | Coordinator submits required equipment; Technical Support changes stock, approves and reserves the complete request; Officer sees the current reserved equipment proof. | Covered across `frontend/e2e/CS-41.spec.ts` (versioned stock change) and `frontend/e2e/CS-42.spec.ts` (reservation, buffered period, and Safety snapshot linkage) on the authenticated production desktop/mobile stack with actual Equipment/Event PostgreSQL. |
 
 
 ## 17 October production mobile stock-entry regression
+
+2026-10-21T16:31:00+08:00: live TC-CS93-30 checks the current Safety detail text “Equipment approval has not been verified.” from SafetyReviewDetails; verified venue facts and the disabled Safety submission action remain required. This replaces the older generic technical/support message after the Equipment proof integration.
 
 TC-CS93-48: Coordinator fact-review proof remains stable after display-name edits and asynchronous Booking/Venue version updates, while exact resource-fence proof changes; a real emergency-access correction changes the fact-review proof. Actual service HTTP with isolated repositories; actual rework/resubmit acceptance and PostgreSQL evidence remain separate. Date of Creation: 17 October 2026.
 
 | Test Case ID | Scenario / AC | Preconditions | Steps | Expected result | Layer | Date of Creation |
 |---|---|---|---|---|---|---|
-| TC-CS93-47 | Required Equipment proof: inventory entry before hydration | Technical Support page server-rendered with stock16/version14 | Render the actual page before mounting and inspect stock inputs/save action | Stock entry and save remain disabled until handlers attach; early typing cannot disappear while a successful no-op stock save leaves a reservation shortfall | Actual Vue SSR; TC-CS93-46 retains real UI/PG stock/reservation evidence | 2026-10-17T12:53:09+08:00 |
+| TC-CS93-47 | Required Equipment proof: stock remains read-only across hydration | Technical Support page server-rendered with stock16/version14 | Render before mounting, then mount and open Manage equipment stock | No editable stock-total or Save stock control exists before or after hydration; the operational-unavailability form remains available after mounting | Actual Vue SSR and mounted page; updated for the current read-only stock UI, with versioned inventory API coverage retained in CS-41 | 2026-10-17T12:53:09+08:00 |

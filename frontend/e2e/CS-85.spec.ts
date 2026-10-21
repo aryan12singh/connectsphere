@@ -1,6 +1,6 @@
 import {expect} from '@playwright/test'
 import {test,session,emails,signIn,mutation} from './helpers'
-import {createVenue,planningEvent,hold,roomInput,reviewDatabase,databaseEvidence} from './venue-fixtures'
+import {createVenue,planningEvent,hold,roomInput,reviewDatabase,databaseEvidence} from './fixtures/venue-fixtures'
 test('TC-CS85-31 LIVE repeated-hour closure blocks search, request and Staff approval with preserved PostgreSQL evidence',async({page,playwright,owner},info)=>{
   const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner,{proposedDate:'2028-11-05',startTime:'00:00',endTime:'06:00',timeZone:'America/New_York'})
   try{

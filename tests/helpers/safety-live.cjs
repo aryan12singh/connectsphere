@@ -12,7 +12,7 @@ async function safetyAcceptance({exerciseInvalidation=false,exerciseCorrection=f
   const approved=await f.call('PUT',`/venue-bookings/${f.booking.id}/decision`,{version:f.booking.version,status:'CONFIRMED',reason:'Room reviewed by Venue Staff'},f.staff.token);assert.equal(approved.status,200,JSON.stringify(approved.body));
   const support=await f.login(realm.users.find(x=>x.email==='hafiz.ismail@connectsphere.sg'));
   const technical=await f.call('POST',`/event-requests/${f.eventRequestId}/technical-request`,{version:1,equipment:[],supportRequired:false,notRequired:true,placementDetails:'No portable equipment or technical support required'},f.coordinator.token);assert.equal(technical.status,201,JSON.stringify(technical.body));
-  const technicalApproval=await f.call('POST',`/event-requests/${f.eventRequestId}/technical-request/decision`,{version:technical.body.version,decision:'APPROVED',reason:'Explicit not-required review'},support.token);assert.equal(technicalApproval.status,200,JSON.stringify(technicalApproval.body));
+  assert.equal(technical.body.status,'NOT_REQUIRED','An explicit empty declaration is current proof without a Support decision');
   const ready=await get();assert.equal(ready.canSubmit,true);assert.equal(ready.technical.status,'NOT_REQUIRED');
   assert.equal((await f.call('POST',`/events/${f.eventId}/safety/submit`,{version:ready.event.version},f.owner.token)).status,403);
   const submitted=await f.call('POST',`/events/${f.eventId}/safety/submit`,{version:ready.event.version},f.coordinator.token);assert.equal(submitted.status,201,JSON.stringify(submitted.body));
@@ -125,8 +125,17 @@ async function equipmentAcceptance(){
   const support=await f.login(realm.users.find(x=>x.email==='hafiz.ismail@connectsphere.sg'));
   const inventory=await f.call('GET','/equipment-inventory',undefined,support.token);
   assert.equal(inventory.status,200,'Technical Support can inspect real owned inventory');
+  // Submission is capped by physical stock. Establish the synthetic inventory
+  // before requesting it; the later reduction still exercises atomic shortage.
+  for(const [equipmentType,quantity] of [['projector',2],['microphone',1]]){
+   const row=inventory.body.items.find(item=>item.equipmentType===equipmentType);
+   if(row.total<quantity){
+    const stocked=await f.call('PUT',`/equipment-inventory/${equipmentType}`,{version:row.version,total:quantity},support.token);
+    assert.equal(stocked.status,200,JSON.stringify(stocked.body));
+   }
+  }
   const approved=await f.call('PUT',`/venue-bookings/${f.booking.id}/decision`,{version:f.booking.version,status:'CONFIRMED',reason:'Room reviewed'},f.staff.token);assert.equal(approved.status,200);
-  const input={version:1,equipment:[{equipmentType:'projector',quantity:2},{equipmentType:'microphone',quantity:1}],supportRequired:true,supportDetails:'Projection operator',notRequired:false,placementDetails:'Projector at rear of Main hall, microphone at lectern; keep exits clear'};
+  const input={version:1,equipment:[{equipmentType:'projector',quantity:2,venueId:f.venue.id},{equipmentType:'microphone',quantity:1,venueId:f.venue.id}],supportRequired:true,supportDetails:'Projection operator',notRequired:false,placementDetails:'Projector at rear of Main hall, microphone at lectern; keep exits clear'};
   const technical=await f.call('POST',`/event-requests/${f.eventRequestId}/technical-request`,input,f.coordinator.token);assert.equal(technical.status,201,JSON.stringify(technical.body));
   assert.equal((await f.call('POST',`/event-requests/${f.eventRequestId}/technical-request/decision`,{version:1,decision:'APPROVED'},support.token)).status,200);
   let safety=await f.call('GET',`/events/${f.eventId}/safety`,undefined,f.coordinator.token);assert.equal(safety.body.canSubmit,false);assert.equal(safety.body.technical.reason,'RESERVATION_PROOF_MISSING');

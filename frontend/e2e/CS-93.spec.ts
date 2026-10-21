@@ -1,6 +1,6 @@
 import {expect} from '@playwright/test'
 import {test,session,emails,signIn,mutation} from './helpers'
-import {createVenue,planningEvent,hold,reviewDatabase,databaseEvidence} from './venue-fixtures'
+import {createVenue,planningEvent,hold} from './fixtures/venue-fixtures'
 test('TC-CS93-30 LIVE Coordinator preparation shows current venue facts without enabling an unverified Safety action',async({page,playwright,owner},info)=>{
   const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner)
   try {
@@ -8,51 +8,10 @@ test('TC-CS93-30 LIVE Coordinator preparation shows current venue facts without 
     expect((await mutation(staff,'PUT',`/api/bookings/${room.id}/decision`,{version:room.version,status:'CONFIRMED',reason:'Room readiness checked'})).status()).toBe(200)
     await signIn(page,p.contact.email);await page.goto(`/events/${p.event.eventId}`)
     const panel=page.getByRole('region',{name:'Safety preparation'})
-    await expect(panel).toContainText('Venues ready');await expect(panel).toContainText('Technical/support approval has not been verified')
+    await expect(panel).toContainText('Venues ready');await expect(panel).toContainText('Equipment approval has not been verified.')
     await expect(panel.getByRole('button',{name:'Send for Safety Check',exact:true})).toBeDisabled()
     await panel.getByText('Review the current Safety factors',{exact:true}).click()
     await expect(panel).toContainText('80 / 120');await expect(panel).toContainText('Emergency access');await expect(panel).toContainText('Not recorded')
     await page.screenshot({path:info.outputPath('TC-CS93-30-current-factors-unverified-technical.png'),fullPage:true})
   }finally{await staff.dispose();await p.coordinator.dispose()}
-})
-
-test('TC-CS93-46 LIVE Coordinator technical form and TS inventory approval/reservation produce actual Officer equipment proof',async({page,browser,playwright,owner},info)=>{
- test.setTimeout(360000)
- const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner,{equipmentNeeds:['projector']})
- const supportPage=await browser.newPage(),officerPage=await browser.newPage()
- try{
-  const venue=await createVenue(staff),room=await hold(p.coordinator,p.event.eventId,venue.id)
-  expect((await mutation(staff,'PUT',`/api/bookings/${room.id}/decision`,{version:1,status:'CONFIRMED',reason:'Required equipment UI fixture room checked'})).status()).toBe(200)
-  await signIn(page,p.contact.email);await page.goto(`/technical-requirements/${p.event.id}`)
-  await page.getByLabel('projector quantity',{exact:true}).fill('2')
-  await page.getByLabel('Placement and preparation details',{exact:true}).fill('Two projectors at the rear; all emergency access lanes remain clear')
-  await page.getByRole('button',{name:'Submit requirements',exact:true}).click()
-  await expect(page.getByText('Submitted for Technical Support review',{exact:true})).toBeVisible()
-  await page.screenshot({path:info.outputPath('TC-CS93-46-coordinator-real-technical-form.png'),fullPage:true})
-  await signIn(supportPage,emails.support);await supportPage.goto('/technical-requests')
-  await supportPage.getByText('Equipment inventory',{exact:true}).click()
-  const stock=supportPage.getByLabel('projector total stock',{exact:true}),current=Number(await stock.inputValue())
-  await stock.fill(String(current+2));await supportPage.locator('form').filter({has:stock}).getByRole('button',{name:'Save stock',exact:true}).click()
-  await expect(supportPage.getByText('Inventory updated.',{exact:true})).toBeVisible()
-  await supportPage.getByRole('button',{name:new RegExp('Event request '+p.event.id)}).click()
-  const selected=supportPage.getByRole('region',{name:'Selected technical request',exact:true})
-  await selected.getByRole('button',{name:'Approve',exact:true}).click();await expect(selected).toContainText('Status: approved')
-  const before=await (await p.coordinator.get(`/api/safety/events/${p.event.eventId}`)).json()
-  expect(before.canSubmit).toBe(false);expect(before.technical.reason).toBe('RESERVATION_PROOF_MISSING')
-  await selected.getByRole('button',{name:'Reserve all requested equipment',exact:true}).click()
-  await expect(supportPage.getByText('Complete current equipment reservation saved.',{exact:true})).toBeVisible()
-  await supportPage.screenshot({path:info.outputPath('TC-CS93-46-technical-stock-approval-reservation.png'),fullPage:true})
-  await page.goto(`/events/${p.event.eventId}`)
-  const panel=page.getByRole('region',{name:'Safety preparation',exact:true})
-  await expect(panel.getByRole('button',{name:'Send for Safety Check',exact:true})).toBeEnabled()
-  await panel.getByRole('button',{name:'Send for Safety Check',exact:true}).click();await expect(panel).toContainText('Review round 1')
-  const pending=await (await p.coordinator.get(`/api/safety/events/${p.event.eventId}`)).json()
-  await signIn(officerPage,emails.officer,undefined,'/safety-checks');await officerPage.goto(`/safety-checks/${pending.round.id}`)
-  await expect(officerPage.getByRole('region',{name:'Safety review factors',exact:true})).toContainText('projector · 2')
-  await expect(officerPage.locator('body')).toContainText('Two projectors at the rear')
-  await officerPage.screenshot({path:info.outputPath('TC-CS93-46-officer-real-reserved-equipment.png'),fullPage:true})
-  const reservations=await reviewDatabase('equipment',async pool=>(await pool.query('SELECT id,"eventId","requestVersion","equipmentType",quantity,"startAt","endAt",active FROM equipment_reservations WHERE "eventRequestId"=$1',[p.event.id])).rows)
-  expect(reservations).toHaveLength(1);expect(reservations[0]).toMatchObject({equipmentType:'projector',quantity:2,active:true,requestVersion:1})
-  await databaseEvidence(page,info,'TC-CS93-46',[{database:'equipment_db',query:'Actual active reservations for Event request '+p.event.id,rows:reservations}])
- }finally{await staff.dispose();await p.coordinator.dispose();await supportPage.close();await officerPage.close()}
 })

@@ -13,6 +13,7 @@ const THEME_STORAGE_KEY = 'connectsphere-theme'
 const route = useRoute()
 const { user } = useUserSession()
 const { can } = usePermissions()
+const isTechnicalStaff = computed(() => user.value?.role === 'TECHNICAL_SUPPORT_STAFF')
 const isEventRole = computed(() => ['EVENT_ORGANISER', 'EVENT_COORDINATOR'].includes(user.value?.role ?? ''))
 const canRequest = computed(() => user.value?.role === 'EVENT_ORGANISER' && can('event_requests.create'))
 const isDark = ref(false)
@@ -42,7 +43,7 @@ watch(isDark, (dark) => {
 </script>
 
 <template>
-  <div class="min-h-dvh bg-background text-foreground">
+  <div :class="route.path === '/technical-requirements' ? 'lg:h-dvh lg:overflow-hidden' : ''" class="min-h-dvh bg-background text-foreground">
     <header class="flex h-16 items-center justify-between gap-4 border-b border-border px-5 md:px-8">
       <div class="flex min-w-0 items-center gap-5">
         <div class="flex shrink-0 items-center gap-2" aria-label="ConnectSphere">
@@ -54,10 +55,10 @@ watch(isDark, (dark) => {
 
         <nav class="hidden items-center gap-5 text-sm lg:flex" aria-label="Primary">
           <NuxtLink v-if="can('assignments.view')" to="/queue" class="text-muted-foreground">Unassigned queue</NuxtLink>
-          <NuxtLink v-if="can('safety.view')" to="/safety-checks" class="text-muted-foreground">Safety checks</NuxtLink>
-          <NuxtLink v-if="can('technical.review')" to="/technical-requests" class="text-muted-foreground">Technical review</NuxtLink>
-            <NuxtLink v-if="can('venue_bookings.decide') || can('technical.review')" to="/preparation" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">Preparation</NuxtLink>
-          <NuxtLink :to="roleHome(user?.role ?? '')" class="text-muted-foreground">Home</NuxtLink>
+          <NuxtLink v-if="!isTechnicalStaff && can('safety.view')" to="/safety-checks" class="text-muted-foreground">Safety checks</NuxtLink>
+          <NuxtLink v-if="can('technical.review')" to="/technical-requirements" class="text-muted-foreground">Technical Review</NuxtLink>
+          <NuxtLink v-if="!isTechnicalStaff && (can('venue_bookings.decide') || can('technical.review'))" to="/technical-requirements/preparation" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">Preparation</NuxtLink>
+          <NuxtLink v-if="!isTechnicalStaff" :to="roleHome(user?.role ?? '')" class="text-muted-foreground">Home</NuxtLink>
           <NuxtLink
             v-if="isEventRole && can('events.view')"
             to="/"

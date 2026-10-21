@@ -1,0 +1,17 @@
+const express = require('express');
+const helmet = require('helmet');
+
+const app = express();
+app.use(helmet());
+app.use(express.json({ limit: '32kb' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.use('/', require('./routes/attendances'));
+app.use((_req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } }));
+app.use((err, _req, res, _next) => {
+  if (err.type === 'entity.parse.failed') return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Use a valid JSON object.' } });
+  const status = err.status || 500;
+  if (status >= 500) console.error('attendance-service error', err.code || err.name);
+  return res.status(status).json({ error: { code: err.code || 'INTERNAL', message: status >= 500 ? 'Unable to process the request. Please retry.' : err.message } });
+});
+
+module.exports = app;

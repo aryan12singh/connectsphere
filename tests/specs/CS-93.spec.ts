@@ -120,14 +120,22 @@ it('TC-CS93-44 current source facts and terminal status gate confirmation while 
 })
 
 
-it('TC-CS93-47 Technical Support stock inputs are inert until hydration so early typing cannot save stale inventory',async()=>{
+it('TC-CS93-47 Technical Support stock stays read-only before and after hydration',async()=>{
  const {createSSRApp}=await import('vue'),{renderToString}=await import('@vue/server-renderer')
- const Page=(await import('../../frontend/app/pages/technical-requests.vue')).default
+ const Page=(await import('../../frontend/app/pages/technical-requirements/index.vue')).default
  ui.inventory={items:[{equipmentType:'projector',total:16,version:14}]}
  try{
   const html=await renderToString(createSSRApp(Page)),document=new DOMParser().parseFromString(html,'text/html')
-  const input=document.querySelector('input[aria-label="projector total stock"]')
-  expect(input).not.toBeNull();expect(input?.hasAttribute('disabled')).toBe(true)
-  expect([...document.querySelectorAll('button')].filter(b=>b.textContent?.trim()==='Save stock').every(b=>b.hasAttribute('disabled'))).toBe(true)
+  expect(document.querySelector('input[aria-label="projector total stock"]')).toBeNull()
+  expect([...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='Save stock')).toBe(false)
+  const wrapper=await mountSuspended(Page)
+  try{
+   const stockTab=wrapper.findAll('[role="tab"]').find(tab=>tab.text()==='Manage equipment stock')!
+   await stockTab.trigger('mousedown',{button:0});await stockTab.trigger('click')
+   await wrapper.vm.$nextTick()
+   expect(wrapper.text()).toContain('Mark stock unavailable')
+   expect(wrapper.find('input[aria-label="projector total stock"]').exists()).toBe(false)
+   expect(wrapper.findAll('button').some(button=>button.text()==='Save stock')).toBe(false)
+  }finally{wrapper.unmount()}
  }finally{ui.inventory=null}
 })

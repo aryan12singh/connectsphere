@@ -48,7 +48,9 @@ class BookingServiceContractTest(unittest.TestCase):
                     body = {"id":"event-1","eventRequestId":"request-fixture","status":"ARRANGEMENT_PENDING","currentCoordinatorId":"coordinator-1","startAt":"2026-11-01T00:00:00.000Z","endAt":"2026-12-31T23:59:00.000Z","expectedAttendance":80,"preferredLayout":"THEATRE","venueType":"PHYSICAL","accessibilityNeeds":[],"venueRequirements":"","equipmentNeeds":[]}
                     allowed = self.headers.get("x-internal-api-key") == "change-me-dev-internal-key"
                 elif self.path.startswith('/venues/') and self.path.endswith('/internal'):
-                    body = {"id":self.path.split('/')[2],"name":"Isolated venue","version":1,"capacity":100,"venueType":"PHYSICAL","isActive":True,"setupMinutes":0,"turnaroundMinutes":0,"supportedLayouts":["THEATRE"],"facilities":[],"accessibilityTags":[],"timeZone":"Asia/Singapore","operatingHours":[{"weekday":day,"isClosed":False,"opensAt":"00:00","closesAt":"23:59"} for day in ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY']]}
+                    venue_id=self.path.split('/')[2]
+                    setup,turnaround=(30,45) if 'buffered' in venue_id else (0,0)
+                    body = {"id":venue_id,"name":"Isolated venue","version":1,"capacity":100,"venueType":"PHYSICAL","isActive":True,"setupMinutes":setup,"turnaroundMinutes":turnaround,"supportedLayouts":["THEATRE"],"facilities":[],"accessibilityTags":[],"timeZone":"Asia/Singapore","operatingHours":[{"weekday":day,"isClosed":False,"opensAt":"00:00","closesAt":"23:59"} for day in ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY']]}
                     allowed = self.headers.get("x-internal-api-key") == "change-me-dev-internal-key"
                 else:
                     body = {"id":"event-1"}
@@ -326,6 +328,24 @@ class BookingServiceContractTest(unittest.TestCase):
         body = json.loads(response.read())
         self.assertEqual(body["blockingCount"], 1)
         self.assertEqual(body["statuses"], ["TENTATIVELY_HELD", "CONFIRMED"])
+
+    def test_TC_CS41_02_internal_equipment_context_uses_venue_buffers_and_requires_private_key(self):
+        self.create_booking(
+            "equipment-period", venueId="venue-buffered",
+            startAt="2026-11-20T02:00:00.000Z", endAt="2026-11-20T04:00:00.000Z",
+        )
+        url = f"http://127.0.0.1:{self.port}/internal/events/event-1/equipment-allocation-context"
+        with self.assertRaises(HTTPError) as context:
+            urlopen(Request(url), timeout=3)
+        self.assertEqual(context.exception.code, 403)
+        context.exception.close()
+
+        response = urlopen(Request(url, headers={"x-internal-api-key": "change-me-dev-internal-key"}), timeout=3)
+        body = json.loads(response.read())
+        self.assertEqual(body["eventId"], "event-1")
+        allocation = next(item for item in body["allocations"] if item["venueId"] == "venue-buffered")
+        self.assertEqual(allocation["occupiedStartAt"], "2026-11-20T01:30:00.000Z")
+        self.assertEqual(allocation["occupiedEndAt"], "2026-11-20T04:45:00.000Z")
 
 
 if __name__ == "__main__":

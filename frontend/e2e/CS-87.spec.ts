@@ -1,7 +1,7 @@
 import {test,created,validRequest,assignedSession,session,emails,mutation,signIn} from './helpers'
 import {expect} from '@playwright/test'
 import {randomUUID} from 'node:crypto'
-import {reviewDatabase,databaseEvidence} from './venue-fixtures'
+import {reviewDatabase,databaseEvidence} from './fixtures/venue-fixtures'
 
 test('TC-CS87-13 LIVE Coordinator changes only the selected breakout and Staff can extend its hold',async({page,browser,playwright,owner},testInfo)=>{
   const submitted=await created(owner,'submit',validRequest({expectedAttendance:80,minimumCapacity:80,accessibilityNeeds:[]})),coordinator=await assignedSession(playwright.request,owner,submitted.id),staff=await session(playwright.request,emails.staff),staffPage=await browser.newPage()

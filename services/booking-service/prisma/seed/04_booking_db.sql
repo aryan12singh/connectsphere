@@ -98,4 +98,36 @@ INSERT INTO "venue_booking_activity" (
   ('b4100000-0000-4000-8000-000000000009', 'b4000000-0000-4000-8000-000000000007', 'a1000000-0000-4000-8000-000000000006', 'EVENT_COORDINATOR', 'STATUS_CHANGED', 'TENTATIVELY_HELD', 'CANCELLED', 'Coordinator cancelled the tentative booking', '{"source":"seed"}'::jsonb, '2026-09-25 04:30:00+00')
 ON CONFLICT ("id") DO NOTHING;
 
+-- Confirmed venue bookings for the Technical Review demo Events. These exact
+-- Event IDs and instants are also present in the event-service seed.
+INSERT INTO "venue_booking_requests" (
+  "id", "eventId", "venueId", "requestedById", "title", "reason",
+  "requestedStart", "requestedEnd", "timeZone", "status", "idempotencyKey",
+  "statusChangedById", "statusChangedRole", "statusChangedAt", "statusReason",
+  "expectedAttendance", "layout", "createdAt", "updatedAt"
+) VALUES
+  ('b4000000-0000-4000-8000-000000000008','f1000000-0000-4000-8000-000000000008',
+   'b3000000-0000-4000-8000-000000000001','a1000000-0000-4000-8000-000000000005',
+   'Product Showcase','Confirmed venue booking for Technical Review demo.',
+   '2027-03-16 09:00:00+08','2027-03-16 17:00:00+08','Asia/Singapore','CONFIRMED','seed-booking-008',
+   'a1000000-0000-4000-8000-000000000008','VENUE_STAFF','2026-10-06 03:10:00+00','Venue staff confirmed the event booking.',
+   180,'THEATRE','2026-10-06 03:00:00+00','2026-10-06 03:10:00+00'),
+  ('b4000000-0000-4000-8000-000000000009','f1000000-0000-4000-8000-000000000009',
+   'b3000000-0000-4000-8000-000000000002','a1000000-0000-4000-8000-000000000006',
+   'Community Film Night','Confirmed venue booking for Technical Review demo.',
+   '2027-03-18 17:00:00+08','2027-03-18 19:30:00+08','Asia/Singapore','CONFIRMED','seed-booking-009',
+   'a1000000-0000-4000-8000-000000000009','VENUE_STAFF','2026-10-06 04:10:00+00','Venue staff confirmed the event booking.',
+   240,'THEATRE','2026-10-06 04:00:00+00','2026-10-06 04:10:00+00')
+ON CONFLICT ("id") DO NOTHING;
+
+INSERT INTO "venue_booking_activity" (
+  "id", "bookingId", "actorId", "actorRole", "action", "fromStatus", "toStatus",
+  "reason", "changes", "occurredAt"
+) VALUES
+  ('b4100000-0000-4000-8000-000000000010','b4000000-0000-4000-8000-000000000008','a1000000-0000-4000-8000-000000000005','EVENT_COORDINATOR','BOOKING_CREATED',NULL,'TENTATIVELY_HELD','Coordinator requested the venue for Product Showcase.','{"source":"technical-review-demo"}'::jsonb,'2026-10-06 03:00:00+00'),
+  ('b4100000-0000-4000-8000-000000000011','b4000000-0000-4000-8000-000000000008','a1000000-0000-4000-8000-000000000008','VENUE_STAFF','STATUS_CHANGED','TENTATIVELY_HELD','CONFIRMED','Venue staff confirmed the event booking.','{"source":"technical-review-demo"}'::jsonb,'2026-10-06 03:10:00+00'),
+  ('b4100000-0000-4000-8000-000000000012','b4000000-0000-4000-8000-000000000009','a1000000-0000-4000-8000-000000000006','EVENT_COORDINATOR','BOOKING_CREATED',NULL,'TENTATIVELY_HELD','Coordinator requested the venue for Community Film Night.','{"source":"technical-review-demo"}'::jsonb,'2026-10-06 04:00:00+00'),
+  ('b4100000-0000-4000-8000-000000000013','b4000000-0000-4000-8000-000000000009','a1000000-0000-4000-8000-000000000009','VENUE_STAFF','STATUS_CHANGED','TENTATIVELY_HELD','CONFIRMED','Venue staff confirmed the event booking.','{"source":"technical-review-demo"}'::jsonb,'2026-10-06 04:10:00+00')
+ON CONFLICT ("id") DO NOTHING;
+
 COMMIT;

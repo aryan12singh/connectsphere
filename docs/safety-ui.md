@@ -12,7 +12,7 @@ The Officer reviews attendance/capacity, layout, emergency access, accessibility
 
 The Coordinator records the current review/next action and corrects affected facts or directs a specific replacement. Unaffected approvals remain. Rejected room facts must materially change or the room be replaced before a new round; metadata-only edits and identical recreation cannot bypass this. Old rounds/decisions are immutable and stay historical. Factual source changes invalidate current proof before mutation; handover metadata alone preserves factual approvals while revoking the old actor's authority.
 
-Current Safety approval permits the Coordinator to Confirm; a separate action starts Preparation. Venue/Technical staff use `/preparation`. A Venue note identifies its required booking and approved round/token, so notes from an old round cannot masquerade as current preparation.
+Current Safety approval permits the Coordinator to Confirm; a separate action starts Preparation. Venue/Technical staff use `/technical-requirements/preparation`. A Venue note identifies its required booking and approved round/token, so notes from an old round cannot masquerade as current preparation.
 
 ## UI components
 
