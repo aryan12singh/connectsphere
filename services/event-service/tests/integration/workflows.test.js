@@ -320,3 +320,17 @@ test('TC-CS10-22b a Lead and a Safety Officer cannot read another user\'s reques
  const r=await create();
  for(const who of ['lead','officer'])assert.ok([403,404].includes((await call('GET',`/event-requests/${r.body.id}`,undefined,who)).status),who);
 });
+test('CS12: Planning-stage reject needs a reason, only the current Coordinator can do it, and closes request and Event together',async()=>{
+ const r=await create();const current=r.body.currentCoordinatorId==='test-coord'?'coord':'coord2';const other=current==='coord'?'coord2':'coord';
+ const approved=await call('POST',`/event-requests/${r.body.id}/decision`,{action:'APPROVE',version:r.body.version},current);assert.equal(approved.status,200);
+ const queue=await call('GET','/event-requests/review-queue',undefined,current);
+ const item=queue.body.items.find(x=>x.id===r.body.id);assert.equal(item.eventStatus,'ARRANGEMENT_PENDING');assert.ok(item.allowedActions.includes('reject'));
+ const otherQueue=await call('GET','/event-requests/review-queue',undefined,other);assert.equal(otherQueue.body.items.find(x=>x.id===r.body.id)?.allowedActions?.includes('reject')??false,false);
+ const path=`/event-requests/${r.body.id}/decision`;
+ assert.equal((await call('POST',path,{action:'REJECT',text:'Not mine',version:approved.body.version},other)).status,403);
+ assert.equal((await call('POST',path,{action:'REJECT',text:'   ',version:approved.body.version},current)).status,422);
+ const before=await prisma.eventRequest.findUnique({where:{id:r.body.id},include:{event:true}});assert.equal(before.status,'APPROVED');assert.equal(before.event.status,'ARRANGEMENT_PENDING');
+ const rejected=await call('POST',path,{action:'REJECT',text:'Venue cannot be arranged',version:approved.body.version},current);assert.equal(rejected.status,200);assert.equal(rejected.body.status,'REJECTED');
+ const after=await prisma.eventRequest.findUnique({where:{id:r.body.id},include:{event:true}});assert.equal(after.status,'REJECTED');assert.equal(after.decisionReason,'Venue cannot be arranged');assert.equal(after.event.status,'REJECTED');
+ assert.equal((await call('POST',path,{action:'REJECT',text:'Again',version:rejected.body.version},current)).status,409);
+});

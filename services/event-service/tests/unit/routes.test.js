@@ -210,6 +210,12 @@ test('policy helpers cover owner, organisation, coordinator and disabled action 
   assert.deepEqual(allowedActions(coordinator, unassigned), ['claim', 'approve', 'reject', 'amendments']);
   assert.deepEqual(allowedActions(coordinator, submitted), ['approve', 'reject', 'amendments', 'reassign']);
   assert.deepEqual(allowedActions(attendee, draft), []);
+  // CS-12: Planning-stage Reject is offered only to the current Coordinator while the Event is still in Planning.
+  const planning = { ...submitted, status: 'APPROVED', event: { id: 'e1', status: 'ARRANGEMENT_PENDING' } };
+  assert.deepEqual(allowedActions(coordinator, planning), ['reassign', 'reject']);
+  assert.deepEqual(allowedActions(otherCoordinator, planning), []);
+  assert.deepEqual(allowedActions(coordinator, { ...planning, event: { id: 'e1', status: 'CONFIRMED' } }), ['reassign']);
+  assert.deepEqual(allowedActions(organiser, planning), []);
 });
 
 test('POST /event-requests creates a draft owned by the authenticated organiser', async () => {

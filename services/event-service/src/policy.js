@@ -30,6 +30,8 @@ function allowedActions(actor, record) {
     if (record.status === 'SUBMITTED' && !record.currentCoordinatorId) actions.push('claim');
     if (record.status === 'SUBMITTED' && (!record.currentCoordinatorId || actor.id === record.currentCoordinatorId)) actions.push('approve', 'reject', 'amendments');
     if (record.currentCoordinatorId === actor.id && ['SUBMITTED', 'RETURNED_FOR_AMENDMENT', 'APPROVED'].includes(record.status)) actions.push('reassign');
+    // CS-12: an approved request whose Event is still in Planning can be rejected by its current Coordinator (closes request and Event together).
+    if (record.currentCoordinatorId === actor.id && record.status === 'APPROVED' && record.event?.status === 'ARRANGEMENT_PENDING') actions.push('reject');
   }
   return actions;
 }
