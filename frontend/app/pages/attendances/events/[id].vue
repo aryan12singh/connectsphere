@@ -25,7 +25,7 @@ const loading = ref(!event.value && !error.value)
 const backHref=computed(()=>user.value?.role==='EVENT_ORGANISER'?'/':'/attendee')
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en-SG', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  return new Intl.DateTimeFormat('en-SG', { dateStyle: 'medium', timeStyle: 'short', timeZone: event.value?.timeZone || 'Asia/Singapore' }).format(new Date(value))
 }
 
 function statusBadge(status: string) {
@@ -36,7 +36,8 @@ function statusBadge(status: string) {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-4xl px-5 py-8 md:px-8">
+  <NuxtPage v-if="route.name === 'attendances-events-id-organiser'" />
+  <main v-else class="mx-auto w-full max-w-4xl px-5 py-8 md:px-8">
     <NuxtLink :to="backHref" class="inline-block mb-4 underline text-sm text-muted-foreground">← Back to your events</NuxtLink>
 
     <Card v-if="error" class="mt-6">

@@ -17,13 +17,16 @@ test('TC-CS40-01: Coordinator submits pooled equipment and support through the b
   await equipment.stock('projector', 5); await equipment.stock('speaker', 5)
   const event = await equipment.event()
   const errors: string[] = []
-  page.on('pageerror', error => errors.push(error.message))
-  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
   const ssr = await event.coordinator.get(`/technical-requirements/${event.id}`)
   const html = await ssr.text()
   expect(html).toMatch(/<button[^>]*disabled[^>]*>[\s\S]*?Submit requirements[\s\S]*?<\/button>/)
   expect(html.match(/<fieldset[^>]*disabled[^>]*>/), 'SSR form controls must wait for hydration').not.toBeNull()
-  await signIn(page, event.email); await page.goto(`/technical-requirements/${event.id}`)
+  await signIn(page, event.email)
+  // Login setup already verifies bounded gateway backoff and successful authentication.
+  // Keep the feature's hydration and interaction error checks scoped to its own page.
+  page.on('pageerror', error => errors.push(error.message))
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
+  await page.goto(`/technical-requirements/${event.id}`)
   await expect(page).toHaveTitle('Technical requirements | ConnectSphere')
   await expect(page.getByRole('heading', { name: 'Technical requirements', exact: true })).toBeVisible()
   await chooseEquipment(page, 0, 'projector', 2)

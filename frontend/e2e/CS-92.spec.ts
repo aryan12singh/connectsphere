@@ -132,6 +132,8 @@ test('TC-CS92-10 TC-CS92-11 LIVE explicit Coordinator withdrawal precedes Staff 
  }finally{await staff.dispose();await p.coordinator.dispose()}
 })
 
+test.describe('Event venue times use the Event timezone for a UTC visitor',()=>{
+test.use({timezoneId:'UTC'})
 test('TC-CS92-02 TC-CS52-02 LIVE final effective time change reaches registered and waitlisted Attendees, skips Withdrawn and preserves all registration states',async({page,playwright,owner},info)=>{
  test.setTimeout(360000)
  const staff=await session(playwright.request,emails.staff),officer=await session(playwright.request,emails.officer),p=await planningEvent(playwright.request,owner,{equipmentNeeds:['No equipment required']})
@@ -151,9 +153,25 @@ test('TC-CS92-02 TC-CS52-02 LIVE final effective time change reaches registered 
   const notices=(await reviewDatabase('notification',async db=>db.query(query,[p.event.eventId]))).rows
   expect(notices.some((row:any)=>row.recipientId===withdrawn)).toBe(false);expect(notices.every((row:any)=>!JSON.stringify(row.data).includes('Private review'))).toBe(true)
   const registrationsQuery='SELECT "userId",status FROM registrations WHERE "eventId"=$1 ORDER BY "userId"',states=(await reviewDatabase('attendance',async db=>db.query(registrationsQuery,[p.event.eventId]))).rows;expect(states.map((row:any)=>row.status).sort()).toEqual(['CONFIRMED','WAITLISTED','WITHDRAWN'])
-  await signIn(page,emails.otherAttendee);await page.goto(`/attendances/events/${p.event.eventId}`);await expect(page.getByRole('region',{name:'Confirmed venues'})).toContainText('11:00');await page.getByTestId('bell').click();const notice=page.locator(`[data-notice-id="${notices.find((row:any)=>row.recipientId===waitlisted).id}"]`);await expect(notice).toContainText(venue.name);await notice.screenshot({path:info.outputPath('TC-CS92-02-waitlisted-final-notice.png')})
+  expect(await page.evaluate(()=>Intl.DateTimeFormat().resolvedOptions().timeZone)).toBe('UTC')
+  await signIn(page,emails.otherAttendee);await page.goto(`/attendances/events/${p.event.eventId}`)
+  const confirmedVenues=page.getByRole('region',{name:'Confirmed venues'});await expect(confirmedVenues).toContainText('11:00');await expect(confirmedVenues).toContainText(/1:00\s?pm/i);await confirmedVenues.screenshot({path:info.outputPath('TC-CS92-02-UTC-visitor-effective-time.png')})
+  await page.getByTestId('bell').click();const notice=page.locator(`[data-notice-id="${notices.find((row:any)=>row.recipientId===waitlisted).id}"]`);await expect(notice).toContainText(venue.name);await notice.screenshot({path:info.outputPath('TC-CS92-02-waitlisted-final-notice.png')})
+  await signIn(page,emails.owner);await page.goto(`/attendances/events/${p.event.eventId}/organiser`)
+  const ownerVenue=page.getByRole('row').filter({hasText:venue.name});await expect(ownerVenue).toContainText('11:00');await expect(ownerVenue).toContainText(/1:00\s?pm/i);await expect(ownerVenue).toContainText('Asia/Singapore');await ownerVenue.screenshot({path:info.outputPath('TC-CS92-02-UTC-owner-effective-time.png')})
+  await info.attach('TC-CS92-02-timezone-display',{body:Buffer.from(JSON.stringify({browserTimeZone:await page.evaluate(()=>Intl.DateTimeFormat().resolvedOptions().timeZone),eventTimeZone:'Asia/Singapore',bookingStart:changed.startAt,bookingEnd:changed.endAt,expectedEventLocalStart:'11:00',expectedEventLocalEnd:'13:00 (1:00pm)',ownerVenueText:await ownerVenue.innerText()},null,2)),contentType:'application/json'})
+  const deniedViews=[]
+  for(const [label,email] of [['Attendee',emails.otherAttendee],['foreign-Organiser',emails.other]] as const){
+   await signIn(page,email);await page.goto(`/attendances/events/${p.event.eventId}/organiser`)
+   await expect(page).toHaveURL(label==='Attendee'?/\/access-denied$/:new RegExp(`/attendances/events/${p.event.eventId}/organiser$`))
+   await expect(page.getByText('Access denied',{exact:true})).toBeVisible();await expect(page.getByRole('table')).toHaveCount(0);await expect(page.locator('main')).not.toContainText(venue.name);await expect(page.locator('main')).not.toContainText('Private review')
+   const deniedStatus=await page.evaluate(async eventId=>(await fetch(`/api/attendances/events/${eventId}/organiser`,{credentials:'include'})).status,p.event.eventId);expect(deniedStatus).toBe(403);deniedViews.push({actor:label,path:new URL(page.url()).pathname,organiserApiStatus:deniedStatus,venueTables:await page.getByRole('table').count()})
+   await page.locator('main').screenshot({path:info.outputPath(`TC-CS92-02-UTC-${label}-organiser-access-denied.png`)})
+  }
+  await info.attach('TC-CS92-02-organiser-route-access',{body:Buffer.from(JSON.stringify(deniedViews,null,2)),contentType:'application/json'})
   await evidence(page,info,'TC-CS92-02-CS52-02-registered-waitlisted-withdrawn',p.event.eventId,[{database:'attendance_db',query:registrationsQuery,rows:states}])
  }finally{await staff.dispose();await officer.dispose();await p.coordinator.dispose()}
+})
 })
 
 test('TC-CS92-16 LIVE expired replacement requires a fresh original review and cannot approve beside its restored source',async({page,playwright,owner},info)=>{

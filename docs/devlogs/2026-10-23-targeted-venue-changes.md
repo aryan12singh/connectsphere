@@ -12,4 +12,6 @@ Verified on clean `1c87348`: Booking 104/104, Notification 26/26 plus 6/6 Postgr
 
 The live job allows 150 minutes for 254 serial desktop/mobile journeys, production authentication backoff, stack setup and restart checks. An observed opening block took approximately 19 seconds per test; the former 60-minute cap could truncate a healthy full run. Individual test deadlines, zero retries and all assertions remain unchanged.
 
+Event and venue dates now use the Event's IANA timezone during server rendering and hydration; the attendee parent renders the existing owner-only child page. A UTC server/browser production regression passed 2/2 desktop/mobile for the 11 am–1 pm Singapore interval, owner access, Attendee/foreign-Organiser denials, and the existing audience/registration assertions. CS40-01 also passed 2/2 after feature error capture starts after authenticated setup. The production build and both type checks passed; current full coverage and global outcomes remain in required CI.
+
 TC-CS88-06 remains blocked by the absent CS-54 whole-Event cancellation workflow. Independent developer review, merged-main CI, author walkthrough and Product Owner acceptance remain human delivery gates.

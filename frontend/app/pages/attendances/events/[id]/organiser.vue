@@ -25,7 +25,7 @@ const { data: event, error, refresh } = await useFetch<{
 const isOrganiser = computed(() => user.value?.role === 'EVENT_ORGANISER')
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en-SG', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  return new Intl.DateTimeFormat('en-SG', { dateStyle: 'medium', timeStyle: 'short', timeZone: event.value?.timeZone || 'Asia/Singapore' }).format(new Date(value))
 }
 
 function statusBadge(status: string) {
