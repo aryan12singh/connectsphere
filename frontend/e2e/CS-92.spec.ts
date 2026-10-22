@@ -70,7 +70,7 @@ test('TC-CS92-03 TC-CS92-12 LIVE source search preserves date, time, attendance,
    await expect(bell).toBeDisabled();await expect(bell).toHaveAttribute('aria-expanded','false')
    await bell.screenshot({path:info.outputPath('TC-CS92-03-bell-disabled-before-hydration.png')})
   }finally{release()}
-  await page.unroute('**/_nuxt/**');await expect(bell).toBeEnabled();await bell.click()
+  await page.unrouteAll({behavior:'wait'});await expect(bell).toBeEnabled();await bell.click()
   await expect(page.getByRole('dialog',{name:'Notifications',exact:true})).toBeVisible()
   const notification=page.locator(`[data-notice-id="${notice.id}"]`);await expect(notification).toContainText(venue.name);await notification.screenshot({path:info.outputPath('TC-CS92-03-actionable-unavailability-notice.png')});await notification.click();await expect(page).toHaveURL(new RegExp(`/events/${p.event.eventId}$`));await page.locator(`[data-booking-id="${room.id}"]`).getByRole('button',{name:'Find replacement',exact:true}).click();await expect(page.getByLabel('Room attendance',{exact:true})).toHaveValue('200');await expect(page.getByRole('combobox',{name:'Room layout',exact:true})).toHaveValue('THEATRE');await expect(page.getByLabel('Projector',{exact:true})).toBeChecked()
   await page.locator('form').screenshot({path:info.outputPath('TC-CS92-03-prefilled-200-attendee-search.png')})
