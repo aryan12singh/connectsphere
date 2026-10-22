@@ -60,7 +60,19 @@ test('TC-CS92-03 TC-CS92-12 LIVE source search preserves date, time, attendance,
   const search=await value(await p.coordinator.get(`/api/bookings/events/${p.event.eventId}/venue-search?bookingId=${room.id}&bookingVersion=${room.version}`));expect(search.criteria).toMatchObject({startAt:source.startAt,endAt:source.endAt,expectedAttendance:200,layout:'THEATRE',facilities:['PROJECTOR'],accessibilityNeeds:['WHEELCHAIR_ACCESS']});expect(search.items.some((r:any)=>r.id===venue.id)).toBe(false);expect(search.items.find((r:any)=>r.id===candidate.id).canRequest).toBe(true)
   const noticeQuery='SELECT id FROM notifications WHERE "eventId"=$1 AND type=\'VENUE_UNAVAILABLE\' AND "recipientId"=$2';await expect.poll(async()=> (await reviewDatabase('notification',async db=>db.query(noticeQuery,[p.event.eventId,p.contact.id]))).rows.length).toBe(1)
   const notice=(await reviewDatabase('notification',async db=>db.query(noticeQuery,[p.event.eventId,p.contact.id]))).rows[0]
-  await signIn(page,p.contact.email);await page.goto('/');await page.getByTestId('bell').click();const notification=page.locator(`[data-notice-id="${notice.id}"]`);await expect(notification).toContainText(venue.name);await notification.screenshot({path:info.outputPath('TC-CS92-03-actionable-unavailability-notice.png')});await notification.click();await expect(page).toHaveURL(new RegExp(`/events/${p.event.eventId}$`));await page.locator(`[data-booking-id="${room.id}"]`).getByRole('button',{name:'Find replacement',exact:true}).click();await expect(page.getByLabel('Room attendance',{exact:true})).toHaveValue('200');await expect(page.getByRole('combobox',{name:'Room layout',exact:true})).toHaveValue('THEATRE');await expect(page.getByLabel('Projector',{exact:true})).toBeChecked()
+  await signIn(page,p.contact.email)
+  let release!:()=>void,paused=false
+  const hydration=new Promise<void>(resolve=>{release=resolve})
+  await page.route('**/_nuxt/**',async route=>{if(route.request().resourceType()==='script'){paused=true;await hydration}await route.continue()})
+  const bell=page.getByTestId('bell')
+  try{
+   await page.goto('/',{waitUntil:'commit'});await expect.poll(()=>paused).toBe(true)
+   await expect(bell).toBeDisabled();await expect(bell).toHaveAttribute('aria-expanded','false')
+   await bell.screenshot({path:info.outputPath('TC-CS92-03-bell-disabled-before-hydration.png')})
+  }finally{release()}
+  await page.unroute('**/_nuxt/**');await expect(bell).toBeEnabled();await bell.click()
+  await expect(page.getByRole('dialog',{name:'Notifications',exact:true})).toBeVisible()
+  const notification=page.locator(`[data-notice-id="${notice.id}"]`);await expect(notification).toContainText(venue.name);await notification.screenshot({path:info.outputPath('TC-CS92-03-actionable-unavailability-notice.png')});await notification.click();await expect(page).toHaveURL(new RegExp(`/events/${p.event.eventId}$`));await page.locator(`[data-booking-id="${room.id}"]`).getByRole('button',{name:'Find replacement',exact:true}).click();await expect(page.getByLabel('Room attendance',{exact:true})).toHaveValue('200');await expect(page.getByRole('combobox',{name:'Room layout',exact:true})).toHaveValue('THEATRE');await expect(page.getByLabel('Projector',{exact:true})).toBeChecked()
   await page.locator('form').screenshot({path:info.outputPath('TC-CS92-03-prefilled-200-attendee-search.png')})
   const originalProof=await page.context().newPage();await evidence(originalProof,info,'TC-CS92-03-prefilled-200',p.event.eventId);await originalProof.close()
   // Separate allocation proves the supplemental180-attendee source case.
