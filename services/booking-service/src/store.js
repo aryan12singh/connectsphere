@@ -291,6 +291,15 @@ function addOutbox(booking,kind,payload,transaction) {
   }
   return (transaction || prisma).bookingOutbox.upsert({where:{actionKey},create:{actionKey,aggregateId:booking.id,kind,payload:safeJson(payload)},update:{}});
 }
+async function latestUnavailability(bookingId,transaction){
+  if(isMemory)return [...state.outbox].reverse().find(row=>row.aggregateId===bookingId&&row.kind==='VenueUnavailable')?.payload.unavailability||[];
+  const [row]=await (transaction||prisma).$queryRaw`SELECT payload FROM booking_outbox WHERE "aggregateId"=${bookingId} AND kind='VenueUnavailable' ORDER BY (payload->>'version')::int DESC NULLS LAST,"createdAt" DESC,id DESC LIMIT 1`;
+  return row?.payload.unavailability||[];
+}
+async function replacementCompleted(bookingId,originalBookingId,transaction){
+  if(isMemory)return state.outbox.some(row=>row.aggregateId===bookingId&&row.kind==='VenueReplacementApproved'&&row.payload.originalBookingId===originalBookingId);
+  return !!await (transaction||prisma).bookingOutbox.findFirst({where:{aggregateId:bookingId,kind:'VenueReplacementApproved',payload:{path:['originalBookingId'],equals:originalBookingId}},select:{id:true}});
+}
 
 function listHistory(venueId) {
   if (isMemory) {
@@ -384,5 +393,5 @@ module.exports = {
   primaryVenue,setPrimaryVenue,
   state, reset, fingerprint, createBooking, replaceBooking, appendActivity,
   findIdempotency, getBooking, listBookings, listHistory, countBlockingBookings, isMemory,
-  withLocks,lockMore,transactionNow,addOutbox,toApiBooking,
+  withLocks,lockMore,transactionNow,addOutbox,toApiBooking,latestUnavailability,replacementCompleted,
 };

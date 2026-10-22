@@ -45,6 +45,42 @@ describe('CS-87 — independent venue bookings', () => {
     }
   })
 
+  it('TC-CS88-17 rebuilds a definitively refused Event review and closes a stale cancellation before using the refreshed booking version',async()=>{
+    const component=(await import('../../frontend/app/components/venue/EventVenueArrangements.vue')).default
+    for(const failure of ['event-version','booking-version']){
+      const source={id:'stale-approved',eventId:'event-ui',venueId:'venue',venueName:'Original room',title:'Conference',reason:'Original arrangement',timeZone:'Asia/Singapore',status:'CONFIRMED',version:2,startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:30:00.000Z',expiresAt:null,expectedAttendance:80,layout:'THEATRE',flags:[]}
+      roomUi.items=[source];roomUi.eventVersion=1;roomUi.send.mockReset()
+      const reviews:any[]=[],changes:any[]=[]
+      roomUi.send.mockImplementation(async(path:string,options:any)=>{
+        if(path.endsWith('/venue-change-reviews')){
+          reviews.push(JSON.parse(JSON.stringify(options)));roomUi.eventVersion++
+          if(failure==='event-version'&&reviews.length===1)throw Object.assign(Error('Event changed before review'),{data:{data:{error:{code:'STALE_VERSION'}}}})
+          return {reviewId:`recorded-review-${options.body.bookingVersion}`}
+        }
+        if(path==='/api/bookings/stale-approved'){
+          changes.push(JSON.parse(JSON.stringify(options)))
+          if(failure==='booking-version'&&changes.length===1){roomUi.items=[{...source,version:3}];throw Object.assign(Error('Booking changed before cancellation'),{data:{data:{error:{code:'STALE_BOOKING'}}}})}
+          roomUi.items=[{...source,status:'CANCELLED',version:options.body.version+1}];return roomUi.items[0]
+        }
+        return {items:[]}
+      })
+      const wrapper=await mountSuspended(component,{props:{eventId:'event-ui'}})
+      try{
+        const open=()=>wrapper.findAll('button').find(button=>button.text()==='Cancel this booking')!.trigger('click')
+        await open();await wrapper.get('[role="dialog"] input').setValue('Release the current reviewed booking')
+        await wrapper.findAll('button').find(button=>button.text()==='Confirm cancellation')!.trigger('click');await flushPromises()
+        expect(wrapper.get('[data-booking-id="stale-approved"]').text()).toContain('Venue approved')
+        if(failure==='booking-version'){expect(wrapper.find('[role="dialog"]').exists()).toBe(false);await open();await wrapper.get('[role="dialog"] input').setValue('Release the refreshed booking after review')}
+        else expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
+        await wrapper.findAll('button').find(button=>button.text()==='Confirm cancellation')!.trigger('click');await flushPromises()
+        expect(wrapper.find('[role="dialog"]').exists()).toBe(false);expect(wrapper.get('[data-booking-id="stale-approved"]').text()).toContain('cancelled')
+        expect(reviews).toHaveLength(2);expect(reviews[1].headers['Idempotency-Key']).not.toBe(reviews[0].headers['Idempotency-Key']);expect(reviews[1].body.version).toBe(2)
+        if(failure==='event-version'){expect(changes).toHaveLength(1);expect(changes[0].body.version).toBe(2)}
+        else{expect(changes.map(options=>options.body.version)).toEqual([2,3]);expect(changes[1].body.changeReviewId).toBe('recorded-review-3')}
+      }finally{wrapper.unmount()}
+    }
+  })
+
   it('TC-CS87-28 checks allocations for each simultaneous session without adding sequential room capacities',async()=>{
     const {event}=await fixture.eventFixture(),rooms=[]
     for(const [n,start,end,attendance] of [[0,2,3,80],[1,3,4,40],[2,3,4,40]] as number[][]){

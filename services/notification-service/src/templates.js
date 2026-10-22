@@ -21,11 +21,9 @@ const LIFECYCLE_TYPES = [
   'RequestSubmitted', 'RequestResubmitted', 'CoordinatorAssigned', 'CoordinatorReassigned',
   'RequestApproved', 'RequestRejected', 'RequestReturned', 'EventConfirmed',
 ];
-// CS-51: planning decisions and staff actions. Their producers belong to
-// other stories (venue booking CS-37/38, buffers CS-86, unavailability
-// CS-90/91, safety CS-93/94). Until those publish real messages, these
-// templates are proven with sample messages (allowed by the CS-51 card).
-// The expected payload of each type is listed in docs/api-contract.md.
+// CS-51 planning and Staff actions share the durable producer/relay/consumer
+// pipeline. Contract fixtures check individual templates; live acceptance
+// separately verifies current source context and delivery. See api-contract.md.
 const PLANNING_TYPES = [
   'BookingRequested', 'BookingDecided', 'BookingCancelled','BookingChanged','BookingRestored','ReplacementApproved', 'VenueUnavailable', 'BufferConflictFlagged',
   'HoldExpiring', 'HoldExpired', 'HoldExtensionRequested', 'HoldExtended', 'SafetySubmitted', 'SafetyApproved', 'SafetyEvidenceInvalidated', 'SafetyChangesRequested',

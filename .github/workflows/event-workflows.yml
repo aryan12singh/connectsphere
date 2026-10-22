@@ -167,6 +167,15 @@ jobs:
           cache: npm
           cache-dependency-path: services/${{ matrix.service }}/package-lock.json
       - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy
+      - name: Install Booking HTTP boundary fixtures
+        if: matrix.service == 'booking-service'
+        working-directory: .
+        run: |
+          npm ci --prefix services/event-service
+          npm ci --prefix services/venue-service
+          npm run build --prefix services/event-service
+          npm run prisma:generate --prefix services/venue-service
+          DATA_MODE=memory NODE_ENV=test node -e 'require("./services/venue-service/src/app")'
       - run: npm run test:coverage | tee "$RUNNER_TEMP/coverage.txt"
       - run: npm run test:contract --if-present 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
       - name: PostgreSQL HTTP integration and source coverage

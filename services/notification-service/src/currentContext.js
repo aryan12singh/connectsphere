@@ -1,4 +1,5 @@
 const config=require('./config');
+const {fingerprint}=require('../../utils/venue-change-contract');
 async function read(base,path,conflictIsMissing=false){
  const response=await fetch(base+path,{headers:{'x-internal-api-key':config.internalApiKey},signal:AbortSignal.timeout(5000)});
  if(response.status===404||conflictIsMissing&&response.status===409)return null;
@@ -18,7 +19,7 @@ async function currentContext(message){
   if(message.type==='HoldExpiring'&&booking.expiresAt!==p.expiresAt)return null;
   if(message.type==='HoldExtensionRequested'&&(!active||!booking.extensionPending))return null;
   if(message.type==='HoldExtended'&&(!active||booking.expiresAt!==p.expiresAt))return null;
-  if(message.type==='VenueUnavailable'&&!booking.flags.includes('AFFECTED_UNAVAILABLE'))return null;
+  if(message.type==='VenueUnavailable'&&(!(booking.status==='CONFIRMED'||active)||!booking.flags.includes('AFFECTED_UNAVAILABLE')||!booking.unavailability?.length||fingerprint(booking.unavailability)!==fingerprint(p.unavailability||[])))return null;
   if(message.type==='BookingCancelled'&&booking.status!=='CANCELLED')return null;
   if(message.type==='BookingChanged'&&(!active||booking.version!==p.version))return null;
   if(message.type==='BookingRestored'&&(booking.flags.includes('AFFECTED_UNAVAILABLE')||!['CONFIRMED','TENTATIVELY_HELD'].includes(booking.status)))return null;

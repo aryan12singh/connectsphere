@@ -58,3 +58,41 @@ test('TC-CS50-11pg read more than 30 days ago is hidden; 30 days is kept', async
   await prisma.notification.update({ where: { id: notice.id }, data: { readAt: new Date(Date.now() - 31 * day) } });
   assert.equal((await api.http('/notifications', { headers: as('pg-o1') })).body.items.length, 0);
 });
+
+test('Venue change message kinds persist the current scoped recipients and replay once in PostgreSQL',async(t)=>{
+ const {currentContext}=require('../../src/currentContext'),native=global.fetch,proof=[];
+ let booking,event;
+ global.fetch=async url=>({ok:true,status:200,json:async()=>String(url).includes('notification-context')?booking:event});
+ const lookups={names,usersWithRole:async()=>['pg-staff-a','pg-staff-b'],attendeeIds:async()=>['pg-attendee-a','pg-attendee-b'],currentContext};
+ try{
+  for(const type of ['BookingCancelled','BookingChanged','BookingRestored','ReplacementApproved','EventConfirmed']){
+   booking={id:'pg-booking',eventId:'pg-venue-event',venueId:'pg-venue',status:type==='BookingCancelled'?'CANCELLED':type==='BookingChanged'?'TENTATIVELY_HELD':'CONFIRMED',expiresAt:new Date(Date.now()+3600000).toISOString(),version:9,flags:[],originalBookingId:'pg-original'};
+   event={id:'pg-venue-event',eventRequestId:'r1',organiserId:'pg-organiser',currentCoordinatorId:'pg-current-coordinator',status:type==='EventConfirmed'?'CONFIRMED':'ARRANGEMENT_PENDING',safetyState:'APPROVED',safetyRoundId:'pg-round'};
+   const input={id:'pg-venue-'+type,type,aggregateType:type==='EventConfirmed'?'Event':'VenueBooking',aggregateId:'pg-booking',payload:{eventRequestId:'r1',eventId:event.id,bookingId:booking.id,venueId:booking.venueId,venueName:'Effective hall',staffRecipientIds:['pg-staff-b'],version:9,originalBookingId:'pg-original',attendeeVenueChanged:true,venueNames:['Effective hall'],roundId:'pg-round'}};
+   assert.equal((await deliver(input,lookups)).result,'processed');assert.equal((await deliver(input,lookups)).result,'duplicate');
+   const rows=await prisma.notification.findMany({where:{sourceMessageId:input.id},select:{recipientId:true,type:true,text:true,link:true},orderBy:{recipientId:'asc'}});
+   const expected=['BookingCancelled','BookingChanged'].includes(type)?['pg-staff-b']:type==='EventConfirmed'?['pg-attendee-a','pg-attendee-b','pg-organiser']:['pg-current-coordinator','pg-organiser'];
+   assert.deepEqual(rows.map(row=>row.recipientId),expected);assert.ok(rows.every(row=>row.text.includes('Effective hall')&&row.link));
+   proof.push({messageId:input.id,kind:type,notices:rows});
+  }
+  t.diagnostic(JSON.stringify({layer:'PostgreSQL delivery with explicit current-source HTTP fixtures',proof}));
+ }finally{global.fetch=native;}
+});
+
+test('TC-CS91-26 PostgreSQL delivery suppresses old closure facts, stores the current public period once and keeps internal notes private',async(t)=>{
+ const {currentContext}=require('../../src/currentContext'),native=global.fetch;
+ const prior=[{id:'pg-closure',startAt:'2028-11-20T01:30:00.000Z',endAt:'2028-11-20T04:30:00.000Z',category:'MAINTENANCE'}];
+ let facts=[{...prior[0],endAt:'2028-11-20T06:30:00.000Z',category:'SAFETY_CONCERN'}];
+ const event={id:'pg-closure-event',eventRequestId:'r1',organiserId:'pg-organiser',currentCoordinatorId:'pg-current-coordinator',status:'ARRANGEMENT_PENDING'};
+ global.fetch=async url=>({ok:true,status:200,json:async()=>String(url).includes('notification-context')?{id:'pg-booking',eventId:event.id,venueId:'pg-venue',status:'CONFIRMED',flags:['AFFECTED_UNAVAILABLE'],unavailability:facts}:event});
+ const input={id:'pg-closure-stale',type:'VenueUnavailable',aggregateType:'VenueBooking',aggregateId:'pg-booking',payload:{eventId:event.id,eventRequestId:'r1',bookingId:'pg-booking',venueId:'pg-venue',venueName:'Effective hall',timeZone:'Asia/Singapore',unavailability:prior,reason:'Private internal note'}};
+ try{
+  assert.equal((await deliver(input,{currentContext})).result,'ignored');assert.equal(await prisma.notification.count({where:{sourceMessageId:input.id}}),0);
+  const fresh={...input,id:'pg-closure-current',payload:{...input.payload,unavailability:facts}};
+  assert.equal((await deliver(fresh,{currentContext})).result,'processed');assert.equal((await deliver(fresh,{currentContext})).result,'duplicate');
+  const rows=await prisma.notification.findMany({where:{sourceMessageId:fresh.id},select:{recipientId:true,type:true,text:true,data:true}});assert.equal(rows.length,2);
+  assert.ok(rows.every(row=>row.text.includes('Safety concern')&&row.text.includes('20 Nov 2028')&&row.text.includes('14:30')&&row.text.includes('Asia/Singapore')&&!JSON.stringify(row).includes('Private internal note')));
+  facts=[];assert.equal((await deliver({...fresh,id:'pg-closure-removed'},{currentContext})).result,'ignored');
+  t.diagnostic(JSON.stringify({caseId:'TC-CS91-26',layer:'PostgreSQL delivery with current-source HTTP fixture',staleReceipt:await prisma.messageReceipt.findUnique({where:{messageId:input.id}}),currentNotices:rows,removedReceipt:await prisma.messageReceipt.findUnique({where:{messageId:'pg-closure-removed'}})}));
+ }finally{global.fetch=native;}
+});

@@ -94,6 +94,54 @@ test('TC-CS90-07 Staff approval at T-1s, T and T+1s observes the exact persisted
  }finally{clock.now=originalNow;}
 });
 
+test('TC-CS92-16 an expired replacement cannot resubmit as an orphan or approve alongside a restored original',async()=>{
+ const {room}=await fixture(),original=await approve(room),closure=await block(original),venue=(await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({name:'Alternative'})})).body;
+ const pending=await replacement(read(original.id),venue),clock=require('../../src/clock'),now=clock.now;
+ clock.now=()=>new Date(Date.parse(pending.expiresAt)+1);
+ try{
+  const body={...pending,expiresAt:undefined,status:'TENTATIVELY_HELD',reason:'Expired alternative needs a new original review'};
+  const denied=await api.booking.http(`/venue-bookings/${pending.id}/resubmit`,{method:'POST',headers:headers(f.coordinator),body});assert.equal(denied.status,409);assert.equal(denied.body.error.code,'REPLACEMENT_REVIEW_REQUIRED');
+  assert.equal(f.bookings.listBookings().length,3);assert.equal(read(pending.id).originalBookingId,original.id);
+  const released=await api.booking.http(`/venue-bookings/${closure.body.id}`,{method:'PUT',headers:f.staff,body:{...read(closure.body.id),status:'CANCELLED'}});assert.equal(released.status,200);
+  const restored=await api.booking.http(`/venue-bookings/${original.id}/restore`,{method:'POST',headers:f.staff,body:{version:read(original.id).version,confirm:true,reason:'Staff confirmed the original full occupied window'}});assert.equal(restored.status,200);
+  const stale=await api.booking.http(`/venue-bookings/${pending.id}/decision`,{method:'PUT',headers:f.staff,body:{version:pending.version,status:'CONFIRMED',reason:'Expired alternative must not become effective'}});assert.equal(stale.status,409);assert.equal(stale.body.error.code,'HOLD_EXPIRED');
+  assert.deepEqual(f.bookings.listBookings().filter(row=>row.status==='CONFIRMED'&&!row.flags.includes('AFFECTED_UNAVAILABLE')).map(row=>row.id),[original.id]);
+ }finally{clock.now=now;}
+});
+
+test('TC-CS92-17 a completed replacement can be reviewed and approved again without repeating the original transition or trusting another pending lineage',async()=>{
+ const {room}=await fixture(),original=await approve(room);await block(original);
+ const venue=(await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({name:'Replacement hall'})})).body;
+ const first=await approve(await replacement(read(original.id),venue)),retained=read(original.id);
+ const body=authorize(first,'CHANGE',{...first,status:'TENTATIVELY_HELD',startAt:'2026-12-21T05:00:00.000Z',endAt:'2026-12-21T06:00:00.000Z',reason:'Recheck this completed replacement at its revised time'});
+ const changed=await api.booking.http(`/venue-bookings/${first.id}`,{method:'PUT',headers:headers(f.coordinator),body});assert.equal(changed.status,200,JSON.stringify(changed.body));
+ const confirmed=await approve(changed.body);assert.equal(confirmed.status,'CONFIRMED');assert.equal(confirmed.originalBookingId,original.id);assert.deepEqual(read(original.id),retained);
+ assert.equal(f.bookings.state.outbox.filter(row=>row.kind==='VenueReplacementApproved').length,1);
+ const revised=authorize(confirmed,'CHANGE',{...confirmed,status:'TENTATIVELY_HELD',startAt:'2026-12-21T07:00:00.000Z',endAt:'2026-12-21T08:00:00.000Z',reason:'Recheck a later time for the completed arrangement'}),second=await api.booking.http(`/venue-bookings/${first.id}`,{method:'PUT',headers:headers(f.coordinator),body:revised});assert.equal(second.status,200);
+ const clock=require('../../src/clock'),now=clock.now;clock.now=()=>new Date(Date.parse(second.body.expiresAt)+1);
+ try{
+  const fresh=await api.booking.http(`/venue-bookings/${first.id}/resubmit`,{method:'POST',headers:headers(f.coordinator),body:{...second.body,expiresAt:undefined,reason:'Fresh ordinary request after a completed replacement expired'}});assert.equal(fresh.status,201);assert.equal(fresh.body.resubmittedFromId,first.id);assert.equal(fresh.body.originalBookingId??null,null);
+  await approve(fresh.body);const summary=await api.booking.http(`/venue-bookings/events/${first.eventId}/summary`,{headers:f.coordinator});assert.equal(summary.body.venueReady,true);assert.equal(summary.body.items.find(row=>row.id===original.id).replacementBookingId,null);assert.deepEqual(read(original.id),retained);
+ }finally{clock.now=now;}
+ const unproven=await f.bookings.createBooking({...confirmed,status:'TENTATIVELY_HELD',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T03:00:00.000Z',expiresAt:new Date(Date.now()+3600000).toISOString()}, {id:'coordinator',role:'EVENT_COORDINATOR'},randomUUID());
+ const refused=await api.booking.http(`/venue-bookings/${unproven.id}/decision`,{method:'PUT',headers:f.staff,body:{version:unproven.version,originalVersion:retained.version,status:'CONFIRMED',reason:'Unproven pending lineage must not reuse completed history'}});assert.equal(refused.status,409);assert.equal(refused.body.error.code,'ORIGINAL_NO_LONGER_AFFECTED');
+});
+
+test('TC-CS91-26 edited public closure facts refresh the actionable intent once while private-note edits do not and removal retains only the affected flag',async()=>{
+ const {room}=await fixture(),approved=await approve(room),closure=await block(approved),notices=()=>f.bookings.state.outbox.filter(row=>row.kind==='VenueUnavailable'&&row.aggregateId===room.id);
+ assert.equal(notices().length,1);const beforeFlags=read(room.id).flags;
+ const body={...read(closure.body.id),endAt:'2026-12-21T06:30:00.000Z',unavailabilityCategory:'SAFETY_CONCERN',unavailabilityNote:'Updated private investigation',reason:'Revised public closure period'};
+ const preview=await api.booking.http('/venue-bookings/impact-preview',{method:'POST',headers:f.staff,body:{...body,bookingId:closure.body.id}});assert.equal(preview.status,200);
+ const input={...body,confirmImpact:true,impactFingerprint:preview.body.impactFingerprint},key=randomUUID();
+ const saved=await api.booking.http(`/venue-bookings/${closure.body.id}`,{method:'PUT',headers:headers(f.staff,key),body:input});assert.equal(saved.status,200);assert.deepEqual(read(room.id).flags,beforeFlags);assert.equal(notices().length,2);
+ assert.equal((await api.booking.http(`/venue-bookings/${closure.body.id}`,{method:'PUT',headers:headers(f.staff,key),body:input})).status,200);assert.equal(notices().length,2);
+ const facts=notices()[1].payload.unavailability;assert.equal(facts[0].endAt,body.endAt);assert.equal(facts[0].category,'SAFETY_CONCERN');assert.ok(!JSON.stringify(facts).includes('private'));
+ const context=()=>api.booking.http(`/internal/notification-context/${room.id}`,{headers:{'x-internal-api-key':require('../../src/config').internalApiKey}});assert.deepEqual((await context()).body.unavailability,facts);
+ const privateBody={...read(closure.body.id),unavailabilityNote:'Another internal-only note'},privatePreview=await api.booking.http('/venue-bookings/impact-preview',{method:'POST',headers:f.staff,body:{...privateBody,bookingId:closure.body.id}});
+ assert.equal((await api.booking.http(`/venue-bookings/${closure.body.id}`,{method:'PUT',headers:headers(f.staff),body:{...privateBody,confirmImpact:true,impactFingerprint:privatePreview.body.impactFingerprint}})).status,200);assert.equal(notices().length,2);
+ assert.equal((await api.booking.http(`/venue-bookings/${closure.body.id}`,{method:'PUT',headers:f.staff,body:{...read(closure.body.id),status:'CANCELLED'}})).status,200);assert.ok(read(room.id).flags.includes('AFFECTED_UNAVAILABLE'));assert.deepEqual((await context()).body.unavailability,[]);
+});
+
 test('TC-CS88-16 component: source-proven whole-Event release is atomic, scoped and replay-safe; unproven or mismatched source refuses',async()=>{
  const {event,room,venue}=await fixture(),confirmed=await approve(room),source=eventClient.cancellationContext;
  const extra=(status,eventId=event.id,expiresAt=null)=>f.bookings.createBooking({...room,status,eventId,expiresAt,extensionRequest:{reason:'Pending extension'},flags:['AFFECTED_UNAVAILABLE']},{id:'coordinator',role:'EVENT_COORDINATOR'},randomUUID());

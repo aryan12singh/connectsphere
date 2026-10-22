@@ -50,7 +50,7 @@ test('TC-CS88-01 TC-CS88-08 TC-CS88-10 LIVE scoped cancellation releases buffers
  try{
   const a=await createVenue(staff),b=await createVenue(staff,{managedById:'a1000000-0000-4000-8000-000000000009'}),rooms=[]
   for(const venue of [a,b,await createVenue(staff),await createVenue(staff)])rooms.push(await approve(staff,await hold(p.coordinator,p.event.eventId,venue.id,{expectedAttendance:20})))
-  const before=await summary(p.coordinator,p.event.eventId),action=await cancel(p.coordinator,rooms[1]),saved=await value(action.response)
+  const before=await summary(p.coordinator,p.event.eventId),action=await cancel(p.coordinator,rooms[1],{reason:'Breakout merged'}),saved=await value(action.response)
   expect(saved.status).toBe('CANCELLED');for(const other of [rooms[0],rooms[2],rooms[3]])expect(await current(p.coordinator,other.id)).toMatchObject(other)
   expect(await value(await mutation(p.coordinator,'PUT',`/api/bookings/${rooms[1].id}`,action.body,action.key))).toEqual(saved)
   const availability=await value(await staff.get(`/api/bookings/availability?venueId=${b.id}&startAt=${rooms[1].occupiedStart}&endAt=${rooms[1].occupiedEnd}`));expect(availability.items).toEqual([])
@@ -58,7 +58,8 @@ test('TC-CS88-01 TC-CS88-08 TC-CS88-10 LIVE scoped cancellation releases buffers
   const query='SELECT type,"recipientId" FROM notifications WHERE "eventId"=$1 AND type=\'BOOKING_CANCELLED\''
   await expect.poll(async()=> (await reviewDatabase('notification',async db=>db.query(query,[p.event.eventId]))).rows).toEqual([{type:'BOOKING_CANCELLED',recipientId:'a1000000-0000-4000-8000-000000000009'}])
   const history=(await reviewDatabase('booking',async db=>db.query('SELECT "actorId",action,reason FROM venue_booking_activity WHERE "bookingId"=$1 AND "toStatus"=\'CANCELLED\'',[rooms[1].id]))).rows
-  expect(history).toHaveLength(1);expect(history[0].actorId).toBe(p.contact.id)
+  expect(history).toHaveLength(1);expect(history[0].actorId).toBe(p.contact.id);expect(history[0].reason).toBe(action.body.reason)
+  await info.attach('TC-CS88-08-immutable-cancellation-history',{body:Buffer.from(JSON.stringify(history,null,2)),contentType:'application/json'})
   await signIn(page,p.contact.email);await page.goto(`/events/${p.event.eventId}`);await expect(page.locator(`[data-booking-id="${saved.id}"]`)).toContainText('cancelled');await expect(page.getByRole('tabpanel',{name:'Activity history'})).toContainText('Venue booking cancelled')
   await page.locator(`[data-booking-id="${saved.id}"]`).screenshot({path:info.outputPath('TC-CS88-01-08-10-cancelled-only-selected-room.png')});await page.getByRole('tabpanel',{name:'Activity history'}).getByTestId('history-entry').filter({hasText:'Venue booking cancelled'}).locator('summary').click();await page.getByRole('tabpanel',{name:'Activity history'}).getByTestId('history-entry').filter({hasText:'Venue booking cancelled'}).screenshot({path:info.outputPath('TC-CS88-08-event-history.png')})
   await evidence(page,info,'TC-CS88-01-08-10',p.event.eventId)
@@ -167,4 +168,41 @@ test('TC-CS88-15 LIVE cancellation resumes after a lost review acknowledgement o
    }finally{await p.coordinator.dispose()}
   }
  }finally{await staff.dispose()}
+})
+
+test('TC-CS88-17 LIVE definitive Event and Booking version refusals recover through current reviewed cancellation',async({page,playwright,owner},info)=>{
+ test.setTimeout(360000)
+ const staff=await session(playwright.request,emails.staff)
+ try{for(const fault of ['event-version','booking-version']){
+  const p=await planningEvent(playwright.request,owner)
+  try{
+   const room=await approve(staff,await hold(p.coordinator,p.event.eventId,(await createVenue(staff)).id)),reviews:any[]=[],changes:any[]=[],refusals:any[]=[]
+   const reviewUrl=`**/api/safety/events/${p.event.eventId}/venue-change-reviews`,bookingUrl=`**/api/bookings/${room.id}`;let injected=false
+   await page.route(reviewUrl,async route=>{
+    reviews.push({key:route.request().headers()['idempotency-key'],body:route.request().postDataJSON()})
+    if(fault==='event-version'&&!injected){await reviewDatabase('event',async db=>db.query('UPDATE events SET version=version+1 WHERE id=$1',[p.event.eventId]));injected=true}
+    const response=await route.fetch();if(response.status()===409)refusals.push({path:'review',status:response.status(),body:await response.json()});await route.fulfill({response})
+   })
+   await page.route(bookingUrl,async route=>{
+    if(route.request().method()!=='PUT')return route.continue()
+    changes.push({key:route.request().headers()['idempotency-key'],body:route.request().postDataJSON()})
+    if(fault==='booking-version'&&!injected){await reviewDatabase('booking',async db=>db.query('UPDATE venue_booking_requests SET version=version+1 WHERE id=$1',[room.id]));injected=true}
+    const response=await route.fetch();if(response.status()===409)refusals.push({path:'booking',status:response.status(),body:await response.json()});await route.fulfill({response})
+   })
+   await signIn(page,p.contact.email);await page.goto(`/events/${p.event.eventId}`);const card=page.locator(`[data-booking-id="${room.id}"]`),dialog=page.getByRole('dialog',{name:'Confirm booking cancellation'})
+   await card.getByRole('button',{name:'Cancel this booking',exact:true}).click();await dialog.getByLabel('Cancellation reason').fill('Cancel the current arrangement after any definitive version refusal');await dialog.getByRole('button',{name:'Confirm cancellation',exact:true}).click()
+   await expect.poll(()=>refusals.length).toBe(1);expect(injected).toBe(true);expect((await current(staff,room.id)).status).toBe('CONFIRMED');expect(JSON.stringify(refusals[0].body)).toContain(fault==='event-version'?'STALE_VERSION':'STALE_BOOKING')
+   if(fault==='booking-version'){await expect(dialog).toHaveCount(0);await card.screenshot({path:info.outputPath(`TC-CS88-17-${fault}-refreshed-before-reopen.png`)});await card.getByRole('button',{name:'Cancel this booking',exact:true}).click();await dialog.getByLabel('Cancellation reason').fill('Cancel this refreshed booking after reviewing its current version')}
+   else{await expect(dialog.getByRole('button',{name:'Confirm cancellation',exact:true})).toBeEnabled();await dialog.screenshot({path:info.outputPath(`TC-CS88-17-${fault}-review-refused-before-retry.png`)})}
+   const before=await page.context().newPage();await evidence(before,info,`TC-CS88-17-${fault}-before-retry`,p.event.eventId);await before.close()
+   await dialog.getByRole('button',{name:'Confirm cancellation',exact:true}).click();await expect(dialog).toHaveCount(0);await expect(card).toContainText('cancelled')
+   expect(reviews).toHaveLength(2);expect(reviews[1].key).not.toBe(reviews[0].key);expect(reviews[1].body.version).toBe(reviews[0].body.version+1)
+   expect((await reviewDatabase('event',async db=>db.query('SELECT id FROM venue_change_reviews WHERE "eventId"=$1',[p.event.eventId]))).rows).toHaveLength(fault==='event-version'?1:2)
+   if(fault==='booking-version')expect(changes.map(row=>row.body.version)).toEqual([room.version,room.version+1]);else expect(changes).toHaveLength(1)
+   await expect.poll(async()=> (await reviewDatabase('notification',async db=>db.query('SELECT id FROM notifications WHERE "eventId"=$1 AND type=\'BOOKING_CANCELLED\'',[p.event.eventId]))).rows.length).toBe(1)
+   expect((await reviewDatabase('booking',async db=>db.query('SELECT id FROM venue_booking_activity WHERE "bookingId"=$1 AND "toStatus"=\'CANCELLED\'',[room.id]))).rows).toHaveLength(1)
+   await card.screenshot({path:info.outputPath(`TC-CS88-17-${fault}-cancelled-current-version-once.png`)});await evidence(page,info,`TC-CS88-17-${fault}-after-retry`,p.event.eventId);await info.attach(`TC-CS88-17-${fault}-actual-version-refusals`,{body:Buffer.from(JSON.stringify({controlledPrecondition:'Concurrent source version advanced before the actual guarded HTTP command',refusals,reviews,changes},null,2)),contentType:'application/json'})
+   await page.unroute(reviewUrl);await page.unroute(bookingUrl)
+  }finally{await p.coordinator.dispose()}
+ }}finally{await staff.dispose()}
 })

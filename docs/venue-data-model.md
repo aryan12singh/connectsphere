@@ -138,6 +138,10 @@ Event owns `venue_change_reviews`: current Coordinator, request version, source 
 
 Expired holds keep their stored status and expose `effectiveStatus: EXPIRED`. A fresh request links `resubmittedFromId`; the old request remains readable and is excluded from the current readiness obligation. Every new request repeats suitability and occupied-window conflict checks. The existing scheduler writes deadline-specific history/outbox under row locks. Decisions lock the same row and check the database clock again after upstream reads.
 
+A never-completed expired replacement must be requested again from the currently affected original; generic resubmission cannot drop that fence. Completed replacement proof is the exact retained `VenueReplacementApproved` intent and original ID. It permits later ordinary reapproval without repeating the retired-original transition. After an ordinary revision expires, that completed source may produce an ordinary fresh request via `resubmittedFromId` only while its historical original remains Replaced. Unused expired pending alternatives do not block a subsequently restored original.
+
+Operational public notice facts contain only overlapping closure IDs, periods and categories. Rechecks compare them with the highest committed affected-booking version's outbox snapshot, append a new intent for changed public facts and leave private-only edits silent. Delivery rereads those current facts; a persistent affected flag alone cannot authorize an obsolete notice. No extra mutable notification snapshot or migration is required.
+
 ```mermaid
 erDiagram
   VENUE_BOOKING_REQUEST ||--o{ VENUE_BOOKING_REQUEST : original_to_replacements

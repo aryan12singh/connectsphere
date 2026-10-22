@@ -96,6 +96,7 @@ async function resubmit(req,id,input,body,keyValue){
   const path=`${id}/resubmit`,cached=await replay(req,path,body,tx);if(cached)return cached;
   w.version(source,body.version);w.planning(context);
   if(source.status!=='TENTATIVELY_HELD'||w.effective(source,await store.transactionNow(tx)))w.fail(409,'HOLD_NOT_EXPIRED','Only an expired hold may be resubmitted');
+  if(source.originalBookingId&&(!(await store.replacementCompleted(source.id,source.originalBookingId,tx))||(await store.getBooking(source.originalBookingId,tx))?.status!=='REPLACED'))w.fail(409,'REPLACEMENT_REVIEW_REQUIRED','Request a new replacement from the affected original booking so its current arrangement is reviewed');
   if((await store.listBookings(tx,{eventId:source.eventId})).some(row=>row.resubmittedFromId===id))w.fail(409,'HOLD_ALREADY_RESUBMITTED','Open the new request to continue');
   const result=await w.createInTransaction(req,{...input,eventId:source.eventId,resubmittedFromId:id},keyValue,tx);
   await store.recordActivity(source,req.actor,'HOLD_RESUBMITTED',input.reason,{after:source,newBookingId:result.booking.id},tx);

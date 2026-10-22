@@ -424,3 +424,17 @@ test('Booking private commands coordinate valid maintenance, buffer configuratio
   assert.equal(blocked.status,409);assert.ok(blocked.body.blockingCount>0);
   assert.equal((await api.http('/internal/venue-links/pg-venue',{headers:internal})).status,200);
 });
+
+test('TC-CS91-26 latest public closure facts follow the committed booking version despite reversed transaction timestamps',async(t)=>{
+ const store=require('../../src/store'),id='closure-order-'+randomUUID(),first=[{id:'closure',startAt:'2028-11-20T01:30:00.000Z',endAt:'2028-11-20T04:30:00.000Z',category:'MAINTENANCE'}],current=[{...first[0],endAt:'2028-11-20T06:30:00.000Z',category:'SAFETY_CONCERN'}];
+ await prisma.bookingOutbox.createMany({data:[{actionKey:id+'-old',aggregateId:id,kind:'VenueUnavailable',createdAt:new Date('2030-01-01T00:00:00Z'),payload:{version:7,unavailability:first}},{actionKey:id+'-current',aggregateId:id,kind:'VenueUnavailable',createdAt:new Date('2020-01-01T00:00:00Z'),payload:{version:8,unavailability:current}}]});
+ assert.deepEqual(await store.latestUnavailability(id),current);
+ t.diagnostic(JSON.stringify({caseId:'TC-CS91-26',layer:'PostgreSQL committed intent ordering',intents:await prisma.bookingOutbox.findMany({where:{aggregateId:id},select:{createdAt:true,payload:true}}),selected:await store.latestUnavailability(id)}));
+});
+
+test('TC-CS92-17 completed replacement proof binds both the exact approved booking and its retired original',async(t)=>{
+ const store=require('../../src/store'),bookingId='completed-'+randomUUID(),originalBookingId='original-'+randomUUID();
+ await prisma.bookingOutbox.create({data:{actionKey:bookingId,aggregateId:bookingId,kind:'VenueReplacementApproved',payload:{originalBookingId,version:4}}});
+ assert.equal(await store.replacementCompleted(bookingId,originalBookingId),true);assert.equal(await store.replacementCompleted('other-booking',originalBookingId),false);assert.equal(await store.replacementCompleted(bookingId,'other-original'),false);
+ t.diagnostic(JSON.stringify({caseId:'TC-CS92-17',layer:'PostgreSQL durable replacement proof',bookingId,originalBookingId,exact:true,otherBooking:false,otherOriginal:false}));
+});

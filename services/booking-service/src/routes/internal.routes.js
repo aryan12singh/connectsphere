@@ -38,7 +38,8 @@ router.get('/notification-context/:id',internalOnly,async(req,res)=>{
   const decisions=history.filter(item=>item.action==='STATUS_CHANGED' && ['CONFIRMED','REJECTED'].includes(item.toStatus));
   const cancellation=history.find(item=>item.action==='EVENT_CANCELLED_VENUE_RELEASED'&&item.changes?.after?.version===version)?.changes;
   const decisionVersion=decisions.sort((a,b)=>(b.changes?.after?.version||0)-(a.changes?.after?.version||0))[0]?.changes?.after?.version ?? null;
-  return res.json({id,eventId,venueId,status,expiresAt,version,flags,decisionVersion,originalBookingId:row.originalBookingId,extensionPending:!!row.extensionRequest,cancellationActionId:cancellation?.cancellationActionId||null,cancelledEventVersion:cancellation?.cancelledEventVersion||null});
+  const unavailability=flags.includes('AFFECTED_UNAVAILABLE')?await workflows.currentUnavailability(row):[];
+  return res.json({id,eventId,venueId,status,expiresAt,version,flags,decisionVersion,originalBookingId:row.originalBookingId,extensionPending:!!row.extensionRequest,unavailability,cancellationActionId:cancellation?.cancellationActionId||null,cancelledEventVersion:cancellation?.cancelledEventVersion||null});
 });
 router.get('/buffer-status/:venueId',internalOnly,async(req,res)=>res.json(await require('../legacyBuffers').bufferStatus(req.params.venueId)));
 router.get('/legacy-buffer-context/:venueId',internalOnly,async(req,res)=>res.json(await require('../legacyBuffers').preview(req.params.venueId)));

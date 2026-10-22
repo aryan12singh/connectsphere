@@ -1,6 +1,6 @@
 # CS-92 test cases
 
-Stable case inventory. Current preconditions, steps, data and assertions remain in the [Sprint 4 case sheet](https://docs.google.com/spreadsheets/d/1n7kRH5iPyHaxj5Rs41f53Shbn6TX-KXCdE7JcP9gQB8/edit#gid=1680394087&range=B161:S175). The [execution map](../../../docs/sprint4-venue-test-map.md) links each executable source; the [API contract](../../../docs/api-contract.md) reconciles historical route/status wording. Results belong in dated execution records.
+Stable case inventory. Current preconditions, steps, data and assertions remain in the [Sprint 4 case sheet](https://docs.google.com/spreadsheets/d/1n7kRH5iPyHaxj5Rs41f53Shbn6TX-KXCdE7JcP9gQB8/edit#gid=1680394087&range=F163:U179). The [execution map](../../../docs/sprint4-venue-test-map.md) links each executable source; the [API contract](../../../docs/api-contract.md) reconciles historical route/status wording. Results belong in dated execution records.
 
 | Case | Acceptance | Scenario |
 |---|---|---|
@@ -18,4 +18,6 @@ Stable case inventory. Current preconditions, steps, data and assertions remain 
 | TC-CS92-12 | AC1 | Pre-fill carries layout, accessibility and facilities |
 | TC-CS92-13 | AC3,AC4,AC5,AC6 | rejected alternatives retain the affected original; fresh approval atomically replaces only it and transfers primary location |
 | TC-CS92-14 | AC7 | restoration requires explicit Coordinator withdrawal and Staff confirmation; no block-only restoration or duplicate history |
-| TC-CS92-15 | AC4,AC5; final effective-change notification policy | Reconfirmation compares the last confirmed venue round through unpublished approvals and a reverted alternative |
+| TC-CS92-15 | AC4,AC6 | Reconfirmation compares the last confirmed venue round through unpublished approvals and a reverted alternative |
+| TC-CS92-16 | AC3,AC4,AC5,AC7 | Expired replacement preserves lineage and cannot approve beside a restored original |
+| TC-CS92-17 | AC4,AC6,AC7 | Completed replacement supports a later reviewed time change and Staff reapproval |

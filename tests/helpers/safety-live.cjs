@@ -98,12 +98,16 @@ async function safetyAcceptance({exerciseInvalidation=false,exerciseCorrection=f
    assert.equal(other.status,201,JSON.stringify(other.body));
    const closure={...f.requestBody,eventId:null,venueId:other.body.id,status:'UNAVAILABLE',title:'Maintenance window',reason:'Synthetic maintenance'};
    const block=await f.call('POST','/venue-bookings',closure,f.staff.token);assert.equal(block.status,201,JSON.stringify(block.body));
-   const moved=await f.call('PUT',`/venue-bookings/${block.body.id}`,{...closure,venueId:f.venue.id,version:block.body.version},f.staff.token);
+   const move={...closure,venueId:f.venue.id,version:block.body.version};
+   const impact=await f.call('POST','/venue-bookings/impact-preview',{...move,bookingId:block.body.id},f.staff.token);assert.equal(impact.status,200,JSON.stringify(impact.body));assert.ok(impact.body.affected.some(row=>row.id===f.booking.id));
+   const moved=await f.call('PUT',`/venue-bookings/${block.body.id}`,{...move,confirmImpact:true,impactFingerprint:impact.body.impactFingerprint},f.staff.token);
    assert.equal(moved.status,200,JSON.stringify(moved.body));
    const invalidated=await get();assert.equal(invalidated.state,'STALE','Moving an operational block must invalidate the destination venue Safety proof');assert.equal(invalidated.event.status,'ARRANGEMENT_PENDING');
    const currentBooking=await f.call('GET',`/venue-bookings/${f.booking.id}`,undefined,f.staff.token);assert.equal(currentBooking.body.status,'CONFIRMED');
    assert.equal((await f.call('POST',`/events/${f.eventId}/confirm`,{version:invalidated.event.version},f.coordinator.token)).status,409);
    const released=await f.call('PUT',`/venue-bookings/${moved.body.id}`,{...closure,venueId:f.venue.id,status:'CANCELLED',version:moved.body.version,reason:'Operational maintenance finished'},f.staff.token);assert.equal(released.status,200,JSON.stringify(released.body));
+   const retained=await f.call('GET',`/venue-bookings/${f.booking.id}`,undefined,f.staff.token);assert.ok(retained.body.flags.includes('AFFECTED_UNAVAILABLE'),'Removing the block must retain the affected flag until explicit Staff restoration');
+   const restored=await f.call('POST',`/venue-bookings/${f.booking.id}/restore`,{version:retained.body.version,confirm:true,reason:'Staff checked the complete occupied window after maintenance'},f.staff.token);assert.equal(restored.status,200,JSON.stringify(restored.body));assert.ok(!restored.body.flags.includes('AFFECTED_UNAVAILABLE'));
    const corrected=await get();assert.equal(corrected.venueReady,true);assert.equal(corrected.canSubmit,false,'Changed approved arrangements require a fresh recorded Coordinator review');assert.ok(corrected.outstanding.some(x=>x.reasons.includes('COORDINATOR_REVIEW_REQUIRED')));
 
    const request=await f.call('GET',`/event-requests/${f.eventRequestId}`,undefined,f.coordinator.token);assert.equal(request.status,200);

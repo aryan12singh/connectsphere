@@ -6,6 +6,7 @@ import {readFileSync} from 'node:fs'
 import {execFileSync} from 'node:child_process'
 
 function service(name:string,action:string){const file=process.env.CSE2E_COMPOSE_FILE!;if(!/^csreview-aryan-ci-/.test(JSON.parse(readFileSync(file,'utf8')).name))throw Error('Only the isolated stack is permitted');execFileSync('docker',['compose','-f',file,action,name],{stdio:'pipe'})}
+function expiryScan(){const file=process.env.CSE2E_COMPOSE_FILE!;if(!/^csreview-aryan-ci-/.test(JSON.parse(readFileSync(file,'utf8')).name))throw Error('Only the isolated worker is permitted');return JSON.parse(execFileSync('docker',['compose','-f',file,'exec','-T','booking-service','node','-e',"(async()=>{const db=require('./src/db');try{console.log(JSON.stringify({processed:await require('./src/holdNotifications').processDue(db)}))}finally{await db.$disconnect()}})().catch(e=>{console.error(e.message);process.exit(1)})"],{encoding:'utf8'}))}
 const waitFor=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms))
 
 test('TC-CS90-01 TC-CS90-03 TC-CS90-04 TC-CS90-05 TC-CS90-09 TC-CS90-15 LIVE real deadline expiry frees only the held interval, preserves the Event and other resources, then resubmits through a fresh request',async({page,playwright,owner},info)=>{
@@ -17,10 +18,10 @@ test('TC-CS90-01 TC-CS90-03 TC-CS90-04 TC-CS90-05 TC-CS90-09 TC-CS90-15 LIVE rea
   const eventBefore=(await value(await p.coordinator.get(`/api/bookings/events/${p.event.eventId}/summary`))).event
   const due='SELECT kind,count(*)::int AS count FROM booking_outbox WHERE "aggregateId"=$1 AND kind=\'VenueHoldExpired\' GROUP BY kind'
   await expect.poll(async()=> (await reviewDatabase('booking',async db=>db.query(due,[held.id]))).rows,{timeout:15000}).toEqual([{kind:'VenueHoldExpired',count:1}])
-  expect((await current(p.coordinator,held.id)).effectiveStatus).toBe('EXPIRED');expect((await mutation(staff,'PUT',`/api/bookings/${held.id}/decision`,{version:held.version,status:'CONFIRMED',reason:'Expired request must fail'})).status()).toBe(409)
+  expect((await current(p.coordinator,held.id)).effectiveStatus).toBe('EXPIRED');const expiredApproval=await mutation(staff,'PUT',`/api/bookings/${held.id}/decision`,{version:held.version,status:'CONFIRMED',reason:'Expired request must fail'});expect(expiredApproval.status()).toBe(409);expect(JSON.stringify(await expiredApproval.json())).toContain('HOLD_EXPIRED')
   const calendar=await value(await staff.get(`/api/bookings/availability?venueId=${venue.id}&startAt=${held.occupiedStart}&endAt=${held.occupiedEnd}`));expect(calendar.items).toEqual([])
   expect((await reviewDatabase('equipment',async db=>db.query('SELECT active FROM equipment_reservations WHERE id=$1',[reservationId]))).rows).toEqual([{active:true}]);expect(await current(staff,other.id)).toMatchObject(other);expect((await value(await p.coordinator.get(`/api/bookings/events/${p.event.eventId}/summary`))).event).toEqual(eventBefore)
-  const second=await planningEvent(playwright.request,owner);try{const reclaimed=await hold(second.coordinator,second.event.eventId,venue.id,{expectedAttendance:40});expect(reclaimed.status).toBe('TENTATIVELY_HELD');await value((await cancel(second.coordinator,reclaimed,{confirmLastVenue:true})).response)}finally{await second.coordinator.dispose()}
+  const second=await planningEvent(playwright.request,owner);try{const reclaimed=await hold(second.coordinator,second.event.eventId,venue.id,{expectedAttendance:40});expect(reclaimed.status).toBe('TENTATIVELY_HELD');await info.attach('TC-CS90-05-other-Event-reclaims-released-window',{body:Buffer.from(JSON.stringify({id:reclaimed.id,eventId:reclaimed.eventId,status:reclaimed.status,venueId:reclaimed.venueId,startAt:reclaimed.startAt,endAt:reclaimed.endAt,occupiedStart:reclaimed.occupiedStart,occupiedEnd:reclaimed.occupiedEnd},null,2)),contentType:'application/json'});await value((await cancel(second.coordinator,reclaimed,{confirmLastVenue:true})).response)}finally{await second.coordinator.dispose()}
   await expect.poll(async()=> (await reviewDatabase('notification',async db=>db.query('SELECT id FROM notifications WHERE "eventId"=$1 AND type=\'HOLD_EXPIRED\'',[p.event.eventId]))).rows.length).toBe(1)
   await signIn(page,p.contact.email);await page.goto(`/events/${p.event.eventId}`);const oldCard=page.locator(`[data-booking-id="${held.id}"]`);await expect(oldCard).toContainText('expired');await oldCard.screenshot({path:info.outputPath('TC-CS90-01-03-expired-request.png')});await oldCard.getByRole('button',{name:'Resubmit expired hold',exact:true}).click()
   await page.getByLabel('Location',{exact:true}).fill(venue.name);await page.getByRole('button',{name:'Search available venues',exact:true}).click();await page.getByLabel('Change reason',{exact:true}).fill('Fresh availability check after expiry');await page.locator('.venue-search-result').filter({hasText:venue.name}).getByRole('button',{name:'Submit fresh hold',exact:true}).click()
@@ -32,6 +33,7 @@ test('TC-CS90-01 TC-CS90-03 TC-CS90-04 TC-CS90-05 TC-CS90-09 TC-CS90-15 LIVE rea
 })
 
 test('TC-CS90-02 TC-CS90-07 TC-CS90-12 LIVE approval before the deadline wins; approval at or after expiry loses across twenty real worker races',async({page,playwright,owner},info)=>{
+ test.setTimeout(480000)
  const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner)
  try{
   const allowed=await hold(p.coordinator,p.event.eventId,(await createVenue(staff)).id,{expiresAt:new Date(Date.now()+6000).toISOString()});await approve(staff,allowed);await waitFor(Math.max(1,Date.parse(allowed.expiresAt)-Date.now()+1200));expect((await current(staff,allowed.id)).status).toBe('CONFIRMED')
@@ -39,11 +41,32 @@ test('TC-CS90-02 TC-CS90-07 TC-CS90-12 LIVE approval before the deadline wins; a
   const races=[]
   for(let i=0;i<20;i++){
    const room=await hold(p.coordinator,p.event.eventId,(await createVenue(staff)).id)
-   await reviewDatabase('booking',async db=>db.query('UPDATE venue_booking_requests SET "expiresAt"=clock_timestamp()-($2::int*interval \'1 second\') WHERE id=$1',[room.id,i%2]))
-   const response=await mutation(staff,'PUT',`/api/bookings/${room.id}/decision`,{version:room.version,status:'CONFIRMED',reason:'Concurrent real expiry scan'})
-   expect(response.status()).toBe(409);const actual=await current(staff,room.id);expect(actual.effectiveStatus).toBe('EXPIRED');races.push({bookingId:room.id,approvalStatus:response.status(),effectiveStatus:actual.effectiveStatus})
+   await reviewDatabase('booking',async db=>{
+    await db.query('UPDATE venue_booking_requests SET "expiresAt"=clock_timestamp()+interval \'5 seconds\' WHERE id=$1',[room.id])
+    const barrier=await db.connect();let committed=false,attempt:ReturnType<typeof mutation>|undefined
+    try{
+     await barrier.query('BEGIN')
+     const locked=(await barrier.query('SELECT id,"expiresAt",clock_timestamp() AS "lockedAt",pg_backend_pid() AS "barrierPid" FROM venue_booking_requests WHERE id=$1 FOR UPDATE',[room.id])).rows[0]
+     attempt=mutation(staff,'PUT',`/api/bookings/${room.id}/decision`,{version:room.version,status:'CONFIRMED',reason:'Approval and the production expiry scan compete at a controlled row barrier'})
+     let waiting:any
+     await expect.poll(async()=>{waiting=(await db.query('SELECT pid,query_start AS "attemptStartedAt",clock_timestamp() AS "observedAt",wait_event_type AS "waitType" FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid))',[locked.barrierPid])).rows[0];return Boolean(waiting)},{timeout:2000}).toBe(true)
+     expect(new Date(waiting.observedAt).getTime()<new Date(locked.expiresAt).getTime()).toBe(true)
+     const expires=i%2===1
+     if(expires)await waitFor(Math.max(1,new Date(locked.expiresAt).getTime()-Date.now()+150))
+     const scanWhileLocked=expiryScan(),before=(await db.query('SELECT count(*)::int AS count FROM booking_outbox WHERE "aggregateId"=$1 AND kind=\'VenueHoldExpired\'',[room.id])).rows[0].count;expect(before).toBe(0)
+     await barrier.query('COMMIT');committed=true
+     const releasedAt=(await db.query('SELECT clock_timestamp() AS at')).rows[0].at
+     const scanAfterRelease=expiryScan(),response=await attempt
+     expect(response.status()).toBe(expires?409:200);if(expires)expect(JSON.stringify(await response.json())).toContain('HOLD_EXPIRED')
+     const actual=await current(staff,room.id);expect(actual.effectiveStatus).toBe(expires?'EXPIRED':'CONFIRMED')
+     const count=async()=> (await db.query('SELECT count(*)::int AS count FROM booking_outbox WHERE "aggregateId"=$1 AND kind=\'VenueHoldExpired\'',[room.id])).rows[0].count
+     await expect.poll(count).toBe(expires?1:0)
+     races.push({run:i+1,bookingId:room.id,expectedWinner:expires?'expiry':'approval',deadline:locked.expiresAt,barrierLockedAt:locked.lockedAt,approvalBlocked:waiting,barrierReleasedAt:releasedAt,scanWhileLocked,scanAfterRelease,approvalStatus:response.status(),effectiveStatus:actual.effectiveStatus,expiryIntents:await count()})
+    }finally{if(!committed)await barrier.query('ROLLBACK');barrier.release();await attempt?.catch(()=>null)}
+   })
   }
-  await expect.poll(async()=> (await reviewDatabase('booking',async db=>db.query('SELECT count(*)::int AS count FROM booking_outbox WHERE payload->>\'eventId\'=$1 AND kind=\'VenueHoldExpired\'',[p.event.eventId]))).rows[0].count,{timeout:30000}).toBe(20)
+  await expect.poll(async()=> (await reviewDatabase('notification',async db=>db.query('SELECT count(*)::int AS count FROM notifications WHERE "eventId"=$1 AND type=\'HOLD_EXPIRED\'',[p.event.eventId]))).rows[0].count,{timeout:30000}).toBe(10)
+  expect((await reviewDatabase('booking',async db=>db.query('SELECT count(*)::int AS count FROM venue_booking_activity WHERE "bookingId"=ANY($1::text[]) AND action=\'HOLD_EXPIRED\'',[races.map(row=>row.bookingId)]))).rows[0].count).toBe(10)
   await info.attach('twenty-approval-expiry-race-results',{body:Buffer.from(JSON.stringify(races,null,2)),contentType:'application/json'});await evidence(page,info,'TC-CS90-02-07-12',p.event.eventId)
  }finally{await staff.dispose();await p.coordinator.dispose()}
 })

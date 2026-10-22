@@ -4,7 +4,8 @@ const {noticesFor}=require('../../src/templates');
 const {registeredAttendees}=require('../../src/userClient');
 const {currentContext}=require('../../src/currentContext');
 const lookups={names:async()=> 'Current Coordinator',usersWithRole:async()=>['staff-a','staff-b'],attendeeIds:async()=>['attendee-a','attendee-b']};
-const message=(type,payload={})=>({id:'message-'+type,type,aggregateType:'VenueBooking',aggregateId:'booking',payload:{bookingId:'booking',eventId:'event',venueId:'venue',eventRequestId:'request',eventName:'Conference',venueName:'Main hall',staffRecipientIds:['staff-b','inactive-staff'],coordinatorId:'coordinator',organiserId:'organiser',...payload}});
+const closureFacts=[{id:'closure',startAt:'2028-11-20T01:30:00.000Z',endAt:'2028-11-20T04:45:00.000Z',category:'MAINTENANCE'}];
+const message=(type,payload={})=>({id:'message-'+type,type,aggregateType:'VenueBooking',aggregateId:'booking',payload:{bookingId:'booking',eventId:'event',venueId:'venue',eventRequestId:'request',eventName:'Conference',venueName:'Main hall',staffRecipientIds:['staff-b','inactive-staff'],coordinatorId:'coordinator',organiserId:'organiser',unavailability:closureFacts,...payload}});
 
 test('targeted cancellation and change notify only active affected Staff; restore and replacement do not announce a final attendee change',async()=>{
  for(const [type,expected] of [['BookingCancelled','BOOKING_CANCELLED'],['BookingChanged','BOOKING_CHANGED']]){
@@ -32,8 +33,22 @@ test('current source context suppresses withdrawn, stale and unresolved notices 
   assert.ok(await currentContext(message('BookingRestored')));
   assert.ok(await currentContext(message('ReplacementApproved',{originalBookingId:'original'})));
   assert.equal(await currentContext(message('BookingCancelled')),null);
-  booking={...booking,flags:['AFFECTED_UNAVAILABLE']};assert.equal(await currentContext(message('BookingRestored')),null);assert.ok(await currentContext(message('VenueUnavailable')));
+  booking={...booking,flags:['AFFECTED_UNAVAILABLE'],unavailability:closureFacts};assert.equal(await currentContext(message('BookingRestored')),null);assert.ok(await currentContext(message('VenueUnavailable')));
   booking={...booking,flags:[]};assert.equal(await currentContext(message('VenueUnavailable')),null);
+ }finally{global.fetch=native;}
+});
+
+test('TC-CS91-26 delayed unavailability delivery requires the current public overlapping closure facts even while the affected flag persists',async()=>{
+ const native=global.fetch,event={id:'event',eventRequestId:'request',organiserId:'organiser',currentCoordinatorId:'coordinator',status:'ARRANGEMENT_PENDING'};
+ let facts=closureFacts,status='CONFIRMED',expiresAt=null;
+ global.fetch=async url=>({ok:true,status:200,json:async()=>String(url).includes('notification-context')?{id:'booking',eventId:'event',venueId:'venue',status,expiresAt,flags:['AFFECTED_UNAVAILABLE'],unavailability:facts}:event});
+ try{
+  assert.ok(await currentContext(message('VenueUnavailable')));
+  facts=[{...closureFacts[0],endAt:'2028-11-20T06:30:00.000Z',category:'SAFETY_CONCERN'}];
+  assert.equal(await currentContext(message('VenueUnavailable')),null);assert.ok(await currentContext(message('VenueUnavailable',{unavailability:facts})));
+  facts=[];assert.equal(await currentContext(message('VenueUnavailable')),null);
+  facts=closureFacts;status='TENTATIVELY_HELD';expiresAt='2000-01-01T00:00:00.000Z';assert.equal(await currentContext(message('VenueUnavailable')),null);
+  expiresAt=new Date(Date.now()+3600000).toISOString();assert.ok(await currentContext(message('VenueUnavailable')));
  }finally{global.fetch=native;}
 });
 
