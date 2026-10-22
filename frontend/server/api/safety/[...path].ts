@@ -10,7 +10,7 @@ export default defineEventHandler(async event=>{
   if(parts.length===3&&parts[2]==='preparation'&&method==='GET')target=base+'/preparation'
   if(parts.length===3&&method==='POST'){
    if(['submit','rework-review'].includes(parts[2]!))target=base+'/safety/'+parts[2]
-   else if(['confirm','preparation','preparation-updates','planning-correction'].includes(parts[2]!))target=base+'/'+parts[2]
+   else if(['confirm','preparation','preparation-updates','planning-correction','venue-change-reviews'].includes(parts[2]!))target=base+'/'+parts[2]
   }
  }
  if(parts[0]==='preparation'&&parts.length===1&&method==='GET')target='/preparation-work'

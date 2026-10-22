@@ -174,7 +174,8 @@ describe('CS-36 — live venue search',()=>{
     expect(r.status).toBe(200);expect(r.body.items).toHaveLength(1)
     expect(r.body.items[0].title).toBe('Occupied venue');expect(r.body.items[0]).not.toHaveProperty('reason');expect(r.body.items[0]).not.toHaveProperty('eventId');expect(r.body.items[0]).not.toHaveProperty('flags')
     expect(r.body.items[0]).toMatchObject({startAt:'2026-12-21T02:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:30:00.000Z'})
-    const block=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.staff,'idempotency-key':'organiser-flag'},body:{venueId:v.body.id,title:'Private operational closure',reason:'Private flag reason',status:'BLOCKED',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}})
+    const input={venueId:v.body.id,title:'Private operational closure',reason:'Private flag reason',status:'BLOCKED',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'},preview=await api.booking.http('/venue-bookings/impact-preview',{method:'POST',headers:f.staff,body:input})
+    const block=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.staff,'idempotency-key':'organiser-flag'},body:{...input,confirmImpact:true,impactFingerprint:preview.body.impactFingerprint}})
     expect(block.status).toBe(201);expect(f.bookings.listBookings().some((x:any)=>x.eventId===event.id&&x.flags.includes('BUFFER_CONFLICT'))).toBe(true)
     const owner={'x-test-user-id':'organiser','x-test-role':'EVENT_ORGANISER'}
     expect((await api.booking.http('/venue-bookings/availability?venueId='+v.body.id,{headers:owner})).status).toBe(403)

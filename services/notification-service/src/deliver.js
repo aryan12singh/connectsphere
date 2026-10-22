@@ -12,7 +12,7 @@ const config = require('./config');
 const {validEnvelope}=require('../../utils/domain-bus');
 const store = require('./store');
 const { HANDLED, noticesFor } = require('./templates');
-const { displayName, activeUsersWithRole } = require('./userClient');
+const { displayName, activeUsersWithRole,registeredAttendees } = require('./userClient');
 
 const DONE = ['PROCESSED', 'IGNORED', 'FAILED'];
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -22,7 +22,7 @@ const validMessage=validEnvelope;
 /**
  * @returns {Promise<{ result: 'processed'|'ignored'|'duplicate'|'failed', notices: number }>}
  */
-async function deliver(message, { names = displayName, usersWithRole = activeUsersWithRole, currentContext = async value => value } = {}) {
+async function deliver(message, { names = displayName, usersWithRole = activeUsersWithRole, attendeeIds=registeredAttendees, currentContext = async value => value } = {}) {
   if (!validMessage(message)) throw Object.assign(new Error('Invalid message'), { status: 422 });
   const receipt = await store.getReceipt(message.id);
   if (receipt && DONE.includes(receipt.status)) return { result: 'duplicate', notices: 0 };
@@ -43,7 +43,7 @@ async function deliver(message, { names = displayName, usersWithRole = activeUse
         await store.saveDelivered(message, [], 'IGNORED');
         return { result:'ignored', notices:0 };
       }
-      const notices = (await noticesFor(current, { names, usersWithRole })).filter((notice) => notice.recipientId);
+      const notices = (await noticesFor(current, { names, usersWithRole,attendeeIds })).filter((notice) => notice.recipientId);
       const saved=await store.saveDelivered(message, notices);
       if(saved===false)return {result:'duplicate',notices:0};
       return { result: 'processed', notices: notices.length };

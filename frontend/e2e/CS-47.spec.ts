@@ -1,5 +1,7 @@
 import { test, expect, emails } from './fixtures/attendance-fixtures'
-import { signIn, created, validRequest, mutation } from './fixtures/helpers'
+import { signIn, created, validRequest, mutation,session } from './fixtures/helpers'
+import {planningEvent,createVenue,hold} from './fixtures/venue-fixtures'
+import {safeConfirm,approve} from './fixtures/sprint4-fixtures'
 
 test('TC-CS47-01: Attendee sees confirmed event details on the attendee dashboard', async ({ attendance, page }, info) => {
   const event = await attendance.event()
@@ -71,26 +73,32 @@ test('TC-CS47-08: Cancelled event - registered attendee sees own record; unrelat
 })
 
 test('TC-CS47-09: Responsive empty state on attendee dashboard', async ({ attendance, page }, info) => {
-  await signIn(page, emails.attendee); await page.goto('/attendee')
+  // Controlled empty response tests responsive presentation only; source visibility has its own live cases.
+  await page.route('**/api/attendances/events',route=>route.fulfill({json:{events:[]}}))
+  await signIn(page, emails.attendee)
   await expect(page.getByText(/no events/i)).toBeVisible()
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByText(/no events/i)).toBeVisible()
   await page.screenshot({ path: info.outputPath('TC-CS47-09-empty-mobile.png'), fullPage: true })
 })
 
-// These cases deliberately remain in the suite as executable specifications.  They
-// are skipped until the named dependency delivers the real projection/workflow;
-// a fixture must not manufacture a success path that production cannot provide.
-test('TC-CS47-02: Multi-venue location presentation [stub]', async () => {
-  test.skip(true, 'Stub: the attendee multi-venue/primary-venue projection and organiser venue detail are not delivered.')
+test('TC-CS47-02: Current confirmed multi-venue presentation retains the designated primary',async({attendance,page},info)=>{
+ const event=await attendance.event({rooms:2})
+ await signIn(page,emails.attendee);await page.goto(`/attendances/events/${event.eventId}`)
+ await expect(page.getByRole('region',{name:'Confirmed venues'}).locator('p')).toHaveCount(2)
+ await page.getByRole('region',{name:'Confirmed venues'}).screenshot({path:info.outputPath('TC-CS47-02-current-confirmed-venues.png')})
 })
 
-test('TC-CS47-06: Effective replacement venue projection [stub]', async () => {
-  test.skip(true, 'Stub: the effective replacement-venue projection is not delivered.')
+// TC-CS47-06 is executed by the real request -> Staff approval -> Safety ->
+// reconfirmation -> attendee journey in CS-92.spec.ts, alongside TC-CS92-01/02/09.
+test('TC-CS47-07: Visibility switches only after actual current Safety and separate Event confirmation',async({attendance,page,playwright},info)=>{
+ const owner=await attendance.actor(emails.owner),staff=await attendance.actor(emails.staff),officer=await attendance.actor(emails.officer),attendee=await attendance.actor(emails.attendee)
+ const p=await planningEvent(playwright.request,owner,{equipmentNeeds:['No equipment required']})
+ try{
+  const venue=await createVenue(staff),room=await approve(staff,await hold(p.coordinator,p.event.eventId,venue.id))
+  expect((await attendee.get(`/api/attendances/events/${p.event.eventId}`)).status()).toBe(404)
+  await safeConfirm(p.coordinator,officer,p.event.eventId,p.event.id)
+  expect((await attendee.get(`/api/attendances/events/${p.event.eventId}`)).status()).toBe(200)
+  await signIn(page,emails.attendee);await page.goto(`/attendances/events/${p.event.eventId}`);await expect(page.getByRole('heading',{name:p.event.eventName})).toBeVisible();await page.locator('main').screenshot({path:info.outputPath('TC-CS47-07-current-confirmation-boundary.png')})
+ }finally{await p.coordinator.dispose()}
 })
-
-test('TC-CS47-07: Visibility switches at confirmation [stub]', async () => {
-  test.skip(true, 'Stub: CS-31 does not expose the real confirmation transition required by this boundary test.')
-})
-
-

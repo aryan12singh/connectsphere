@@ -27,7 +27,7 @@ const LIFECYCLE_TYPES = [
 // templates are proven with sample messages (allowed by the CS-51 card).
 // The expected payload of each type is listed in docs/api-contract.md.
 const PLANNING_TYPES = [
-  'BookingRequested', 'BookingDecided', 'VenueUnavailable', 'BufferConflictFlagged',
+  'BookingRequested', 'BookingDecided', 'BookingCancelled','BookingChanged','BookingRestored','ReplacementApproved', 'VenueUnavailable', 'BufferConflictFlagged',
   'HoldExpiring', 'HoldExpired', 'HoldExtensionRequested', 'HoldExtended', 'SafetySubmitted', 'SafetyApproved', 'SafetyEvidenceInvalidated', 'SafetyChangesRequested',
 ];
 const HANDLED = [...LIFECYCLE_TYPES, ...PLANNING_TYPES];
@@ -58,7 +58,7 @@ function standardData(message, extra = {}) {
  *                 (a plain function is accepted as `names`)
  */
 async function noticesFor(message, lookups) {
-  const { names, usersWithRole } = typeof lookups === 'function' ? { names: lookups } : lookups;
+  const { names, usersWithRole,attendeeIds } = typeof lookups === 'function' ? { names: lookups } : lookups;
   const p = message.payload || {};
   const name = `"${p.eventName || 'your event'}"`;
   const requestId = p.eventRequestId || message.aggregateId;
@@ -99,8 +99,14 @@ async function noticesFor(message, lookups) {
       const comment = p.comment ? ` The Coordinator's comments: "${p.comment}"` : " Open it to see the Coordinator's comments.";
       return [notice(p.organiserId, 'REQUEST_RETURNED', `${name} was returned for changes.${comment}`, requestLink, { comment: p.comment || null })];
     }
-    case 'EventConfirmed': // produced later by CS-31; the template is ready
-      return [notice(p.organiserId, 'EVENT_CONFIRMED', `${name} is confirmed.`, p.eventId ? `/events/${p.eventId}` : requestLink)];
+    case 'EventConfirmed': {
+      const changedText=`The confirmed venue arrangement for ${name} changed to ${(p.venueNames||[]).join(', ')}. Open the Event for current locations and times.`;
+      const notices=[p.attendeeVenueChanged
+        ? notice(p.organiserId,'VENUE_CHANGED',changedText,`/attendances/events/${p.eventId}`)
+        : notice(p.organiserId,'EVENT_CONFIRMED',`${name} is confirmed.`,p.eventId?`/events/${p.eventId}`:requestLink)];
+      if(p.attendeeVenueChanged&&attendeeIds)for(const id of await attendeeIds(p.eventId))notices.push(notice(id,'VENUE_CHANGED',changedText,`/attendances/events/${p.eventId}`));
+      return notices;
+    }
     default:
       return planningNotices(message, { notice, name, usersWithRole });
   }
@@ -118,7 +124,15 @@ async function planningNotices(message, { notice, name, usersWithRole }) {
   const toStaff = async (role, type, text, link) => (await usersWithRole(role))
     .map((userId) => notice(userId, type, text, link, extra));
 
+  const affectedStaff=async(type,text)=>{
+    const active=await usersWithRole('VENUE_STAFF');
+    return (p.staffRecipientIds||[]).filter(id=>active.includes(id)).map(id=>notice(id,type,text,VENUE_WORKSPACE,extra));
+  };
   switch (message.type) {
+    case 'BookingCancelled':return affectedStaff('BOOKING_CANCELLED',p.cancellationActionId?`The Event ${name} was cancelled by its Coordinator. This venue booking${venue} is released, including its setup and turnaround interval.`:`The venue booking${venue} for ${name} was cancelled by its Coordinator. Its occupied interval is released. Other rooms remain unchanged.`);
+    case 'BookingChanged':return affectedStaff('BOOKING_CHANGED',`The venue booking${venue} for ${name} changed and needs fresh Venue Staff review. Other rooms remain unchanged.`);
+    case 'BookingRestored':return [notice(p.coordinatorId,'BOOKING_RESTORED',`Venue Staff confirmed restoration of the original booking${venue} for ${name}. Review current Safety readiness before proceeding.`,VENUE_WORKSPACE,extra),notice(p.organiserId,'BOOKING_RESTORED',`The original venue booking${venue} for ${name} has been restored by Venue Staff. Your Coordinator will review the next planning step.`,eventLink,extra)];
+    case 'ReplacementApproved':return [notice(p.coordinatorId,'VENUE_REPLACEMENT_APPROVED',`The replacement${venue} for ${name} was approved. The original booking is retained as Replaced. Complete current Safety review before reconfirmation.`,VENUE_WORKSPACE,extra),notice(p.organiserId,'VENUE_REPLACEMENT_APPROVED',`A replacement venue${venue} for ${name} was approved. Your Coordinator is completing Safety review and reconfirmation.`,eventLink,extra)];
     case 'BookingRequested':
       // TC-CS51-03: every active Venue Staff member learns about waiting work.
       return toStaff('VENUE_STAFF', 'NEW_BOOKING_REQUEST', `New booking request for ${name}${venue}. Please review it.`, VENUE_WORKSPACE);
@@ -145,11 +159,16 @@ async function planningNotices(message, { notice, name, usersWithRole }) {
 
     case 'VenueUnavailable': {
       // TC-CS51-02: nothing is cancelled; the Coordinator must arrange an alternative.
-      const reason = p.reason ? ` (${p.reason})` : '';
+      const labels={MAINTENANCE:'Maintenance',EQUIPMENT_FAILURE:'Equipment failure',RENOVATION:'Renovation',SAFETY_CONCERN:'Safety concern',OTHER:'Other'};
+      const zone=p.timeZone||'Asia/Singapore';
+      const format=new Intl.DateTimeFormat('en-SG',{timeZone:zone,day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});
+      const period=(p.unavailability||[]).map(block=>`${format.format(new Date(block.startAt))}–${format.format(new Date(block.endAt))} (${zone}): ${labels[block.category]||'Operational unavailability'}`).join('; ');
+      const reason = period ? ` (${period})` : '';
+      const unavailableExtra={...extra,timeZone:zone,unavailability:(p.unavailability||[]).map(({startAt,endAt,category})=>({startAt,endAt,category}))};
       return [
-        notice(p.coordinatorId, 'VENUE_UNAVAILABLE', `The venue${venue} is no longer available for ${name}${reason}. The booking is kept and marked for replacement. Please arrange an alternative.`, VENUE_WORKSPACE, extra),
+        notice(p.coordinatorId, 'VENUE_UNAVAILABLE', `The venue${venue} is no longer available for ${name}${reason}. The booking is kept and marked for replacement. Please arrange an alternative.`, eventLink || VENUE_WORKSPACE, unavailableExtra),
         // Session 3: tell the Organiser the affected venue and next step, no internal reason.
-        notice(p.organiserId, 'VENUE_CHANGE_NEEDED', `A venue${venue} for ${name} needs to be replaced. Your Coordinator is arranging an alternative.`, eventLink, extra),
+        notice(p.organiserId, 'VENUE_CHANGE_NEEDED', `A venue${venue} for ${name} needs an alternative${period?` (${period})`:''}. Your Coordinator is arranging the next step.`, eventLink, unavailableExtra),
       ];
     }
 

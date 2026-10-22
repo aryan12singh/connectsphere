@@ -1,0 +1,11 @@
+# Targeted venue changes — 23 October 2026
+
+CS-88, CS-90, CS-91 and CS-92 extend the existing Booking/Venue/Safety foundations with explicit per-booking review, last-venue confirmation, impact preview and persistent affected flags, linked replacement/withdrawal/restoration, fresh expired-hold resubmission and current effective attendee locations. Additive migrations retain all original rows. Event history and inbox delivery use committed outbox IDs; the existing deadline scanner now records warning/expiry history atomically.
+
+Refactoring centralizes proposal normalization in `venue-change-contract`, arrangement guards/receipts in `arrangementChanges`, and attendee source projection in `projection`. State, history and outbox share Booking transactions. Mutable UI searches remain fenced by their generation, Event identity and source booking version. Current Safety and separate Event confirmation remain required after material changes.
+
+The bounded cancellation consumer verifies Event's committed terminal row, exact outbox identity and immutable accepted action before releasing that Event's active venues. Publication comparisons use the last actual Event confirmation. Attendance's private audience contract includes Registered, Waitlisted and Offered, remains unreachable through public Kong, and never changes registration state. Review retries retain their exact successful authorization. Test records support an external output root so clean-revision evidence does not modify the checkout.
+
+Validation includes focused domain/HTTP tests, service-owned PostgreSQL tests and coverage gates, real authenticated browser journeys with PostgreSQL/RabbitMQ, approval/expiry and replacement/restoration races, and restart/replay. Generated screenshots, raw query results and run logs remain in the shared dated evidence location; the compact [test mapping](../sprint4-venue-test-map.md) links source tests. Test results and final source identity are recorded with the execution evidence rather than inferred here.
+
+TC-CS88-06 remains blocked by the absent CS-54 whole-Event cancellation workflow. Independent developer review, merged-main CI, author walkthrough and Product Owner acceptance remain human delivery gates.

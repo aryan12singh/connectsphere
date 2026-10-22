@@ -300,3 +300,20 @@ model PreparationUpdate {
   @@index([eventId,occurredAt])
   @@map("preparation_updates")
 }
+
+// Bounded authorization for one venue action; general field proposals remain separate.
+model VenueChangeReview {
+  id String @id @default(uuid())
+  eventId String
+  bookingId String
+  bookingVersion Int
+  action String
+  proposed Json
+  source Json
+  reason String
+  reviewedById String
+  requestVersion Int
+  reviewedAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([eventId,bookingId])
+  @@map("venue_change_reviews")
+}

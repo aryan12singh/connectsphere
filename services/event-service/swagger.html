@@ -15,7 +15,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ConnectSphere Event Service — BFF Contract",
-    "version": "0.4.0",
+    "version": "0.8.0",
     "description": "Nuxt BFF contract for persistent Sprint 2 Requests. Organiser ownership, current Coordinator assignment, fresh capabilities, durable idempotency and optimistic versions are enforced by event-service. Approval creates a distinct Planning Event. Browsers use sealed session cookies. Canonical service endpoints and detailed schemas are in docs/openapi.yaml; unavailable dependencies return503 without partial writes."
   },
   "servers": [
@@ -495,6 +495,104 @@
           }
         }
       }
+    },
+    "/api/safety/events/{eventId}/venue-change-reviews": {
+      "parameters": [
+        {
+          "name": "eventId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Record one affected-booking Coordinator decision",
+        "description": "Current Coordinator only. Exact source booking/version/action/proposal, reason and Event version; Idempotency-Key required. Reopens Planning and supersedes current Safety while retaining other venue/technical approvals. This bounded contract does not implement general Organiser field proposals.",
+        "responses": {
+          "200": {
+            "description": "Current result or exact replay"
+          },
+          "403": {
+            "description": "Current assignment or Staff authorization denied"
+          },
+          "409": {
+            "description": "Stale version, conflicting interval, expired hold or missing explicit review/confirmation"
+          },
+          "422": {
+            "description": "Invalid fields"
+          },
+          "503": {
+            "description": "Authoritative dependency unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "version",
+                  "bookingId",
+                  "bookingVersion",
+                  "action",
+                  "reason",
+                  "proposed"
+                ],
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "bookingId": {
+                    "type": "string"
+                  },
+                  "bookingVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "CHANGE",
+                      "CANCEL",
+                      "REPLACEMENT"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "proposed": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -919,7 +1017,8 @@
       }
     }
   }
-}</script>
+}
+</script>
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>SwaggerUIBundle({spec:JSON.parse(document.getElementById('openapi-spec').textContent),dom_id:'#swagger-ui',deepLinking:true});</script>
 </body>

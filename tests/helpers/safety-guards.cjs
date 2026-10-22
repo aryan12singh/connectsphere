@@ -23,7 +23,7 @@ const tx = {
   eventRequest: { findUnique: async () => clone(state.eventRequest) },
   safetyRound: { findUnique: async () => clone(state.round), update: async ({ data }) => Object.assign(state.round, data) },
   activityLog: { create: async ({ data }) => { logs.push(data); return data; } },
-  outbox: { create: async ({ data }) => data },
+  outbox: { findMany:async()=>[],create: async ({ data }) => data },
   idempotencyRecord: { findUnique: async () => null, create: async () => ({}) },
 };
 const db = { ...tx, $transaction: async fn => fn(tx) };

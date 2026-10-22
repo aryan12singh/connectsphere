@@ -3,7 +3,7 @@ const requestFetch=useRequestFetch()
 import { ref } from 'vue'
 import { apiErrorMessage } from '../shared/api-error'
 const props=defineProps<{requestId:string,eventId?:string}>()
-interface Entry {id:string,action:string,actorType:string,actorId:string|null,createdAt:string,fromStatus:string|null,toStatus:string|null,details?:{actorName?:string,note?:string,changes?:Record<string,{old:unknown,new:unknown}>,previousValues?:Record<string,unknown>}}
+interface Entry {id:string,action:string,actorType:string,actorId:string|null,createdAt:string,fromStatus:string|null,toStatus:string|null,details?:{actorName?:string,note?:string,reason?:string,bookingId?:string,changes?:Record<string,{old:unknown,new:unknown}>,previousValues?:Record<string,unknown>}}
 const items=ref<Entry[]>([]),cursor=ref<string|null>(null),loading=ref(false),error=ref(''),loaded=ref(false)
 const path=props.eventId?`/api/event-history/${props.eventId}`:`/api/events/${props.requestId}/activity`
 async function load(more=false){
@@ -13,6 +13,8 @@ async function load(more=false){
  catch(e){error.value=apiErrorMessage(e,'History is unavailable. Please retry.')}
  finally{loading.value=false}
 }
+const actionLabels:Record<string,string>={VENUE_CHANGE_REVIEWED:'Venue change reviewed',VenueCancelled:'Venue booking cancelled',VenueBookingChanged:'Venue booking changed',VenueRequested:'Venue booking requested',VenueBookingApproved:'Venue booking approved',VenueBookingRejected:'Venue booking rejected',VenueUnavailable:'Venue affected by unavailability',VenueBookingRestored:'Venue booking restored',VenueReplacementApproved:'Replacement venue approved',VenueHoldExpiring:'Hold warning',VenueHoldExpired:'Hold expired'}
+function actionLabel(action:string){return actionLabels[action]||action.replaceAll('_',' ')}
 function value(v:unknown){return v===null||v===''?'Empty':typeof v==='string'?v:JSON.stringify(v)}
 onMounted(()=>load())
 </script>
@@ -25,8 +27,9 @@ onMounted(()=>load())
   <ol aria-label="History entries, newest first" class="mt-4 grid gap-3">
    <li v-for="entry in items" :key="entry.id">
     <details class="rounded-xl border p-3" data-testid="history-entry">
-     <summary class="cursor-pointer"><strong>{{ entry.action.replaceAll('_',' ') }}</strong> · {{ entry.actorType==='SYSTEM'?'System':entry.details?.actorName || entry.actorId }} · <time :datetime="entry.createdAt">{{ new Date(entry.createdAt).toLocaleString() }}</time></summary>
+     <summary class="cursor-pointer"><strong>{{ actionLabel(entry.action) }}</strong> · {{ entry.actorType==='SYSTEM'?'System':entry.details?.actorName || entry.actorId }} · <time :datetime="entry.createdAt">{{ new Date(entry.createdAt).toLocaleString() }}</time></summary>
      <p v-if="entry.fromStatus!==entry.toStatus" class="mt-2 text-sm">{{ entry.fromStatus ?? 'New' }} → {{ entry.toStatus }}</p>
+     <p v-if="entry.details?.bookingId" class="mt-2 break-all text-xs">Booking {{ entry.details.bookingId }}</p><p v-if="entry.details?.reason" class="mt-2 text-sm">{{ entry.details.reason }}</p>
      <p v-if="entry.details?.note" class="mt-2 whitespace-pre-wrap text-sm">{{ entry.details.note }}</p>
      <dl v-if="entry.details?.changes" class="mt-3 grid gap-2">
       <div v-for="(change,field) in entry.details.changes" :key="field" class="text-sm"><dt class="font-medium">{{ field }}</dt><dd class="break-words whitespace-pre-wrap">{{ value(change.old) }} → {{ value(change.new) }}</dd></div>

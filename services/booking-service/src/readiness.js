@@ -46,4 +46,9 @@ async function prepare(eventId,{token,generation}){
  });
 }
 async function release(eventId,token){if(typeof token!=='string'||!token)throw error(422,'VALIDATION_FAILED','Exact readiness token required');if(prisma)await store.withLocks([require('./workflows').eventLock(eventId)],tx=>tx.eventReadinessFence.updateMany({where:{eventId,token,active:true},data:{active:false}}));return {released:true};}
-module.exports={preview,prepare,release,invalidateVenue};
+async function invalidateEvent(eventId,tx,reason){
+ if(store.isMemory)return;
+ const fences=await tx.eventReadinessFence.findMany({where:{eventId,active:true}});
+ for(const fence of fences){await sourceInvalidate(eventId,fence.token,reason);await tx.eventReadinessFence.update({where:{token:fence.token},data:{active:false}});}
+}
+module.exports={preview,prepare,release,invalidateVenue,invalidateEvent};

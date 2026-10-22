@@ -290,6 +290,8 @@ services:
       PORT: 3000
       DATA_MODE: prisma
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/attendance_db
+      EVENT_SERVICE_URL: http://event-service:3000
+      BOOKING_SERVICE_URL: http://booking-service:3000
       AUTH_SERVICE_URL: http://auth-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     depends_on:

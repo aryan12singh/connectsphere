@@ -5,6 +5,10 @@ const app = express();
 app.use(helmet());
 app.use(express.json({ limit: '32kb' }));
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.get('/internal/events/:id/notification-recipients',async(req,res,next)=>{
+ if(req.get('x-internal-api-key')!==require('./config').internalApiKey)return res.status(401).json({error:{code:'UNAUTHORIZED',message:'Internal access required'}});
+ try{res.json({items:await require('./store').notificationRecipients(req.params.id)});}catch(error){next(error);}
+});
 app.use('/', require('./routes/attendances'));
 app.use((_req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Not found' } }));
 app.use((err, _req, res, _next) => {

@@ -4,14 +4,15 @@ const {randomUUID}=require('node:crypto');
 async function processDue(prisma){
  return prisma.$transaction(async tx=>{
   const rows=await tx.$queryRaw`SELECT b.* FROM venue_booking_requests b
-    WHERE b.status='TENTATIVELY_HELD' AND b."expiresAt"<=now()+interval '24 hours'
+    WHERE b.status='TENTATIVELY_HELD' AND b."expiresAt"<=clock_timestamp()+interval '24 hours'
       AND NOT EXISTS (SELECT 1 FROM booking_outbox o WHERE o."aggregateId"=b.id
-        AND o.kind=CASE WHEN b."expiresAt"<=now() THEN 'VenueHoldExpired' ELSE 'VenueHoldExpiring' END
+        AND o.kind=CASE WHEN b."expiresAt"<=clock_timestamp() THEN 'VenueHoldExpired' ELSE 'VenueHoldExpiring' END
         AND (o.payload->>'expiresAt')::timestamptz=b."expiresAt")
     ORDER BY b."expiresAt",b.id LIMIT 20 FOR UPDATE OF b SKIP LOCKED`;
-  const [{at}]=await tx.$queryRaw`SELECT now() AS at`;
+  const [{at}]=await tx.$queryRaw`SELECT clock_timestamp() AS at`;
   for(const row of rows){
    const kind=row.expiresAt<=at?'VenueHoldExpired':'VenueHoldExpiring',expiresAt=row.expiresAt.toISOString();
+   await tx.venueBookingActivity.create({data:{id:randomUUID(),bookingId:row.id,actorId:'hold-deadline-worker',actorRole:'SYSTEM',action:kind==='VenueHoldExpired'?'HOLD_EXPIRED':'HOLD_WARNING',reason:kind==='VenueHoldExpired'?'Tentative hold deadline reached':'Tentative hold warning due',fromStatus:row.status,toStatus:row.status,changes:{expiresAt,after:{venueId:row.venueId,version:row.version}},occurredAt:at}});
    await tx.bookingOutbox.upsert({where:{actionKey:`deadline:${row.id}:${expiresAt}:${kind}`},create:{id:randomUUID(),actionKey:`deadline:${row.id}:${expiresAt}:${kind}`,aggregateId:row.id,kind,payload:{bookingId:row.id,eventId:row.eventId,venueId:row.venueId,version:row.version,expiresAt,occurredAt:at.toISOString()}},update:{}});
   }
   return rows.length;

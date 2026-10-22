@@ -17,8 +17,7 @@ const bookingAccess = requireAnyPermission('venue_bookings.create', 'venue_booki
 function createPermission(req, res, next) {
   // Venue staff may block a maintenance/unavailable window under CS-35.
   // Decision permission does not grant creation of an ordinary event booking.
-  const operationalBlock = hasPermission(req.actor, 'venue_bookings.decide')
-    && ['BLOCKED', 'UNAVAILABLE'].includes(req.body?.status);
+  const operationalBlock = ['BLOCKED', 'UNAVAILABLE'].includes(req.body?.status);
   return (operationalBlock ? operationalBlockPermission : ordinaryCreatePermission)(req, res, next);
 }
 
@@ -64,7 +63,7 @@ function normalise(body, actor, forceTentative = false) {
     endAt: new Date(body.endAt).toISOString(),
     timeZone: text(body.timeZone) || 'Asia/Singapore',
     status: forceTentative ? statusForCreate(actor, body.status) : (body.status || 'TENTATIVELY_HELD'),
-    ...Object.fromEntries(['expiresAt','expectedAttendance','layout','facilities','accessibilityNeeds','required'].filter(key=>body[key]!==undefined).map(key=>[key,body[key]])),
+    ...Object.fromEntries(['expiresAt','expectedAttendance','layout','facilities','accessibilityNeeds','required','unavailabilityCategory','unavailabilityNote'].filter(key=>body[key]!==undefined).map(key=>[key,body[key]])),
   };
 }
 
@@ -119,6 +118,18 @@ router.post('/rechecks',auth,operationalBlockPermission,async(req,res)=>{
   return res.json(await workflows.staffRecheck(req,body));
 });
 
+router.post('/impact-preview',auth,operationalBlockPermission,async(req,res)=>{
+  const body=req.body||{},errors=validateBooking({...body,title:body.title||'Unavailability preview',reason:body.reason||'Impact preview',timeZone:body.timeZone||'Asia/Singapore',status:'UNAVAILABLE'});
+  if(Object.keys(errors).length)return validationError(res,errors);
+  return res.json(await require('../arrangementChanges').preview(req,{...normalise({...body,title:'Impact preview',reason:'Impact preview',timeZone:body.timeZone||'Asia/Singapore',status:'UNAVAILABLE'},req.actor),bookingId:body.bookingId}));
+});
+router.post(['/:id/replacements','/:id/resubmit'],auth,ordinaryCreatePermission,async(req,res)=>{
+  const body=req.body||{},errors=validateBooking(body);
+  if(!req.get('idempotency-key'))errors.idempotencyKey=['Idempotency-Key is required'];
+  if(Object.keys(errors).length)return validationError(res,errors);
+  return res.status(201).json((await require('../arrangementChanges')[req.path.endsWith('/resubmit')?'resubmit':'replacement'](req,req.params.id,normalise({...body,status:'TENTATIVELY_HELD'},req.actor),body,req.get('idempotency-key'))).booking);
+});
+router.post('/:id/restore',auth,operationalBlockPermission,async(req,res)=>res.json(await require('../arrangementChanges').restore(req,req.params.id,req.body||{})));
 router.post('/', auth, createPermission, async (req, res) => {
   const key = req.get('idempotency-key');
   const body = req.body || {};
@@ -164,7 +175,7 @@ router.get('/:id', auth, bookingAccess, async (req, res) => {
   const booking = await store.getBooking(req.params.id);
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
   if (!await assignmentAccess(req, res, booking.eventId)) return;
-  return res.json(booking);
+  return res.json({...booking,effectiveStatus:booking.status==='TENTATIVELY_HELD'&&!workflows.effective(booking,require('../clock').now())?'EXPIRED':booking.status});
 });
 
 router.delete('/:id',auth,bookingAccess,async(req,res)=>{

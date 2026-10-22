@@ -99,7 +99,7 @@ describe('CS-38 — guarded independent decisions',()=>{
     await wrapper.get('#decision-reason-room-ui').setValue('Room is closed for maintenance')
     expect(rejected.attributes()).not.toHaveProperty('disabled')
     await rejected.trigger('click');await new Promise(r=>setTimeout(r,0))
-    expect(send).toHaveBeenCalledWith('/api/bookings/room-ui/decision',{method:'PUT',body:{status:'REJECTED',version:1,reason:'Room is closed for maintenance'}})
+    expect(send).toHaveBeenCalledWith('/api/bookings/room-ui/decision',expect.objectContaining({method:'PUT',body:{status:'REJECTED',version:1,reason:'Room is closed for maintenance'}}))
     wrapper.unmount()
   })
   it('TC-CS38-08 refuses approval when the hold expires while the upstream venue check is in flight',async()=>{

@@ -1,8 +1,16 @@
 const {startOutboxRelay}=require('../../utils/outbox-relay');
 const {settings}=require('../../utils/domain-bus');
-const kinds={VenueRequested:'BookingRequested',VenueBookingApproved:'BookingDecided',VenueBookingRejected:'BookingDecided',VenueHoldExpiring:'HoldExpiring',VenueHoldExpired:'HoldExpired',VenueConflictChanged:'BufferConflictFlagged',VenueUnavailable:'VenueUnavailable',VenueHoldExtensionRequested:'HoldExtensionRequested',VenueHoldExtended:'HoldExtended'};
+const kinds={VenueRequested:'BookingRequested',VenueCancelled:'BookingCancelled',VenueBookingChanged:'BookingChanged',VenueBookingRestored:'BookingRestored',VenueReplacementApproved:'ReplacementApproved',VenueBookingApproved:'BookingDecided',VenueBookingRejected:'BookingDecided',VenueHoldExpiring:'HoldExpiring',VenueHoldExpired:'HoldExpired',VenueConflictChanged:'BufferConflictFlagged',VenueUnavailable:'VenueUnavailable',VenueHoldExtensionRequested:'HoldExtensionRequested',VenueHoldExtended:'HoldExtended'};
 async function project(row){
- const type=kinds[row.kind];if(!type)return null;
+ const type=kinds[row.kind];
+ // Delivery retries also carry the committed resource action into Event history.
+ // The source outbox ID makes acknowledgement loss harmless.
+ const config=require('./config');
+ if(config.dataMode==='prisma'&&row.payload.eventId){
+  const response=await fetch(`${config.eventServiceUrl}/internal/events/${encodeURIComponent(row.payload.eventId)}/venue-activity`,{method:'POST',headers:{'content-type':'application/json','x-internal-api-key':config.internalApiKey},body:JSON.stringify({id:row.id,kind:row.kind,payload:row.payload}),signal:AbortSignal.timeout(5000)});
+  if(!response.ok)throw Error('Event history has not acknowledged the committed booking action');
+ }
+ if(!type)return null;
  if(type==='BufferConflictFlagged'&&!row.payload.flags?.includes('BUFFER_CONFLICT'))return null;
  return {id:row.id,type,aggregateType:'VenueBooking',aggregateId:row.aggregateId,payload:{...row.payload,occurredAt:row.payload.occurredAt||row.createdAt.toISOString(),...(row.kind==='VenueBookingApproved'?{decision:'APPROVED'}:row.kind==='VenueBookingRejected'?{decision:'REJECTED'}:{})}};
 }

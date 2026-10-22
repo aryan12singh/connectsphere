@@ -43,4 +43,16 @@ async function planningContext(eventId) {
     accessibilityNeeds:(result.accessibilityNeeds || []).map(value=>tags[value.trim().toLowerCase()] || value),
   };
 }
-module.exports = { canBookEvent, planningContext };
+async function changeReview(eventId,id){
+ let response;
+ try{response=await fetch(`${config.eventServiceUrl}/internal/events/${encodeURIComponent(eventId)}/venue-change-reviews/${encodeURIComponent(id)}`,{headers:{'x-internal-api-key':config.internalApiKey},signal:AbortSignal.timeout(5000)});}catch{throw Object.assign(new Error('Unable to verify the Coordinator review. Retry.'),{status:503,code:'EVENT_UNAVAILABLE'});}
+ if(!response.ok)throw Object.assign(new Error('Current Coordinator review is required for this booking action'),{status:response.status===404?409:503,code:'CHANGE_REVIEW_REQUIRED'});
+ return response.json();
+}
+async function cancellationContext(eventId,actionId){
+ let response;
+ try{response=await fetch(`${config.eventServiceUrl}/internal/events/${encodeURIComponent(eventId)}/cancellation-context?actionId=${encodeURIComponent(actionId)}`,{headers:{'x-internal-api-key':config.internalApiKey},signal:AbortSignal.timeout(5000)});}catch{throw Object.assign(new Error('Unable to verify the committed Event cancellation'),{status:503,code:'EVENT_UNAVAILABLE'});}
+ if(!response.ok)throw Object.assign(new Error('The exact committed Event cancellation is required'),{status:[404,409,422].includes(response.status)?409:503,code:'CANCELLATION_NOT_COMMITTED'});
+ return response.json();
+}
+module.exports = { canBookEvent, planningContext,changeReview,cancellationContext };

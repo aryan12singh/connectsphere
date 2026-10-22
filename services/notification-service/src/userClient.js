@@ -30,4 +30,9 @@ async function activeUsersWithRole(role) {
   return ids;
 }
 
-module.exports = { displayName, activeUsersWithRole };
+async function registeredAttendees(eventId){
+ const response=await fetch(`${process.env.ATTENDANCE_SERVICE_URL||'http://attendance-service:3000'}/internal/events/${encodeURIComponent(eventId)}/notification-recipients`,{headers:{'x-internal-api-key':config.internalApiKey},signal:AbortSignal.timeout(5000)});
+ if(!response.ok)throw Error('Unable to resolve confirmed registration recipients');
+ return (await response.json()).items||[];
+}
+module.exports = { displayName, activeUsersWithRole,registeredAttendees };

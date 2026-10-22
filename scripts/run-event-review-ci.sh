@@ -19,6 +19,8 @@ cd "$ROOT"
 PORT_BASE="${CSE2E_PORT_BASE:-13000}"
 COMPOSE="$CSE2E_WORK_DIR/compose.json"
 EVIDENCE="$CSE2E_WORK_DIR/evidence"
+export TEST_RECORD_OUTPUT_ROOT="$EVIDENCE/story-records"
+export CS_VERIFY_REVISION="${CS_VERIFY_REVISION:-$(git rev-parse HEAD)}"
 python3 scripts/prepare-event-review.py --project "$CSE2E_PROJECT" --output "$COMPOSE" --port-base "$PORT_BASE"
 mkdir -p "$EVIDENCE"
 compose() { docker compose -f "$COMPOSE" "$@"; }
@@ -66,7 +68,7 @@ python3 - "$EVIDENCE/browser/results.json" <<'PYRESULT'
 import json, sys
 r = json.load(open(sys.argv[1]))
 s = r['stats']
-expected_stubs = 6  # TC-CS47-02, 06 and 07 in desktop and mobile projects.
+expected_stubs = 0  # Current venue and confirmation projections have real journeys.
 assert s['unexpected'] == 0 and s['flaky'] == 0 and s['skipped'] == expected_stubs and s['expected'] > 0, s
 print('Browser results:', s)
 PYRESULT

@@ -4,23 +4,47 @@ import { mockNuxtImport,mountSuspended } from '@nuxt/test-utils/runtime'
 import { flushPromises } from '@vue/test-utils'
 import { bookingDraftForExisting,coordinatorBookingEditState } from '../../frontend/app/components/venue/booking-state'
 mockNuxtImport('useUserSession',()=>()=>({loggedIn:{value:true},fetch:vi.fn(),user:{value:{id:'coordinator',role:'EVENT_COORDINATOR',permissions:['venue_bookings.create','venues.view','events.view']}}}))
-const roomUi=vi.hoisted(()=>({items:[] as any[],primaryVenue:{bookingId:null as string|null,version:0,available:false},send:vi.fn()}))
+const roomUi=vi.hoisted(()=>({eventVersion:1,items:[] as any[],primaryVenue:{bookingId:null as string|null,version:0,available:false},send:vi.fn()}))
 mockNuxtImport('useRequestFetch',()=>()=>roomUi.send)
 mockNuxtImport('useFetch',()=>async(path:any)=>{
   const {ref}=await import('vue')
   const url=typeof path==='function'?path():String(path)
-  const value=url.includes('/summary')?{event:{id:'event-ui',title:'Conference',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',startAt:'2026-12-21T01:00:00.000Z',endAt:'2026-12-21T10:00:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',accessibilityNeeds:[]},items:roomUi.items,primaryVenue:roomUi.primaryVenue,venueReady:false,outstanding:[{bookingId:null,reasons:['NO_VENUE_BOOKING']}]}:url.includes('/options')?{supportedLayouts:[{value:'THEATRE',label:'Theatre'},{value:'CLASSROOM',label:'Classroom'}],facilities:[{value:'PROJECTOR',label:'Projector'}],accessibilityTags:[]}:{items:[],total:0}
+  const value=url.includes('/summary')?{event:{version:roomUi.eventVersion,id:'event-ui',title:'Conference',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',startAt:'2026-12-21T01:00:00.000Z',endAt:'2026-12-21T10:00:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',accessibilityNeeds:[]},items:roomUi.items,primaryVenue:roomUi.primaryVenue,venueReady:false,outstanding:[{bookingId:null,reasons:['NO_VENUE_BOOKING']}]}:url.includes('/options')?{supportedLayouts:[{value:'THEATRE',label:'Theatre'},{value:'CLASSROOM',label:'Classroom'}],facilities:[{value:'PROJECTOR',label:'Projector'}],accessibilityTags:[]}:{items:[],total:0}
   const data=ref(value)
-  return {data,error:ref(null),refresh:vi.fn(async()=>{if(url.includes('/summary'))data.value={...value,items:roomUi.items,primaryVenue:roomUi.primaryVenue}})}
+  return {data,error:ref(null),refresh:vi.fn(async()=>{if(url.includes('/summary'))data.value={...value,event:{...value.event,version:roomUi.eventVersion},items:roomUi.items,primaryVenue:roomUi.primaryVenue}})}
 })
 const require = createRequire(import.meta.url)
 const fixture = require('../helpers/venue-workflow.cjs')
 let api: any
 beforeAll(async () => { api = await fixture.stack() })
-beforeEach(() => {fixture.reset();roomUi.items=[];roomUi.primaryVenue={bookingId:null,version:0,available:false};roomUi.send.mockReset().mockResolvedValue({items:[],nextCursor:null})})
+beforeEach(() => {fixture.reset();roomUi.eventVersion=1;roomUi.items=[];roomUi.primaryVenue={bookingId:null,version:0,available:false};roomUi.send.mockReset().mockResolvedValue({items:[],nextCursor:null})})
 afterAll(async () => { await api.close() })
 
 describe('CS-87 — independent venue bookings', () => {
+  it('TC-CS88-15 retains the exact review key/body after lost acknowledgement and reuses an approved review after a transient Booking failure',async()=>{
+    const component=(await import('../../frontend/app/components/venue/EventVenueArrangements.vue')).default
+    for(const failure of ['review-ack','booking']){
+      const source={id:'retry-approved',eventId:'event-ui',venueId:'venue',venueName:'Original room',title:'Conference',reason:'Original arrangement',timeZone:'Asia/Singapore',status:'CONFIRMED',version:2,startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:30:00.000Z',expiresAt:null,expectedAttendance:80,layout:'THEATRE',flags:[]}
+      roomUi.items=[source];roomUi.eventVersion=1;roomUi.send.mockReset()
+      const reviews:any[]=[],changes:any[]=[]
+      roomUi.send.mockImplementation(async(path:string,options:any)=>{
+        if(path.endsWith('/venue-change-reviews')){reviews.push(JSON.parse(JSON.stringify(options)));roomUi.eventVersion=2;if(failure==='review-ack'&&reviews.length===1)throw Object.assign(Error('Review acknowledgement lost'),{status:503});return {reviewId:'recorded-review'}}
+        if(path==='/api/bookings/retry-approved'){changes.push(JSON.parse(JSON.stringify(options)));if(failure==='booking'&&changes.length===1)throw Object.assign(Error('Booking temporarily unavailable'),{status:503});roomUi.items=[{...source,status:'CANCELLED',version:3}];return roomUi.items[0]}
+        return {items:[]}
+      })
+      const wrapper=await mountSuspended(component,{props:{eventId:'event-ui'}})
+      try{
+        await wrapper.findAll('button').find(button=>button.text()==='Cancel this booking')!.trigger('click');await wrapper.get('[role="dialog"] input').setValue('Release this room only')
+        await wrapper.findAll('button').find(button=>button.text()==='Confirm cancellation')!.trigger('click');await flushPromises()
+        expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
+        await wrapper.findAll('button').find(button=>button.text()==='Confirm cancellation')!.trigger('click');await flushPromises()
+        expect(wrapper.find('[role="dialog"]').exists()).toBe(false);expect(wrapper.get('[data-booking-id="retry-approved"]').text()).toContain('cancelled')
+        if(failure==='review-ack'){expect(reviews).toHaveLength(2);expect(reviews[1]).toEqual(reviews[0]);expect(reviews[1].body.version).toBe(1)}else{expect(reviews).toHaveLength(1);expect(changes).toHaveLength(2);expect(changes[1]).toEqual(changes[0])}
+        expect(changes.at(-1).body.changeReviewId).toBe('recorded-review')
+      }finally{wrapper.unmount()}
+    }
+  })
+
   it('TC-CS87-28 checks allocations for each simultaneous session without adding sequential room capacities',async()=>{
     const {event}=await fixture.eventFixture(),rooms=[]
     for(const [n,start,end,attendance] of [[0,2,3,80],[1,3,4,40],[2,3,4,40]] as number[][]){
@@ -150,7 +174,7 @@ describe('CS-87 — independent venue bookings', () => {
     roomUi.items=[{id:'approved',eventId:'event-ui',venueId:'original',venueName:'Approved room',title:'Conference',reason:'Approved arrangement',timeZone:'Asia/Singapore',status:'CONFIRMED',version:2,startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:30:00.000Z',expiresAt:null,expectedAttendance:80,layout:'THEATRE',flags:['BUFFER_CONFLICT']}]
     roomUi.send.mockResolvedValue({items:[{id:'alternative',name:'Suitable alternative',capacity:100,setupMinutes:30,turnaroundMinutes:30,match:'FULL',gaps:[],canRequest:true,occupiedStart:'2026-12-21T01:30:00.000Z',occupiedEnd:'2026-12-21T04:30:00.000Z'}]})
     const component=(await import('../../frontend/app/components/venue/EventVenueArrangements.vue')).default,wrapper=await mountSuspended(component,{props:{eventId:'event-ui'}})
-    try{await wrapper.findAll('button').find(b=>b.text()==='Find alternatives')!.trigger('click');await flushPromises();expect(wrapper.text()).toContain('Suitable alternative');expect(wrapper.text()).toContain('This booking is retained');expect(wrapper.findAll('button').some(b=>['Change this booking','Request this venue'].includes(b.text()))).toBe(false);expect(roomUi.send.mock.calls.every(([_path,options])=>!options?.method || options.method==='GET')).toBe(true)}finally{wrapper.unmount()}
+    try{await wrapper.findAll('button').find(b=>b.text()==='Find alternatives')!.trigger('click');await flushPromises();expect(wrapper.text()).toContain('Suitable alternative');expect(wrapper.findAll('button').some(b=>b.text()==='Change this booking')).toBe(true);expect(wrapper.findAll('button').find(b=>b.text()==='Change this booking')?.attributes()).toHaveProperty('disabled');expect(roomUi.send.mock.calls.every(([_path,options])=>!options?.method || options.method==='GET')).toBe(true)}finally{wrapper.unmount()}
   })
   it('TC-CS87-15 a fresh request after an acknowledged request is released uses a new action key',async()=>{
     const candidate={id:'repeat-venue',name:'Reusable room',capacity:100,setupMinutes:0,turnaroundMinutes:0,match:'FULL',gaps:[],canRequest:true,occupiedStart:'2026-12-21T01:00:00.000Z',occupiedEnd:'2026-12-21T10:00:00.000Z'}
