@@ -436,6 +436,36 @@ describe('CS-30 — TC-CS30-13 rejection reason', () => {
     }
   })
 })
+describe('CS-12 — Planning-stage Reject in the Coordinator queue', () => {
+  it('offers Reject (not Approve) on an approved request in Planning and sends the typed reason', async () => {
+    showQueue()
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
+    detailMocks.queueResponse.value = { requests: [{ ...QUEUE_ITEMS[0]!, status: 'APPROVED', eventStatus: 'ARRANGEMENT_PENDING', allowedActions: ['reassign', 'reject'] }] }
+    detailMocks.decisionResponse.value = { id: 'req-1', status: 'REJECTED' }
+    const wrapper = await mountIndexPage()
+    try {
+      const labels = () => wrapper.findAll('button').map(b => b.text())
+      expect(labels()).toContain('Reject')
+      expect(labels()).not.toContain('Approve')
+      expect(labels()).not.toContain('Ask for amendments')
+      await wrapper.find('#decision-notes').setValue('Venue cannot be arranged')
+      await wrapper.findAll('button').find(b => b.text() === 'Reject')!.trigger('click')
+      await new Promise(resolve => setTimeout(resolve, 0))
+      const post = detailMocks.useFetch.mock.calls.find(([url]) => url === '/api/events/req-1/decision')!
+      expect((post[1] as { body?: Record<string, unknown> }).body).toMatchObject({ decision: 'reject', reason: 'Venue cannot be arranged', version: 1 })
+    }
+    finally {
+      reload.mockRestore()
+    }
+  })
+
+  it('does not offer Reject on an approved request when the server does not allow it', async () => {
+    showQueue()
+    detailMocks.queueResponse.value = { requests: [{ ...QUEUE_ITEMS[0]!, status: 'APPROVED', eventStatus: 'CONFIRMED', allowedActions: ['reassign'] }] }
+    const wrapper = await mountIndexPage()
+    expect(wrapper.findAll('button').map(b => b.text())).not.toContain('Reject')
+  })
+})
 describe('CS-30 — TC-CS30-12 reassignment through the real BFF, service and database', () => {
   it('hands a request to another Coordinator, who then owns it; the old one is locked out', async () => {
     api.directory.push(api.users.coord2.id)

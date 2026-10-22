@@ -105,6 +105,14 @@ function canDecide(item: QueueItem) {
   return item.status === 'SUBMITTED' && (item.allowedActions?.some(action => ['approve', 'reject', 'amendments'].includes(action)) ?? true)
 }
 
+// Reject is available while a request is Submitted and also after approval
+// while its Event is still in Planning (CS-12); the server decides via allowedActions.
+function canReject(item: QueueItem) {
+  if (canDecide(item))
+    return item.allowedActions?.includes('reject') ?? true
+  return item.status === 'APPROVED' && (item.allowedActions?.includes('reject') ?? false)
+}
+
 function goToPage(nextPage: number) {
   if (nextPage < 1 || (nextPage > currentPage.value && !hasNextPage.value))
     return
@@ -373,7 +381,7 @@ async function submitAmendments() {
                 </form>
               </PopoverContent>
             </Popover>
-            <Button v-if="canDecide(selected)" size="sm" variant="destructive" :disabled="deciding" @click="decide('reject')">
+            <Button v-if="canReject(selected)" size="sm" variant="destructive" :disabled="deciding" data-testid="reject-request" @click="decide('reject')">
               Reject
             </Button>
           </div>
