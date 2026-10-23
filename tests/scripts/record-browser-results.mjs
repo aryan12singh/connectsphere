@@ -7,11 +7,15 @@ const stamp = new Date(report.stats.startTime).toISOString().replace(/\.\d{3}Z$/
 const success = report.stats.unexpected === 0 && report.stats.flaky === 0 && report.stats.skipped === 0 && report.stats.expected > 0
 const phase = success ? 'GREEN' : 'GREEN-attempt-failed'
 const cases = new Map()
+const storyAliases = new Map([
+  ['booking-regression.spec.ts', 'CS-35'],
+  ['CS-88-cancellation-intent.spec.ts', 'CS-88'],
+])
 function visit(suites) {
   for (const suite of suites) {
     for (const spec of suite.specs || []) {
       const file = basename(spec.file)
-      const story = file.match(/^(CS-\d+)\.spec\.ts$/)?.[1] || (file === 'booking-regression.spec.ts' ? 'CS-35' : null)
+      const story = file.match(/^(CS-\d+)\.spec\.ts$/)?.[1] || storyAliases.get(file)
       if (!story) throw new Error(`No story mapping for browser spec ${file}`)
       for (const test of spec.tests) {
         const result = test.results.at(-1)
