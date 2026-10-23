@@ -51,8 +51,8 @@ async function changeReview(eventId,id){
 }
 async function cancellationContext(eventId,actionId){
  let response;
- try{response=await fetch(`${config.eventServiceUrl}/internal/events/${encodeURIComponent(eventId)}/cancellation-context?actionId=${encodeURIComponent(actionId)}`,{headers:{'x-internal-api-key':config.internalApiKey},signal:AbortSignal.timeout(5000)});}catch{throw Object.assign(new Error('Unable to verify the committed Event cancellation'),{status:503,code:'EVENT_UNAVAILABLE'});}
- if(!response.ok)throw Object.assign(new Error('The exact committed Event cancellation is required'),{status:[404,409,422].includes(response.status)?409:503,code:'CANCELLATION_NOT_COMMITTED'});
+ try{response=await fetch(`${config.eventServiceUrl}/internal/events/${encodeURIComponent(eventId)}/cancellation-context?actionId=${encodeURIComponent(actionId)}`,{headers:{'x-internal-api-key':config.internalApiKey},signal:AbortSignal.timeout(5000)});}catch{throw Object.assign(new Error('Unable to verify the committed Event cancellation action'),{status:503,code:'EVENT_UNAVAILABLE'});}
+ if(!response.ok)throw Object.assign(new Error('The exact accepted or terminal Event cancellation action is required'),{status:[404,409,422].includes(response.status)?409:503,code:'CANCELLATION_NOT_COMMITTED'});
  return response.json();
 }
 module.exports = { canBookEvent, planningContext,changeReview,cancellationContext };

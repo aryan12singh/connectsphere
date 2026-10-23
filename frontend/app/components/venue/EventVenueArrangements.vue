@@ -155,6 +155,8 @@ async function release(room:Room){
     <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="event-venues" class="text-2xl font-semibold">Venue arrangements</h2><div class="flex gap-2"><Button size="sm" variant="outline" :disabled="!ready || Boolean(posting) || loading" @click="refresh()">Refresh arrangements</Button><Button v-if="canArrange" size="sm" :disabled="!ready || Boolean(posting)" @click="toggleSearch">Add another venue</Button></div></div>
     <p v-if="error" role="alert">Venue arrangements are unavailable. Refresh before making changes.</p>
     <template v-else-if="data">
+      <p v-if="data.event.status==='CANCELLING'" role="status" class="text-sm">Cancelling — resource releases are in progress. The Event will be marked Cancelled only when all required releases finish.</p>
+      <template v-else>
       <p role="status" class="text-sm">{{ data.venueReady ? 'All required venues are approved for the current requirements.' : 'Venue arrangements are outstanding.' }}</p>
       <ul v-if="data.outstanding.length" id="venue-outstanding" class="list-disc pl-5 text-sm text-muted-foreground"><li v-for="item in data.outstanding" :key="item.bookingId ?? 'none'">{{ item.venueName || item.bookingId || 'Venue booking' }}: {{ item.reasons.map(r => r.replaceAll('_',' ').toLowerCase()).join(', ') }}</li></ul>
       <section v-if="data.attendancePlan" aria-label="Attendance allocations" class="grid gap-2 text-sm"><p>Event attendance: {{ data.attendancePlan.expectedAttendance }}. Each simultaneous session must account for this total; room capacities are not added across the day.</p><p v-for="session in data.attendancePlan.sessions" :key="session.startAt">{{ format(session.startAt) }}–{{ format(session.endAt) }}: {{ session.allocated ?? 'Unverified' }} allocated<span v-if="session.reason"> — {{ session.reason.replaceAll('_',' ').toLowerCase() }}</span></p></section>
@@ -163,6 +165,7 @@ async function release(room:Room){
       <CoordinatorSafetyPreparation v-else-if="data.event.id === props.eventId && data.event.currentCoordinatorId === user?.id" :event-id="props.eventId" :event-title="data.event.title" :rooms="data.items" :venue-ready="data.venueReady" :outstanding="data.outstanding" />
       <p v-if="!data.primaryVenue?.bookingId" class="text-sm text-muted-foreground">Choose a primary attendee location. Other rooms remain part of the Event.</p>
       <p v-else-if="!data.primaryVenue.available" role="alert" class="text-sm">The selected primary location needs review before publication.</p>
+      </template>
       <p v-if="!data.items.length" class="text-sm text-muted-foreground">No venues requested yet.</p>
       <Card v-for="room in data.items" :key="room.id" class="existing-booking grid gap-3 p-5" :data-booking-id="room.id">
         <div class="flex flex-wrap items-start justify-between gap-2"><div><h3 class="font-semibold">{{ room.venueName || room.venueId }}</h3><p class="mt-1 break-all text-xs text-muted-foreground">Booking {{ room.id }}</p></div><span class="rounded-xl bg-muted px-3 py-1 text-sm">{{ status(room) }}</span></div>

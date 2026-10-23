@@ -62,6 +62,7 @@ test('countsAsActive: open responsibility only', () => {
     { requestStatus: 'RETURNED_FOR_AMENDMENT' },
     { requestStatus: 'APPROVED', eventStatus: 'ARRANGEMENT_PENDING' },
     { requestStatus: 'APPROVED', eventStatus: 'CONFIRMED' },
+    { requestStatus: 'APPROVED', eventStatus: 'CANCELLING' },
   ];
   const no = [
     { requestStatus: 'DRAFT' },

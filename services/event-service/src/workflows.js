@@ -68,6 +68,7 @@ async function mutation(req,mode,id){
   // longer the current Coordinator, but a retry of the same key must still get
   // the original answer rather than a 403.
   if(mode==='reassign')reassigner(actor,r,body);
+  if(r?.event?.status==='CANCELLING')throw fail(409,'EVENT_CANCELLING','Cancellation is awaiting resource receipts; normal Event changes are closed');
   if(id)version(body,r);
   let status=id?200:201;
   const submit=mode==='submit'||(mode==='create'&&body.saveAs==='submit'),resubmit=mode==='resubmit';

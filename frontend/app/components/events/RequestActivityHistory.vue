@@ -13,7 +13,7 @@ async function load(more=false){
  catch(e){error.value=apiErrorMessage(e,'History is unavailable. Please retry.')}
  finally{loading.value=false}
 }
-const actionLabels:Record<string,string>={VENUE_CHANGE_REVIEWED:'Venue change reviewed',VenueCancelled:'Venue booking cancelled',VenueBookingChanged:'Venue booking changed',VenueRequested:'Venue booking requested',VenueBookingApproved:'Venue booking approved',VenueBookingRejected:'Venue booking rejected',VenueUnavailable:'Venue affected by unavailability',VenueBookingRestored:'Venue booking restored',VenueReplacementApproved:'Replacement venue approved',VenueHoldExpiring:'Hold warning',VenueHoldExpired:'Hold expired'}
+const actionLabels:Record<string,string>={CANCELLATION_ACCEPTED:'Event cancellation accepted',VenueCancellationReleased:'Venue released — cancellation pending',VENUE_CHANGE_REVIEWED:'Venue change reviewed',VenueCancelled:'Venue booking cancelled',VenueBookingChanged:'Venue booking changed',VenueRequested:'Venue booking requested',VenueBookingApproved:'Venue booking approved',VenueBookingRejected:'Venue booking rejected',VenueUnavailable:'Venue affected by unavailability',VenueBookingRestored:'Venue booking restored',VenueReplacementApproved:'Replacement venue approved',VenueHoldExpiring:'Hold warning',VenueHoldExpired:'Hold expired'}
 function actionLabel(action:string){return actionLabels[action]||action.replaceAll('_',' ')}
 function value(v:unknown){return v===null||v===''?'Empty':typeof v==='string'?v:JSON.stringify(v)}
 onMounted(()=>load())

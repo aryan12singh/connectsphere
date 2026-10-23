@@ -3,6 +3,7 @@
 const {randomUUID,createHash}=require('node:crypto');
 const config=require('./config');
 const prisma=require('./db');
+const {getEvent,lockEvent}=require('./eventLock');
 const {toEvent}=require('./serializers');
 const path=require('node:path');
 const {hasPermission,rolesForUser}=require(path.join(process.env.SERVICE_UTILS_PATH||path.resolve(__dirname,'../../utils'),'role-policy'));
@@ -17,19 +18,6 @@ function role(actor,name){return rolesForUser(actor).includes(name);}
 function coordinator(actor,event){return role(actor,'EVENT_COORDINATOR')&&actor.id===event.eventRequest.currentCoordinatorId&&actor.id!==event.organiserId;}
 function requireCoordinator(actor,event,permission='safety.submit'){if(!coordinator(actor,event)||!hasPermission(actor,permission))throw fail(403,'FORBIDDEN','Only the current assigned Coordinator may perform this action');}
 function requireOfficer(actor,permission='safety.view'){if(!hasPermission(actor,permission))throw fail(403,'FORBIDDEN','Safety Officer permission is required');}
-async function getEvent(id,db=prisma){
- if(!db)throw fail(503,'SAFETY_UNAVAILABLE','Database-backed Safety review is unavailable');
- const event=await db.event.findUnique({where:{id},include:{eventRequest:true}});
- if(!event)throw fail(404,'NOT_FOUND','Event not found');return event;
-}
-async function lockEvent(tx,id){
- const source=await tx.event.findUnique({where:{id},select:{eventRequestId:true}});
- if(!source)throw fail(404,'NOT_FOUND','Event not found');
- // Match the source workflow lock order; reassignment cannot race authorization.
- await tx.$queryRaw`SELECT id FROM event_requests WHERE id=${source.eventRequestId} FOR UPDATE`;
- await tx.$queryRaw`SELECT id FROM events WHERE id=${id} FOR UPDATE`;
- return getEvent(id,tx);
-}
 function open(event){if(event.eventRequest.status!=='APPROVED'||!['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(event.status))throw fail(409,'EVENT_CLOSED','Safety actions require a current open Planning Event');}
 function sourceCurrent(event,round){return round?.snapshot?.sourceRevision===revision(event,event.eventRequest);}
 function withPlacement(venues,technical){return {...venues,venues:venues.venues.map(v=>({...v,equipmentPlacement:technical.placementDetails||null}))};}

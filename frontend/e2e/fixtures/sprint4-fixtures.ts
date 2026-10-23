@@ -20,11 +20,14 @@ export async function mutation(...args:Parameters<typeof baseMutation>){
  observeHttp(args[1],args[2],response.status(),await response.json().catch(()=>null))
  return response
 }
-export function internalRequest(service:'booking'|'attendance',path:string,body?:unknown){
+export function internalRequest(service:'booking'|'attendance'|'event',path:string,body?:unknown,bearer?:string){
  const compose=process.env.CSE2E_COMPOSE_FILE
  if(!compose)throw Error('Disposable review stack required')
- const script="(async()=>{const r=await fetch('http://127.0.0.1:3000'+process.argv[1],{method:process.argv[2],headers:{'content-type':'application/json','x-internal-api-key':process.env.INTERNAL_API_KEY},...(process.argv[2]==='POST'?{body:process.argv[3]}:{})});console.log(JSON.stringify({status:r.status,body:await r.json()}))})().catch(e=>{console.error(e.message);process.exit(1)})"
- const result=JSON.parse(execFileSync('docker',['compose','-f',compose,'exec','-T',service+'-service','node','-e',script,path,body===undefined?'GET':'POST',JSON.stringify(body??null)],{encoding:'utf8'}));observeHttp(body===undefined?'GET':'POST',path,result.status,result.body);return result
+ // A real session for an accepted cancellation stays in stdin, never command
+ // arguments, captured process listings, reports or authentication traces.
+ const script="(async()=>{const input=JSON.parse(require('node:fs').readFileSync(0,'utf8'));const r=await fetch('http://127.0.0.1:3000'+input.path,{method:input.method,headers:{'content-type':'application/json','x-internal-api-key':process.env.INTERNAL_API_KEY,...(input.bearer?{authorization:'Bearer '+input.bearer}:{})},...(input.method==='POST'?{body:JSON.stringify(input.body)}:{})});console.log(JSON.stringify({status:r.status,body:await r.json()}))})().catch(e=>{console.error(e.message);process.exit(1)})"
+ const method=body===undefined?'GET':'POST'
+ const result=JSON.parse(execFileSync('docker',['compose','-f',compose,'exec','-T',service+'-service','node','-e',script],{encoding:'utf8',input:JSON.stringify({path,method,body,bearer})}));observeHttp(method,path,result.status,result.body);return result
 }
 export async function value(response:any,status=200){const body=await response.json();expect(response.status(),JSON.stringify(body)).toBe(status);return body}
 export async function summary(actor:APIRequestContext,id:string){return value(await actor.get(`/api/bookings/events/${id}/summary`))}

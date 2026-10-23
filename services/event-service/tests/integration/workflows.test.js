@@ -405,3 +405,74 @@ test('TC-CS88-16 component: internal cancellation proof requires the committed t
  await prisma.event.update({where:{id:eventId},data:{version:{increment:1}}});const stale=await call('GET',path,undefined,null,randomUUID(),headers);assert.equal(stale.status,409);
  t.diagnostic(JSON.stringify({caseId:'TC-CS88-16',layer:'PostgreSQL/Event source-precondition proof; no public CS-54 command',accepted:proof,afterSourceVersionChanged:stale}));
 });
+
+async function cancellationSource(){
+ const request=await create(),who=request.body.currentCoordinatorId==='test-coord'?'coord':'coord2';
+ const approved=await call('POST',`/event-requests/${request.body.id}/decision`,{action:'APPROVE',version:request.body.version},who);assert.equal(approved.status,200);
+ const event=await prisma.event.findUnique({where:{id:approved.body.eventId}});
+ return {who,event,path:`/internal/events/${event.id}/cancellation-intents`,headers:{'x-internal-api-key':'integration-key'},
+  body:{eventRequestId:request.body.id,eventVersion:event.version,requestVersion:approved.body.version,cancellationActionId:randomUUID(),reason:'Accepted before setup; release required resources'}};
+}
+test('cancellation acceptance: actual authenticated command binds current Coordinator, versions, action and reason; no terminal publication',async(t)=>{
+ const f=await cancellationSource();
+ assert.equal((await call('POST',f.path,f.body,f.who)).status,403);
+ assert.equal((await call('POST',f.path,f.body,null,randomUUID(),f.headers)).status,401);
+ for(const who of ['owner','staff','lead','officer',f.who==='coord'?'coord2':'coord'])assert.equal((await call('POST',f.path,f.body,who,randomUUID(),f.headers)).status,403,who);
+ for(const overrides of [{reason:' '},{reason:'x'.repeat(501)},{eventVersion:0},{requestVersion:1.1},{actorId:actors[f.who].id}])assert.equal((await call('POST',f.path,{...f.body,...overrides},f.who,randomUUID(),f.headers)).status,422);
+ for(const overrides of [{eventRequestId:'another-request'},{eventVersion:f.body.eventVersion+1},{requestVersion:f.body.requestVersion+1}])assert.equal((await call('POST',f.path,{...f.body,...overrides},f.who,randomUUID(),f.headers)).status,409);
+ const replies=await Promise.all(Array.from({length:6},()=>call('POST',f.path,f.body,f.who,randomUUID(),f.headers)));
+ assert.ok(replies.every(row=>row.status===200));assert.ok(replies.every(row=>JSON.stringify(row.body)===JSON.stringify(replies[0].body)));
+ const accepted=replies[0].body,stored=await prisma.event.findUnique({where:{id:f.event.id}});
+ assert.equal(stored.status,'CANCELLING');assert.equal(stored.version,f.event.version+1);assert.equal(stored.cancelledAt,null);assert.equal(stored.cancelledById,null);assert.equal(stored.safetyToken,null);
+ assert.equal(await prisma.eventCancellationIntent.count({where:{eventId:f.event.id}}),1);assert.equal(await prisma.activityLog.count({where:{eventRequestId:f.body.eventRequestId,action:'CANCELLATION_ACCEPTED'}}),1);
+ assert.equal(await prisma.outbox.count({where:{aggregateId:f.event.id,eventType:'EventCancelled'}}),0);
+ for(const overrides of [{reason:'Different decision'},{cancellationActionId:randomUUID()},{eventVersion:f.body.eventVersion+1}])assert.equal((await call('POST',f.path,{...f.body,...overrides},f.who,randomUUID(),f.headers)).status,409);
+ const proof=await call('GET',`/internal/events/${f.event.id}/cancellation-context?actionId=${f.body.cancellationActionId}`,undefined,null,randomUUID(),f.headers);assert.equal(proof.status,200);assert.equal(proof.body.proofType,'ACCEPTED_INTENT');assert.equal(proof.body.eventVersion,accepted.eventVersion);
+ for(const path of [`/events/${f.event.id}/confirm`,`/events/${f.event.id}/preparation`,`/events/${f.event.id}/safety/submit`,`/events/${f.event.id}/planning-correction`])assert.equal((await call('POST',path,{version:stored.version},f.who)).status,409,path);
+ assert.equal((await call('POST',`/event-requests/${f.body.eventRequestId}/reassign`,{version:f.body.requestVersion,coordinatorId:actors[f.who==='coord'?'coord2':'coord'].id},f.who)).status,409);
+ await assert.rejects(()=>prisma.eventCancellationIntent.update({where:{id:f.body.cancellationActionId},data:{reason:'Rewrite'}}));
+ await assert.rejects(()=>prisma.eventCancellationIntent.delete({where:{id:f.body.cancellationActionId}}));
+ t.diagnostic(JSON.stringify({layer:'Authenticated Event HTTP/PostgreSQL',accepted,proof:proof.body,concurrentReplies:replies.map(row=>row.status),terminalIntents:0,normalMutations:'refused'}));
+});
+test('cancellation acceptance: immutable identity replays after finalization and proof retains accepted version separately',async(t)=>{
+ const f=await cancellationSource(),accepted=await call('POST',f.path,f.body,f.who,randomUUID(),f.headers);assert.equal(accepted.status,200);
+ // Controlled peer-finalization precondition, not a public cancellation saga.
+ const at=new Date(),actorId=actors[f.who].id,event=await prisma.event.update({where:{id:f.event.id},data:{status:'CANCELLED',version:{increment:1},cancelledAt:at,cancelledById:actorId,cancelReason:f.body.reason,startAt:new Date('2000-01-01T00:00:00Z')}});
+ const payload={eventId:event.id,eventRequestId:f.body.eventRequestId,eventVersion:event.version,cancellationActionId:f.body.cancellationActionId,actorId,coordinatorId:actorId,cancelledAt:at.toISOString(),reason:f.body.reason};
+ await prisma.outbox.create({data:{id:f.body.cancellationActionId,aggregateType:'Event',aggregateId:event.id,eventType:'EventCancelled',payload}});
+ await prisma.activityLog.create({data:{eventRequestId:f.body.eventRequestId,action:'CANCELLED',fromStatus:'CANCELLING',toStatus:'CANCELLED',actorType:'USER',actorId,details:payload}});
+ assert.deepEqual(await call('POST',f.path,f.body,f.who,randomUUID(),f.headers),accepted);
+ const proofPath=`/internal/events/${f.event.id}/cancellation-context?actionId=${f.body.cancellationActionId}`;
+ const {eventRequestId,...missingRequest}=payload;
+ for(const invalid of [missingRequest,{...payload,eventRequestId:'another-request'}]){
+  await prisma.outbox.update({where:{id:f.body.cancellationActionId},data:{payload:invalid}});
+  assert.equal((await call('GET',proofPath,undefined,null,randomUUID(),f.headers)).status,409);
+ }
+ await prisma.outbox.update({where:{id:f.body.cancellationActionId},data:{payload}});
+ const proof=await call('GET',`/internal/events/${f.event.id}/cancellation-context?actionId=${f.body.cancellationActionId}`,undefined,null,randomUUID(),f.headers);assert.equal(proof.status,200);assert.equal(proof.body.eventVersion,accepted.body.eventVersion);assert.equal(proof.body.currentEventVersion,event.version);assert.equal(proof.body.phase,'CANCELLED');
+ t.diagnostic(JSON.stringify({layer:'PostgreSQL/controlled final-source precondition',accepted:accepted.body,proof:proof.body}));
+});
+test('cancellation acceptance: failed history insertion rolls back the intent and lifecycle; same action safely retries',async()=>{
+ const f=await cancellationSource();
+ await prisma.$executeRawUnsafe("CREATE FUNCTION cs_cancel_reject_history() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='CANCELLATION_ACCEPTED' THEN RAISE EXCEPTION 'Isolated acceptance rollback'; END IF; RETURN NEW; END $$");
+ await prisma.$executeRawUnsafe('CREATE TRIGGER cs_cancel_reject_history BEFORE INSERT ON activity_log FOR EACH ROW EXECUTE FUNCTION cs_cancel_reject_history()');
+ try{assert.equal((await call('POST',f.path,f.body,f.who,randomUUID(),f.headers)).status,500);assert.deepEqual(await prisma.event.findUnique({where:{id:f.event.id}}),f.event);assert.equal(await prisma.eventCancellationIntent.count({where:{eventId:f.event.id}}),0);}
+ finally{await prisma.$executeRawUnsafe('DROP TRIGGER cs_cancel_reject_history ON activity_log');await prisma.$executeRawUnsafe('DROP FUNCTION cs_cancel_reject_history()');}
+ assert.equal((await call('POST',f.path,f.body,f.who,randomUUID(),f.headers)).status,200);
+});
+test('cancellation acceptance: request lock serializes handover and reads the deadline after waiting',async(t)=>{
+ const f=await cancellationSource();let pending;
+ const wait=async()=>{for(let i=0;i<200;i++){const [row]=await prisma.$queryRaw`SELECT COUNT(*)::integer AS n FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'`;if(row.n>0)return;await new Promise(resolve=>setTimeout(resolve,10));}assert.fail('Expected source request lock waiter');};
+ await prisma.$transaction(async tx=>{
+  await tx.$queryRaw`SELECT id FROM event_requests WHERE id=${f.body.eventRequestId} FOR UPDATE`;
+  pending=call('POST',f.path,f.body,f.who,randomUUID(),f.headers);await wait();
+  await tx.eventRequest.update({where:{id:f.body.eventRequestId},data:{currentCoordinatorId:actors[f.who==='coord'?'coord2':'coord'].id,version:{increment:1}}});
+ });assert.equal((await pending).status,403);assert.equal(await prisma.eventCancellationIntent.count({where:{eventId:f.event.id}}),0);
+ const boundary=await cancellationSource();
+ await prisma.$transaction(async tx=>{
+  await tx.$queryRaw`SELECT id FROM event_requests WHERE id=${boundary.body.eventRequestId} FOR UPDATE`;
+  pending=call('POST',boundary.path,boundary.body,boundary.who,randomUUID(),boundary.headers);await wait();
+  await tx.$executeRaw`UPDATE events SET "startAt"=clock_timestamp()-interval '1 second',"endAt"=clock_timestamp()+interval '1 hour' WHERE id=${boundary.event.id}`;
+ });const denied=await pending;assert.equal(denied.status,409);assert.equal(denied.body.error.code,'EVENT_STARTED');assert.equal(await prisma.eventCancellationIntent.count({where:{eventId:boundary.event.id}}),0);
+ t.diagnostic(JSON.stringify({layer:'PostgreSQL/request-row lock barriers',handoverResult:403,afterLockDeadline:denied}));
+});

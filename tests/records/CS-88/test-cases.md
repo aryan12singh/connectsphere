@@ -21,3 +21,4 @@ Stable case inventory. Current preconditions, steps, data and assertions remain 
 | TC-CS88-15 | AC1,AC5,AC6 | A reviewed cancellation resumes after a lost review acknowledgement or temporary Booking failure |
 | TC-CS88-16 | AC4,AC5; controlled terminal-source component/recovery proof | Source-proven whole-Event venue release refuses uncommitted actions and releases only its active venue arrangements once |
 | TC-CS88-17 | AC1,AC5,AC6 | Definitive stale Event review and stale Booking cancellation recover from current versions |
+| TC-CS88-18 | AC4,AC5; pre-final component/recovery proof | Accept the current Coordinator's version-bound cancellation intent, release only Event venues while Cancelling, retain durable receipts through restart/source outage and withhold final notices |

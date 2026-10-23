@@ -1,12 +1,14 @@
 // Isolated actual view guard; fake resource proof/current review only, no live writes.
 const fs=require('node:fs'),Module=require('node:module'),{createHash}=require('node:crypto');
 const target=require.resolve('../../services/event-service/src/safety.js');
+const eventLock=require.resolve('../../services/event-service/src/eventLock.js');
 const hash=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex'),clone=x=>structuredClone(x);
 let event,round,venues;
 const technical={eventId:'e1',status:'NOT_REQUIRED',fingerprint:'technical-stable',placementDetails:'No portable equipment',equipment:[]};
 const db={event:{findUnique:async()=>clone(event)},safetyRound:{findUnique:async()=>clone(round)}};
 const realLoad=Module._load;
 Module._load=function(spec,parent,...rest){
+ if(parent?.filename===eventLock&&spec==='./db')return db;
  if(parent?.filename===target){
   if(spec==='./db')return db;
   if(spec==='./config')return {bookingServiceUrl:'http://booking',equipmentServiceUrl:'http://equipment',internalApiKey:'isolated'};

@@ -165,3 +165,22 @@ test('TC-CS88-16 component: source-proven whole-Event release is atomic, scoped 
   assert.equal((await api.booking.http(`/internal/venue-links/${venue.id}`,{headers:{'x-internal-api-key':require('../../src/config').internalApiKey}})).body.blockingCount,1,'Only unrelated confirmed occupancy remains');
  }finally{eventClient.cancellationContext=source;}
 });
+
+test('pre-final cancellation release rejects contradictory phases and versions, then replays the exact receipt without source access',async()=>{
+ const {event,room}=await fixture(),source=eventClient.cancellationContext,release=require('../../src/cancellationRelease').release;
+ const body={eventVersion:4,cancellationActionId:randomUUID()},proof={...body,eventId:event.id,eventRequestId:event.eventRequestId,
+  proofType:'ACCEPTED_INTENT',status:'CANCELLING',phase:'CANCELLING',sourceEventVersion:3,currentEventVersion:4,requestVersion:1,
+  currentCoordinatorId:'coordinator',actorId:'coordinator',reason:'Accepted cancellation'};
+ try{
+  for(const overrides of [{phase:'CANCELLED'},{sourceEventVersion:2},{currentEventVersion:5},{requestVersion:0},{reason:''},{eventRequestId:null}]){
+   eventClient.cancellationContext=async()=>({...proof,...overrides});await assert.rejects(()=>release(event.id,body),error=>error.code==='CANCELLATION_SOURCE_MISMATCH');
+   assert.equal(read(room.id).status,'TENTATIVELY_HELD');
+  }
+  eventClient.cancellationContext=async()=>proof;const first=await release(event.id,body);assert.equal(first.phase,'CANCELLING');assert.deepEqual(first.releasedBookingIds,[room.id]);
+  assert.equal(f.bookings.state.outbox.filter(row=>row.kind==='VenueCancellationReleased').length,1);
+  assert.equal(f.bookings.state.outbox.filter(row=>row.kind==='VenueCancelled').length,0);
+  eventClient.cancellationContext=async()=>{throw Error('Source is offline after the committed receipt');};
+  assert.deepEqual(await release(event.id,body),first);
+  await assert.rejects(()=>release(event.id,{...body,eventVersion:5}),error=>error.code==='IDEMPOTENCY_KEY_REUSE');
+ }finally{eventClient.cancellationContext=source;}
+});

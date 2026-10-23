@@ -1,5 +1,5 @@
 const express = require('express');
-const { internalOnly } = require('../auth');
+const { internalOnly,requireAuth } = require('../auth');
 const repository = require('../store');
 const { toEvent } = require('../serializers');
 
@@ -7,6 +7,9 @@ const { toEvent } = require('../serializers');
 // remain owned here; booking-service never reads the Event database directly.
 const router = express.Router();
 router.use(internalOnly);
+// This is an authenticated source command for the cancellation orchestrator,
+// not a public cancellation workflow or a resource-completion/finalize route.
+router.post('/events/:id/cancellation-intents',requireAuth(),async(req,res,next)=>{try{res.json(await require('../cancellationIntent').accept(req.actor,req.params.id,req.body));}catch(error){next(error);}});
 router.get('/events/:id/cancellation-context',async(req,res,next)=>{try{res.json(await require('../cancellationContext').cancellationContext(req.params.id,req.query.actionId));}catch(error){next(error);}});
 router.get('/events/:id/venue-change-reviews/:reviewId',async(req,res,next)=>{try{res.json(await require('../safety').venueChangeContext(req.params.id,req.params.reviewId));}catch(error){next(error);}});
 router.post('/events/:id/venue-activity',async(req,res,next)=>{try{res.json(await require('../safety').recordVenueActivity(req.params.id,req.body));}catch(error){next(error);}});
