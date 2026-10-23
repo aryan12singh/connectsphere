@@ -67,12 +67,25 @@ test('TC-CS88-18 LIVE pre-final component: accepted Coordinator intent stays Can
   }
   expect(internalRequest('booking',releasePath,{...releaseInput,eventVersion:releaseInput.eventVersion+1}).status).toBe(409)
   expect(await current(staff,unrelated.id)).toMatchObject(unrelated)
+  const historyPath=`/api/event-history/${p.event.eventId}`
+  await expect.poll(async()=>{
+   const activity=await value(await p.coordinator.get(historyPath))
+   return activity.items.filter((entry:any)=>entry.action==='VenueCancellationReleased').length
+  }).toBe(3)
+  const history=await value(await p.coordinator.get(historyPath))
+  expect(history.items.filter((entry:any)=>entry.action==='CANCELLATION_ACCEPTED')).toHaveLength(1)
   await signIn(page,p.contact.email);await page.goto(`/events/${p.event.eventId}`)
   await expect(page.getByRole('status').filter({hasText:'Cancelling — resource releases are in progress'})).toBeVisible()
+  await expect(page.getByRole('button',{name:'Refresh arrangements',exact:true})).toBeEnabled()
   await expect(page.getByRole('button',{name:'Add another venue',exact:true})).toHaveCount(0)
   await expect(page.getByRole('button',{name:'Send for Safety Check',exact:true})).toHaveCount(0)
   await expect(page.locator('[data-booking-id]')).toHaveCount(3)
+  const historyPanel=page.getByRole('tabpanel',{name:'Activity history'})
+  await expect(historyPanel.getByTestId('history-entry').filter({hasText:'Event cancellation accepted'})).toHaveCount(1)
+  await expect(historyPanel.getByTestId('history-entry').filter({hasText:'Venue released — cancellation pending'})).toHaveCount(3)
+  await expect(historyPanel).not.toContainText('Loading activity')
   await page.screenshot({path:info.outputPath('TC-CS88-18-cancelling-retains-booking-history.png'),fullPage:true})
+  await historyPanel.screenshot({path:info.outputPath('TC-CS88-18-accepted-and-released-activity.png')})
 
   // Recreate the Booking process and take Event offline: an exact persisted
   // receipt must replay without a live proof call or a second business effect.
@@ -94,7 +107,7 @@ test('TC-CS88-18 LIVE pre-final component: accepted Coordinator intent stays Can
   expect(equipment).toEqual([{id:reservationId,active:true}])
   const releaseQuery='SELECT kind,count(*)::int AS count FROM booking_outbox WHERE payload->>\'cancellationActionId\'=$1 GROUP BY kind',releaseRows=(await reviewDatabase('booking',async db=>db.query(releaseQuery,[input.cancellationActionId]))).rows
   expect(releaseRows).toEqual([{kind:'VenueCancellationReleased',count:3}])
-  await info.attach('TC-CS88-18-accepted-intent-and-durable-receipt',{body:Buffer.from(JSON.stringify({scope:'Pre-final venue component, not the complete public CS-54 saga; equipment and registration release remain pending.',accepted,result,staleApproval:staleApproval.status(),staleCreate:staleCreate.status(),restartAndSourceOutageReplayMatched:true},null,2)),contentType:'application/json'})
+  await info.attach('TC-CS88-18-accepted-intent-and-durable-receipt',{body:Buffer.from(JSON.stringify({scope:'Pre-final venue component, not the complete public CS-54 saga; equipment and registration release remain pending.',accepted,result,history,staleApproval:staleApproval.status(),staleCreate:staleCreate.status(),restartAndSourceOutageReplayMatched:true},null,2)),contentType:'application/json'})
   await evidence(page,info,'TC-CS88-18',p.event.eventId,[{database:'event_db',query:eventQuery,rows:eventRows},{database:'event_db',query:finalQuery,rows:finalRows},{database:'notification_db',query:noticeQuery,rows:noticeRows},{database:'booking_db',query:releaseQuery,rows:releaseRows},{database:'attendance_db',query:registrationQuery,rows:registered},{database:'equipment_db',query:equipmentQuery,rows:equipment}])
  }finally{
   if(sourceStopped){eventService('start');await waitForEventService(p.coordinator,p.event.id)}
