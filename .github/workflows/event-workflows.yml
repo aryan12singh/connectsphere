@@ -276,7 +276,7 @@ jobs:
     name: Live E2E and restart checks
     runs-on: ubuntu-24.04
     # Serial desktop/mobile journeys honour the production login rate limit.
-    # Allow the 254-case suite, stack setup and restart checks to finish.
+    # Allow the full suite, stack setup and restart checks to finish.
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7.0.1
