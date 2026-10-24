@@ -36,8 +36,8 @@ test('allowed rows', async (t) => {
     ['Planning → Reject → Rejected', ACTIONS.REJECT, evt('ARRANGEMENT_PENDING'), COORD, { text: 'Cannot be met' }, 'REJECTED'],
     ['Planning → Confirm → Confirmed', ACTIONS.CONFIRM, evt('ARRANGEMENT_PENDING'), COORD, { outstandingArrangements: [] }, 'CONFIRMED'],
     ['Confirmed → Significant change approved → Planning', ACTIONS.SIGNIFICANT_CHANGE_APPROVED, evt('CONFIRMED'), COORD, {}, 'ARRANGEMENT_PENDING'],
-    ['Planning → Cancel → Cancelled', ACTIONS.CANCEL, evt('ARRANGEMENT_PENDING'), COORD, {}, 'CANCELLED'],
-    ['Confirmed → Cancel → Cancelled', ACTIONS.CANCEL, evt('CONFIRMED'), COORD, {}, 'CANCELLED'],
+    ['Planning → Cancel → Cancelling', ACTIONS.CANCEL, evt('ARRANGEMENT_PENDING'), COORD, {text:'Coordinator cancellation'}, 'CANCELLING'],
+    ['Confirmed → Cancel → Cancelling', ACTIONS.CANCEL, evt('CONFIRMED'), COORD, {text:'Coordinator cancellation'}, 'CANCELLING'],
     ['Confirmed → End time passes (system) → Completed', ACTIONS.COMPLETE, evt('CONFIRMED'), SYSTEM, { now: new Date('2026-11-20T10:00:01Z') }, 'COMPLETED'],
   ];
   for (const [name, action, entity, actor, extra, expectedTo] of rows) {
@@ -232,8 +232,8 @@ test('confirm needs every arrangement complete', async (t) => {
 
 // ── cancellation window and completion timing ────────────────────────────
 test('cancel is allowed until the event starts, not after', async (t) => {
-  const call = (now) => decide({ action: ACTIONS.CANCEL, entity: evt('CONFIRMED'), actor: COORD, context: baseCtx({ now }) });
-  await t.test('1 second before start', () => assert.equal(call(new Date('2026-11-20T00:59:59Z')).to, 'CANCELLED'));
+  const call = (now) => decide({ action: ACTIONS.CANCEL, entity: evt('CONFIRMED'), actor: COORD, context: baseCtx({ now }),text:'Coordinator cancellation' });
+  await t.test('1 second before start', () => assert.equal(call(new Date('2026-11-20T00:59:59Z')).to, 'CANCELLING'));
   await t.test('at start', () => assert.throws(() => call(new Date('2026-11-20T01:00:00Z')), (e) => e.code === 'EVENT_STARTED'));
   await t.test('after start', () => assert.throws(() => call(new Date('2026-11-20T05:00:00Z')), (e) => e.status === 409));
 });
@@ -259,5 +259,5 @@ test('displayStatus: approval shows Planning to the organiser, never Confirmed',
 
 test('every status has a label', () => {
   for (const s of ['DRAFT', 'SUBMITTED', 'RETURNED_FOR_AMENDMENT', 'APPROVED', 'REJECTED']) assert.ok(REQUEST_LABELS[s], s);
-  for (const s of ['ARRANGEMENT_PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED', 'REJECTED']) assert.ok(EVENT_LABELS[s], s);
+  for (const s of ['ARRANGEMENT_PENDING', 'CONFIRMED', 'CANCELLING', 'CANCELLED', 'COMPLETED', 'REJECTED']) assert.ok(EVENT_LABELS[s], s);
 });

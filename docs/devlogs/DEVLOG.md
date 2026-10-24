@@ -1620,3 +1620,5 @@ real Keycloak in Docker:** realm import and the lockout timing.
 
 **Next up (not started)**: frontend login screen and admin screens using
 `usePermissions` / `useAdminApi`; RBAC wiring (validate middleware) in the next service built.
+
+- 2026-10-23 — [Targeted venue changes and recovery](2026-10-23-targeted-venue-changes.md): CS-88/90/91/92 implementation and integration; separate evidence and remaining CS-54/human gates.

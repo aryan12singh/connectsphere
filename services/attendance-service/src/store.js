@@ -24,7 +24,7 @@ function eventView(event) {
     primaryVenueName: event.primaryVenueName,
     registrationLimit: event.registrationLimit,
     registrationWindow: event.registrationWindow,
-    venues: event.venues,
+    venues: event.venues?.map(venue=>Object.fromEntries(['id','bookingId','name','startAt','endAt'].filter(key=>venue[key]!==undefined).map(key=>[key,venue[key]]))),
     organiserId: event.organiserId,
     createdAt: event.createdAt,
     updatedAt: event.updatedAt,
@@ -67,7 +67,14 @@ async function saveRegistration(registration) {
   return prisma.registration.create({ data: registration });
 }
 
+async function notificationRecipients(eventId){
+ // Explicit permitted states exclude Withdrawn and unrelated future states.
+ const statuses=['CONFIRMED','WAITLISTED','OFFERED'];
+ const rows=prisma?await prisma.registration.findMany({where:{eventId,status:{in:statuses}},select:{userId:true}}):[...memory.registrations.values()].filter(row=>row.eventId===eventId&&statuses.includes(row.status));
+ return [...new Set(rows.map(row=>row.userId))];
+}
 module.exports = {
+  notificationRecipients,
   eventView,
   listEvents,
   findEvent,

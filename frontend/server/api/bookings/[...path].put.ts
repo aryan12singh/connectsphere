@@ -1,4 +1,4 @@
-import { kongBffFetch, pathSegments, segmentPath } from '../../utils/kongBff'
+import { kongBffFetch, idempotencyHeaders, pathSegments, segmentPath } from '../../utils/kongBff'
 
 export default defineEventHandler(async (event) => {
   const segments = pathSegments(event)
@@ -6,6 +6,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Booking endpoint not found' })
   return await kongBffFetch(event, `/venue-bookings/${segmentPath(segments)}`, {
     method: 'PUT',
+    headers:idempotencyHeaders(event),
     body: await readBody(event),
   })
 })

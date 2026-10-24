@@ -11,6 +11,7 @@ test('outbox preserves original occurrence time and distinguishes rejection, con
     if (kind === 'VenueBookingRejected') assert.equal(result.payload.decision, 'REJECTED');
   }
   assert.equal(await project({ kind: 'VenueConflictChanged', payload: {}, createdAt }), null);
+  assert.equal(await project({kind:'VenueCancellationReleased',payload:{releasePhase:'CANCELLING'},createdAt}),null);
   assert.equal(require('../../src/notificationOutbox').start(), null);
 });
 

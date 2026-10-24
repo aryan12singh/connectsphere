@@ -15,6 +15,100 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /internal/events/{eventId}/cancellation-intents:
+    parameters:
+    - name: eventId
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      summary: Accept a current-Coordinator cancellation intent; remain Cancelling
+      description: Private orchestrator command, not publicly routed. Requires internal key AND verified
+        current Coordinator session with review capability. Locks request then Event; approved Planning/Confirmed
+        before start only. Immutable identity replays before time/version/phase checks. Clears current
+        Safety proof. No resource release, finalization or EventCancelled notice. Public CS-54 orchestration
+        remains separate.
+      security:
+      - internalApiKey: []
+        bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+              - eventRequestId
+              - eventVersion
+              - requestVersion
+              - cancellationActionId
+              - reason
+              properties:
+                eventRequestId:
+                  type: string
+                eventVersion:
+                  type: integer
+                  minimum: 1
+                requestVersion:
+                  type: integer
+                  minimum: 1
+                cancellationActionId:
+                  type: string
+                  maxLength: 200
+                  description: Globally unique immutable accepted action; reuse exact data for recovery.
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+      responses:
+        '200':
+          description: 'Immutable acceptance: eventId,eventRequestId,eventVersion (accepted),sourceEventVersion,requestVersion,cancellationActionId,status/phase
+            CANCELLING,actorId,currentCoordinatorId,actorName,reason,acceptedAt. Exact replay returns
+            same values.'
+        '401':
+          description: Verified session required
+        '403':
+          description: Internal key, current Coordinator role/assignment or capability denied
+        '409':
+          description: Stale versions, closed/started Event, different accepted identity or reused
+            action
+        '422':
+          description: Exact bounded input required
+        '503':
+          description: Persistent source or identity service unavailable
+  /internal/events/{eventId}/cancellation-context:
+    parameters:
+    - name: eventId
+      in: path
+      required: true
+      schema:
+        type: string
+    - name: actionId
+      in: query
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Verify an immutable accepted or legacy terminal cancellation action
+      security:
+      - internalApiKey: []
+      description: Read-locked request/Event proof. ACCEPTED_INTENT returns accepted eventVersion independently
+        of currentEventVersion; phase/status may be CANCELLING or verified final CANCELLED. Final accepted-intent
+        proof additionally requires EventCancelled.eventRequestId matching the source. Terminal-only
+        legacy proof remains compatible. No public routing.
+      responses:
+        '200':
+          description: Exact source identity, accepted versions, actor/reason and current phase
+        '403':
+          description: Internal key required
+        '404':
+          description: Event not found
+        '409':
+          description: Missing, stale, mismatched or uncommitted source proof
+        '422':
+          description: Action ID required
   /events/{id}/safety:
     $ref: "./safety-openapi.yaml#/paths/~1events~1{id}~1safety"
   /events/{id}/safety/submit:

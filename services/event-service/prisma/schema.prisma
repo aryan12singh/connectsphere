@@ -47,6 +47,7 @@ enum EventStatus {
   PREPARATION
   ARRANGEMENT_PENDING // shown as "Planning"
   CONFIRMED
+  CANCELLING // accepted cancellation; resource receipts are still outstanding
   CANCELLED // closed
   COMPLETED // closed
   REJECTED // closed — rejected from Planning (CS-28); see schema-decisions.md
@@ -156,6 +157,7 @@ model Event {
   safetyOperation Json?
   safetyRework Json?
   safetyRounds SafetyRound[]
+  cancellationIntent EventCancellationIntent?
 
   confirmedById String?
   confirmedAt   DateTime? @db.Timestamptz(3)
@@ -170,6 +172,25 @@ model Event {
   @@index([status, startAt])
   @@index([organiserId])
   @@map("events")
+}
+
+// Accepted once under the request/Event locks. Immutable source proof for
+// resource release; final cancellation belongs to the cancellation orchestrator.
+model EventCancellationIntent {
+  id String @id
+  eventId String @unique
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  eventRequestId String
+  actorId String
+  actorName String
+  sourceEventVersion Int
+  requestVersion Int
+  acceptedEventVersion Int
+  fromStatus EventStatus
+  reason String
+  acceptedAt DateTime @db.Timestamptz(3)
+
+  @@map("event_cancellation_intents")
 }
 
 // One row per assignment ever made. The row with revokedAt = null is the
@@ -299,4 +320,21 @@ model PreparationUpdate {
   occurredAt DateTime @default(now()) @db.Timestamptz(3)
   @@index([eventId,occurredAt])
   @@map("preparation_updates")
+}
+
+// Bounded authorization for one venue action; general field proposals remain separate.
+model VenueChangeReview {
+  id String @id @default(uuid())
+  eventId String
+  bookingId String
+  bookingVersion Int
+  action String
+  proposed Json
+  source Json
+  reason String
+  reviewedById String
+  requestVersion Int
+  reviewedAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([eventId,bookingId])
+  @@map("venue_change_reviews")
 }

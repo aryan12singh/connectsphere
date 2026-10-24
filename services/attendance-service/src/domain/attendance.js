@@ -24,7 +24,7 @@ function filterAttendeeFields(event) {
 }
 
 function filterOrganiserFields(event) {
-  return { ...event };
+  return filterAttendeeFields(event);
 }
 
 module.exports = {

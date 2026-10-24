@@ -14,6 +14,8 @@ interface Commitment {
   occupiedEnd: string
 }
 interface Conflict extends Commitment {
+  version:number
+  originalBookingId?:string
   venueId: string
   venueName: string
   timeZone: string
@@ -60,6 +62,19 @@ async function recheck(venue: Venue) {
     await refresh()
   } finally { saving.value = null }
 }
+const restoreReason=ref(''),restoreConfirm=ref(false),restoreKeys=new Map<string,string>()
+async function restore(){
+ const booking=selected.value
+ if(!booking||saving.value||!restoreConfirm.value||!restoreReason.value.trim())return
+ saving.value=booking.id
+ try{
+  const body={version:booking.version,confirm:true,reason:restoreReason.value.trim()},signature=JSON.stringify([booking.id,body])
+  if(!restoreKeys.has(signature))restoreKeys.set(signature,crypto.randomUUID())
+  await requestFetch(`/api/bookings/${booking.id}/restore`,{method:'POST',body,headers:{'Idempotency-Key':restoreKeys.get(signature)!}})
+  restoreReason.value='';restoreConfirm.value=false;await refresh();message.value='Staff restoration confirmed. The Coordinator and Organiser will be informed.'
+ }catch(caught){showError(caught,'Unable to restore this booking');await refresh()}
+ finally{saving.value=null}
+}
 </script>
 
 <template>
@@ -80,6 +95,7 @@ async function recheck(venue: Venue) {
         </nav>
         <div v-if="selected" class="grid gap-3">
           <p role="alert" class="text-sm text-destructive">Needs attention: {{ selected.flags.map(flag => flag.replaceAll('_', ' ').toLowerCase()).join(', ') }}</p>
+          <section v-if="selected.flags.includes('AFFECTED_UNAVAILABLE')" aria-label="Restore original booking" class="grid gap-2 rounded-xl border p-4"><p>The current Coordinator must withdraw any pending replacement first. Restoration rechecks the full occupied interval and all requirements.</p><label class="grid gap-1 text-sm">Restoration reason<input v-model="restoreReason" maxlength="500" class="h-9 rounded-xl border px-3" /></label><label class="flex gap-2 text-sm"><input v-model="restoreConfirm" type="checkbox" />I confirm that Venue Staff can restore this original booking.</label><Button :disabled="!ready||Boolean(saving)||!restoreConfirm||!restoreReason.trim()" @click="restore">Confirm restoration</Button></section>
           <div class="grid gap-3 sm:grid-cols-2">
             <Card v-for="booking in panes" :key="booking.id" class="conflict-pane grid gap-2 p-4" :data-booking-id="booking.id">
               <h3 class="font-semibold">{{ booking.title }}</h3><p class="text-sm">{{ status(booking.status) }}</p>

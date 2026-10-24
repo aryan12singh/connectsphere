@@ -51,12 +51,12 @@ test('filterAttendeeFields removes private fields', () => {
   assert.equal(filtered.venueBookings, undefined);
 });
 
-test('filterOrganiserFields keeps all fields', () => {
+test('filterOrganiserFields retains public details while keeping internal Safety notes private', () => {
   const event = { id: 'event-1', title: 'Spring Gala', internalNotes: 'secret' };
   const filtered = filterOrganiserFields(event);
   assert.equal(filtered.id, 'event-1');
   assert.equal(filtered.title, 'Spring Gala');
-  assert.equal(filtered.internalNotes, 'secret');
+  assert.equal(filtered.internalNotes, undefined);
 });
 
 

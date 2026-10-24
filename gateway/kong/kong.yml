@@ -10,8 +10,8 @@ _format_version: "3.0"
 #   - user-service exposes ONLY read routes under /users (Sprint 2); its
 #     /internal/* API is still for other services only.
 #
-# Every route uses `strip_path: false`, so each service receives the full
-# path (e.g. /events/123, not /123).
+# Domain routes retain their full path. Attendance's public aliases strip
+# their prefix and prepend the matching service path (/events or /registrations).
 #
 # Routes for services that aren't built yet are harmless: Kong starts fine
 # and just returns an error for those paths until the service exists.
@@ -139,10 +139,17 @@ services:
         strip_path: false
 
   - name: attendance-service
-    url: http://attendance-service:3000
+    url: http://attendance-service:3000/events
     routes:
       - name: attendance-routes
-        paths: ["/attendances"]
+        paths: ["/attendances/events"]
+        strip_path: true
+
+  - name: attendance-registration-service
+    url: http://attendance-service:3000/registrations
+    routes:
+      - name: attendance-registration-routes
+        paths: ["/attendances/registrations"]
         strip_path: true
 
   - name: messaging-service

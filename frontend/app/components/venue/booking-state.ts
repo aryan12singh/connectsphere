@@ -1,6 +1,8 @@
 import type { CalendarBooking } from './calendar-state'
 
 export interface BookingDraft {
+  unavailabilityCategory?:string
+  unavailabilityNote?:string
   venueId: string
   title: string
   reason: string

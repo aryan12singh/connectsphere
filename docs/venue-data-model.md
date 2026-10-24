@@ -127,3 +127,28 @@ Staff `GET /venues/:id/buffer-status` returns `{venueId,version,canEdit}`. A loc
 ## Hold extension policy persistence
 
 Booking adds `extensionCount` (0 or 1) and nullable `extensionRequest` (current Coordinator ID, requested time, target deadline and reason). The migration marks prior VenueHoldExtended outbox records as consumed without altering deadlines/history. Versioned requests and approvals share the Event/venue transaction locks; concurrent approval can spend the allowance only once. Reconnect does not clear the request or allowance. Shared Event registration and Lead supervision schemas remain owned by their respective services.
+
+## Targeted arrangements — 23 October 2026
+
+The additive [Booking migration](../services/booking-service/prisma/migrations/20261023000000_targeted_venue_changes/migration.sql) adds `REPLACED`, a same-database original/replacement relationship, original version, reviewed change ID, fresh-hold resubmission origin and operational category/private note. Existing rows and IDs are preserved. `booking_mutation_receipts` stores successful action responses beside state, immutable activity and outbox; an exact retry is one logical action. A changed body with the same scoped key fails409.
+
+Event owns `venue_change_reviews`: current Coordinator, request version, source booking/version, exact normalized proposal, reason and review time. The bounded decision reopens Planning and supersedes current Safety without resetting unrelated venue or technical approvals. It is a reusable CS-45 integration contract for one venue action; broader Organiser field proposals remain separate. A successful business action is copied from Booking's committed outbox into append-only Event history using the outbox ID as its retry identity.
+
+`AFFECTED_UNAVAILABLE` is persistent until explicit Staff restoration or effective replacement. Removing/shortening a closure only recomputes present conflicts. A pending replacement retains the affected original; Staff approval atomically confirms the new request, marks the original `REPLACED` and transfers its primary selection. Rejected alternatives remain history. A current Coordinator must withdraw a pending replacement before Staff restores the original. Both paths share the Event and affected Venue locks and reread versions; approval, withdrawal and restoration cannot produce two effective arrangements. Staff restoration checks the entire setup/event/turnaround interval and current suitability. Replaced bookings cannot be restored.
+
+Expired holds keep their stored status and expose `effectiveStatus: EXPIRED`. A fresh request links `resubmittedFromId`; the old request remains readable and is excluded from the current readiness obligation. Every new request repeats suitability and occupied-window conflict checks. The existing scheduler writes deadline-specific history/outbox under row locks. Decisions lock the same row and check the database clock again after upstream reads.
+
+A never-completed expired replacement must be requested again from the currently affected original; generic resubmission cannot drop that fence. Completed replacement proof is the exact retained `VenueReplacementApproved` intent and original ID. It permits later ordinary reapproval without repeating the retired-original transition. After an ordinary revision expires, that completed source may produce an ordinary fresh request via `resubmittedFromId` only while its historical original remains Replaced. Unused expired pending alternatives do not block a subsequently restored original.
+
+Operational public notice facts contain only overlapping closure IDs, periods and categories. Rechecks compare them with the highest committed affected-booking version's outbox snapshot, append a new intent for changed public facts and leave private-only edits silent. Delivery rereads those current facts; a persistent affected flag alone cannot authorize an obsolete notice. No extra mutable notification snapshot or migration is required.
+
+```mermaid
+erDiagram
+  VENUE_BOOKING_REQUEST ||--o{ VENUE_BOOKING_REQUEST : original_to_replacements
+  VENUE_BOOKING_REQUEST ||--o{ VENUE_BOOKING_ACTIVITY : immutable_history
+  VENUE_BOOKING_REQUEST ||--o{ BOOKING_OUTBOX : committed_intents
+  VENUE_BOOKING_REQUEST ||--o| EVENT_PRIMARY_VENUE : primary_selection
+  VENUE_CHANGE_REVIEW }o--|| EVENT : reviewed_action
+```
+
+The review-to-booking and Event-to-Venue references cross service boundaries logically; only the original/replacement link is a local foreign key. Attendee reads use actual Event IDs and current confirmed/Safety-approved source state, then Booking's sanitized effective-venue projection. Registration limits and records remain Attendance-owned; a primary location is not a capacity total.

@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs'
 import {execFileSync} from 'node:child_process'
 import {created, validRequest, emails, mutation, session} from './helpers'
 import { createVenue, hold, reviewDatabase } from './venue-fixtures'
+import {safeConfirm} from './sprint4-fixtures'
 export {expect, mutation, reviewDatabase, emails}
 export type AttendanceEvent = {
   id: string, eventId: string, eventName: string, email: string, coordinator: APIRequestContext,
@@ -64,7 +65,7 @@ class AttendanceFixtures {
   async event(options: { date?: string, rooms?: number, startAt?: string, endAt?: string, eventName?: string, registrationEnabled?: boolean, registrationLimit?: number } = {}): Promise<AttendanceEvent> {
     const date = options.date ?? new Date(Date.UTC(2038, 0, 1 + this.dateOffset + this.worker * 500 + this.sequence++)).toISOString().slice(0, 10)
     const owner = await this.actor(emails.owner)
-    const submitted = await created(owner, 'submit', validRequest({ eventName: options.eventName ?? `E2E ${randomUUID()}`, proposedDate: date, expectedAttendance: 80, minimumCapacity: 80, accessibilityNeeds: [], venueRequirements: 'Projector' }))
+    const submitted = await created(owner, 'submit', validRequest({ eventName: options.eventName ?? `E2E ${randomUUID()}`, proposedDate: date, expectedAttendance: 80, minimumCapacity: 80, accessibilityNeeds: [], venueRequirements: 'Projector', registrationEnabled: options.registrationEnabled ?? true, registrationOpensAt: `${date}T08:00`, registrationClosesAt: `${date}T08:30` }))
     const contact = await (await owner.get(`/api/events/${submitted.id}/coordinator`)).json()
     const coordinator = await this.actor(contact.email)
     const approval = await mutation(coordinator, 'POST', `/api/events/${submitted.id}/decision`, { decision: 'approve', version: submitted.version })
@@ -81,7 +82,9 @@ class AttendanceFixtures {
       expect(decision.status()).toBe(200)
       rooms.push(await decision.json())
     }
-    // Also insert into attendance-service database so the attendee page can read it
+    if(rooms.length)expect((await mutation(coordinator,'PUT',`/api/bookings/events/${approved.eventId}/primary-venue`,{bookingId:rooms[0].id,bookingVersion:rooms[0].version,version:0})).status()).toBe(200)
+    await safeConfirm(coordinator,await this.actor(emails.officer),approved.eventId,submitted.id)
+    // Attendance owns existing registration policy; current visibility/venues now come from source services.
     await insertAttendanceEvent(
       approved.eventId,
       submitted.eventName,
@@ -100,6 +103,8 @@ class AttendanceFixtures {
   async cancelledEvent() {
     const event = await this.event()
     const attendeeId = await this.actorId(emails.attendee)
+    // Controlled cancellation precondition; this does not execute the separate CS-54 workflow.
+    await reviewDatabase('event',async pool=>pool.query('UPDATE events SET status=\'CANCELLED\',"cancelledAt"=now(),"safetyToken"=NULL WHERE id=$1',[event.eventId]))
     await reviewDatabase('attendance', async pool => {
       await pool.query('UPDATE events SET status=$2 WHERE "eventId"=$1', [event.eventId, 'CANCELLED'])
       await pool.query(
@@ -121,6 +126,7 @@ class AttendanceFixtures {
   }
   async cleanup() {
     if (this.attendanceEventIds.size === 0) return
+    await reviewDatabase('event',async pool=>{await pool.query('UPDATE events SET status=\'CANCELLED\',"cancelledAt"=now(),"safetyToken"=NULL WHERE id = ANY($1::text[])',[[...this.attendanceEventIds]])})
     await reviewDatabase('attendance', async pool => {
       await pool.query('DELETE FROM events WHERE "eventId" = ANY($1::text[])', [[...this.attendanceEventIds]])
     })

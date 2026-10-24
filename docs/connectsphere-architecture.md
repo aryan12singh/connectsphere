@@ -331,3 +331,25 @@ or RabbitMQ event-contract types, if that gets unwieldy later.
 ## Event-workflow branch update
 
 The [changed-component sequence and ERD](event-workflows.md) describe the existing BFF/Kong/auth/event/PostgreSQL path, same transaction activity/outbox and request→Event linkage. The status guard remains shared. No new orchestration, notification or assignment service was added.
+
+## Effective venue changes — 23 October 2026
+
+Booking retains independent commitments, mutation receipts, history and outbox in one transaction. Event owns the current-Coordinator review of an exact booking/version/proposal, supersedes current Safety and retains immutable decisions. Replacement approval and explicit restoration serialize on the same Event/source-venue locks; a pending replacement must first be withdrawn by its Coordinator. The existing deadline scanner shares booking row locks with Staff approval.
+
+```mermaid
+sequenceDiagram
+  participant UI as Coordinator / Staff UI
+  participant Event as Event service
+  participant Booking as Booking service
+  participant Bus as RabbitMQ
+  participant Inbox as Notification service
+  UI->>Event: Review exact approved-booking change
+  Event->>Event: Reopen Planning; supersede current Safety
+  UI->>Booking: Apply reviewed version / approve linked replacement
+  Booking->>Booking: Lock; validate; commit state, history and outbox
+  Booking->>Event: Append committed action by stable outbox ID
+  Booking->>Bus: Publish durable action by same ID
+  Bus->>Inbox: Resolve current ownership; deduplicate recipients
+```
+
+Attendance reads sanitized confirmed/preparation Events from Event and effective venues from Booking, using the actual Event ID rather than request IDs or historical fixture aliases. It preserves its own registration rows and explicit registration limit. Unconfirmed or current-Safety-invalid arrangements are hidden; required source outages fail closed. Final material venue-change notices go to the Organiser and confirmed and waitlisted registrations only after fresh Safety and Event reconfirmation. Each service accesses only its own database. Whole-Event cancellation and general Event change proposals remain separate owner workflows.

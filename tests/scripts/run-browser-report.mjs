@@ -6,6 +6,9 @@ import { createHash } from 'node:crypto'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const frontend = resolve(root, 'frontend')
+// Validate discovered filenames and recorder recovery rules before a long run.
+const preflight = spawnSync(process.execPath, ['--test', resolve(root, 'tests/scripts/record-browser-results.test.mjs')], { cwd: root, stdio: 'inherit' })
+if (preflight.status !== 0) process.exit(preflight.status || 1)
 const evidence = process.env.CSE2E_EVIDENCE_DIR || resolve(frontend, 'test-results/e2e')
 mkdirSync(evidence, { recursive: true })
 const source = {

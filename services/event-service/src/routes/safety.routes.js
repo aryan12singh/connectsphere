@@ -3,6 +3,7 @@ const {requireAuth}=require('../auth');
 const safety=require('../safety');
 const router=express.Router();const auth=requireAuth();
 router.get('/events/:id/safety',auth,async(req,res,next)=>{try{res.json(await safety.view(req.params.id,req.actor));}catch(error){next(error);}});
+router.post('/events/:id/venue-change-reviews',auth,async(req,res,next)=>{try{res.json(await safety.reviewVenueChange(req,req.params.id));}catch(error){next(error);}});
 router.post('/events/:id/safety/submit',auth,async(req,res,next)=>{try{const r=await safety.submit(req,req.params.id);res.status(r.status).json(r.body);}catch(error){next(error);}});
 router.post('/events/:id/safety/rework-review',auth,async(req,res,next)=>{try{res.json(await safety.rework(req,req.params.id));}catch(error){next(error);}});
 router.get('/safety-checks',auth,async(req,res,next)=>{try{res.json(await safety.queue(req.actor));}catch(error){next(error);}});

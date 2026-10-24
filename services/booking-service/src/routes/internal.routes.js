@@ -5,6 +5,16 @@ const workflows = require('../workflows');
 const {venueContext,removeVenue}=require('../venueClient');
 
 const router = express.Router();
+router.post('/events/:id/cancellation-release',internalOnly,async(req,res)=>res.json(await require('../cancellationRelease').release(req.params.id,req.body)));
+router.get('/events/:id/public-venues',internalOnly,async(req,res)=>{
+ const context=await require('../eventClient').planningContext(req.params.id);
+ if(!['CONFIRMED','PREPARATION'].includes(context.status)||context.safetyState!=='APPROVED')return res.status(409).json({error:{code:'CURRENT_SAFETY_REQUIRED',message:'The effective Event is awaiting current Safety and reconfirmation'}});
+ const summary=await workflows.summary({actor:{id:context.currentCoordinatorId,role:'EVENT_COORDINATOR',permissions:['venue_bookings.create']}},req.params.id);
+ if(!summary.venueReady)return res.status(409).json({error:{code:'VENUES_NOT_READY',message:'The effective venue arrangement is not ready'}});
+ const venues=summary.items.filter(row=>row.status==='CONFIRMED'&&!row.flags.length).map(row=>({id:row.venueId,bookingId:row.id,name:row.venueName,startAt:row.startAt,endAt:row.endAt}));
+ const primary=venues.find(row=>row.bookingId===summary.primaryVenue.bookingId)||venues[0]||null;
+ res.json({eventId:req.params.id,venues,primaryVenueId:primary?.id||null,primaryVenueName:primary?.name||null});
+});
 router.get('/events/:id/readiness',internalOnly,async(req,res)=>res.json(await require('../readiness').preview(req.params.id)));
 router.get('/events/:id/equipment-allocation-context',internalOnly,async(req,res)=>res.json(await workflows.equipmentAllocationContext(req.params.id)));
 router.post('/events/:id/readiness/prepare',internalOnly,async(req,res)=>res.json(await require('../readiness').prepare(req.params.id,req.body||{})));
@@ -19,13 +29,17 @@ router.put('/venue-maintenance/:id',internalOnly,async(req,res)=>{
   const result=await response.json();if(!response.ok)throw Object.assign(new Error(result.error?.message||'Venue maintenance failed'),{status:response.status,code:result.error?.code});return result;
  }));
 });
+router.get('/bookings/:id/arrangement-context',internalOnly,async(req,res)=>{const row=await store.getBooking(req.params.id);if(!row)return res.status(404).json({error:{code:'NOT_FOUND',message:'Booking not found'}});res.json(row);});
 router.get('/notification-context/:id',internalOnly,async(req,res)=>{
   const row=await store.getBooking(req.params.id);
   if(!row)return res.status(404).json({error:{code:'NOT_FOUND',message:'Booking not found'}});
   const {id,eventId,venueId,status,expiresAt,version,flags}=row;
-  const decisions=(await store.listHistory(venueId)).filter(item=>item.bookingId===id && item.action==='STATUS_CHANGED' && ['CONFIRMED','REJECTED'].includes(item.toStatus));
+  const history=(await store.listHistory(venueId)).filter(item=>item.bookingId===id);
+  const decisions=history.filter(item=>item.action==='STATUS_CHANGED' && ['CONFIRMED','REJECTED'].includes(item.toStatus));
+  const cancellation=history.find(item=>item.action==='EVENT_CANCELLED_VENUE_RELEASED'&&item.changes?.after?.version===version)?.changes;
   const decisionVersion=decisions.sort((a,b)=>(b.changes?.after?.version||0)-(a.changes?.after?.version||0))[0]?.changes?.after?.version ?? null;
-  return res.json({id,eventId,venueId,status,expiresAt,version,flags,decisionVersion,extensionPending:!!row.extensionRequest});
+  const unavailability=flags.includes('AFFECTED_UNAVAILABLE')?await workflows.currentUnavailability(row):[];
+  return res.json({id,eventId,venueId,status,expiresAt,version,flags,decisionVersion,originalBookingId:row.originalBookingId,extensionPending:!!row.extensionRequest,unavailability,cancellationActionId:cancellation?.cancellationActionId||null,cancelledEventVersion:cancellation?.cancelledEventVersion||null});
 });
 router.get('/buffer-status/:venueId',internalOnly,async(req,res)=>res.json(await require('../legacyBuffers').bufferStatus(req.params.venueId)));
 router.get('/legacy-buffer-context/:venueId',internalOnly,async(req,res)=>res.json(await require('../legacyBuffers').preview(req.params.venueId)));

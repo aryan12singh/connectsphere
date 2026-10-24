@@ -4,7 +4,7 @@ const config = require('./config');
 const isMemory = config.dataMode !== 'prisma';
 const prisma = isMemory ? null : require('./db');
 
-const state = { bookings: new Map(), activities: [], idempotency: new Map(), outbox: [], primaryVenues:new Map() };
+const state = { bookings: new Map(), activities: [], idempotency: new Map(), outbox: [], primaryVenues:new Map(), receipts:new Map() };
 const clock = require('./clock');
 let memoryTail = Promise.resolve();
 
@@ -18,7 +18,7 @@ function canonical(value) {
   return value;
 }
 function fingerprint(payload) { return crypto.createHash('sha256').update(JSON.stringify(canonical(payload))).digest('hex'); }
-const metadataKeys = ['extensionCount','extensionRequest','expiresAt','expectedAttendance','layout','facilities','accessibilityNeeds','required','setupMinutes','turnaroundMinutes','occupiedStart','occupiedEnd','venueVersion','requirements','requirementsFingerprint','flags'];
+const metadataKeys = ['resubmittedFromId','originalBookingId','originalBookingVersion','changeReviewId','unavailabilityCategory','unavailabilityNote','extensionCount','extensionRequest','expiresAt','expectedAttendance','layout','facilities','accessibilityNeeds','required','setupMinutes','turnaroundMinutes','occupiedStart','occupiedEnd','venueVersion','requirements','requirementsFingerprint','flags'];
 function metadata(input, dates = false) {
   return Object.fromEntries(metadataKeys.filter(key=>input[key] !== undefined).map(key=>[key, dates && ['requirements','extensionRequest'].includes(key) && input[key]===null ? require('@prisma/client').Prisma.DbNull : dates && ['expiresAt','occupiedStart','occupiedEnd'].includes(key) && input[key] ? new Date(input[key]) : input[key]]));
 }
@@ -41,6 +41,7 @@ function toApiBooking(booking) {
     statusChangedRole: booking.statusChangedRole || null,
     statusChangedAt: iso(booking.statusChangedAt),
     statusReason: booking.statusReason || null,
+    ...Object.fromEntries(['resubmittedFromId','originalBookingId','originalBookingVersion','changeReviewId','unavailabilityCategory','unavailabilityNote'].map(key=>[key,booking[key] ?? null])),
     version: booking.version ?? 1,
     expiresAt: iso(booking.expiresAt) || null,
     extensionCount:booking.extensionCount ?? 0,
@@ -85,6 +86,7 @@ function reset() {
   if (isMemory) {
     state.bookings.clear();
     state.primaryVenues.clear();
+    state.receipts.clear();
     state.activities.length = 0;
     state.idempotency.clear();
     state.outbox.length = 0;
@@ -183,7 +185,7 @@ function replaceBooking(current, input, actor, transaction) {
       updated.statusReason = input.reason;
     }
     state.bookings.set(current.id, updated);
-    appendActivity(updated, actor, input.activityAction || (before.status !== updated.status ? 'STATUS_CHANGED' : 'BOOKING_UPDATED'), input.activityReason || input.reason, { before, after: updated }, before.status, updated.status);
+    appendActivity(updated, actor, input.activityAction || (before.status !== updated.status ? 'STATUS_CHANGED' : 'BOOKING_UPDATED'), input.activityReason || input.reason, { ...input.activityDetails, before, after: updated }, before.status, updated.status);
     return updated;
   }
   const save = async (tx) => {
@@ -221,7 +223,7 @@ function replaceBooking(current, input, actor, transaction) {
         fromStatus: beforeRecord.status,
         toStatus: updatedRecord.status,
         reason: input.activityReason || input.reason,
-        changes: safeJson({ before, after }),
+        changes: safeJson({ ...input.activityDetails, before, after }),
       },
     });
     return after;
@@ -265,9 +267,9 @@ async function withLocks(keys, work) {
   const preceding = memoryTail;
   memoryTail = new Promise(resolve=>{release=resolve;});
   await preceding;
-  const saved = safeJson({bookings:[...state.bookings],activities:state.activities,idempotency:[...state.idempotency],outbox:state.outbox,primaryVenues:[...state.primaryVenues]});
+  const saved = safeJson({bookings:[...state.bookings],activities:state.activities,idempotency:[...state.idempotency],outbox:state.outbox,primaryVenues:[...state.primaryVenues],receipts:[...state.receipts]});
   try { return await work(null,clock.now()); }
-  catch (error) { state.bookings=new Map(saved.bookings);state.activities=saved.activities;state.idempotency=new Map(saved.idempotency);state.outbox=saved.outbox;state.primaryVenues=new Map(saved.primaryVenues);throw error; }
+  catch (error) { state.bookings=new Map(saved.bookings);state.activities=saved.activities;state.idempotency=new Map(saved.idempotency);state.outbox=saved.outbox;state.primaryVenues=new Map(saved.primaryVenues);state.receipts=new Map(saved.receipts);throw error; }
   finally {release();}
 }
 
@@ -288,6 +290,15 @@ function addOutbox(booking,kind,payload,transaction) {
     const row={id:id(),actionKey,aggregateId:booking.id,kind,payload:safeJson(payload),createdAt:now(),deliveredAt:null};state.outbox.push(row);return row;
   }
   return (transaction || prisma).bookingOutbox.upsert({where:{actionKey},create:{actionKey,aggregateId:booking.id,kind,payload:safeJson(payload)},update:{}});
+}
+async function latestUnavailability(bookingId,transaction){
+  if(isMemory)return [...state.outbox].reverse().find(row=>row.aggregateId===bookingId&&row.kind==='VenueUnavailable')?.payload.unavailability||[];
+  const [row]=await (transaction||prisma).$queryRaw`SELECT payload FROM booking_outbox WHERE "aggregateId"=${bookingId} AND kind='VenueUnavailable' ORDER BY (payload->>'version')::int DESC NULLS LAST,"createdAt" DESC,id DESC LIMIT 1`;
+  return row?.payload.unavailability||[];
+}
+async function replacementCompleted(bookingId,originalBookingId,transaction){
+  if(isMemory)return state.outbox.some(row=>row.aggregateId===bookingId&&row.kind==='VenueReplacementApproved'&&row.payload.originalBookingId===originalBookingId);
+  return !!await (transaction||prisma).bookingOutbox.findFirst({where:{aggregateId:bookingId,kind:'VenueReplacementApproved',payload:{path:['originalBookingId'],equals:originalBookingId}},select:{id:true}});
 }
 
 function listHistory(venueId) {
@@ -361,9 +372,26 @@ async function setPrimaryVenue(eventId,booking,actor,current,transaction) {
   return next;
 }
 
+async function actionReceipt(actorId,key,path,transaction){
+ if(!key)return null;
+ if(isMemory)return state.receipts.get(`${actorId}:${key}:${path}`)||null;
+ return (transaction||prisma).bookingMutationReceipt.findUnique({where:{actorId_key_path:{actorId,key,path}}});
+}
+async function saveActionReceipt(actorId,key,path,hash,response,transaction){
+ if(!key)return;
+ const data={actorId,key,path,fingerprint:hash,response:safeJson(response)};
+ if(isMemory)state.receipts.set(`${actorId}:${key}:${path}`,data);
+ else await transaction.bookingMutationReceipt.create({data});
+}
+async function recordActivity(booking,actor,action,reason,changes,transaction){
+ if(isMemory)return appendActivity(booking,actor,action,reason,changes,booking.status,booking.status);
+ return transaction.venueBookingActivity.create({data:{bookingId:booking.id,actorId:actor.id,actorRole:actor.role,action,reason,fromStatus:booking.status,toStatus:booking.status,changes:safeJson(changes)}});
+}
 module.exports = {
+  recordActivity,
+  actionReceipt,saveActionReceipt,
   primaryVenue,setPrimaryVenue,
   state, reset, fingerprint, createBooking, replaceBooking, appendActivity,
   findIdempotency, getBooking, listBookings, listHistory, countBlockingBookings, isMemory,
-  withLocks,lockMore,transactionNow,addOutbox,toApiBooking,
+  withLocks,lockMore,transactionNow,addOutbox,toApiBooking,latestUnavailability,replacementCompleted,
 };

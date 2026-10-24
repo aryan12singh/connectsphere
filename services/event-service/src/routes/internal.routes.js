@@ -1,5 +1,5 @@
 const express = require('express');
-const { internalOnly } = require('../auth');
+const { internalOnly,requireAuth } = require('../auth');
 const repository = require('../store');
 const { toEvent } = require('../serializers');
 
@@ -7,8 +7,26 @@ const { toEvent } = require('../serializers');
 // remain owned here; booking-service never reads the Event database directly.
 const router = express.Router();
 router.use(internalOnly);
+// This is an authenticated source command for the cancellation orchestrator,
+// not a public cancellation workflow or a resource-completion/finalize route.
+router.post('/events/:id/cancellation-intents',requireAuth(),async(req,res,next)=>{try{res.json(await require('../cancellationIntent').accept(req.actor,req.params.id,req.body));}catch(error){next(error);}});
+router.get('/events/:id/cancellation-context',async(req,res,next)=>{try{res.json(await require('../cancellationContext').cancellationContext(req.params.id,req.query.actionId));}catch(error){next(error);}});
+router.get('/events/:id/venue-change-reviews/:reviewId',async(req,res,next)=>{try{res.json(await require('../safety').venueChangeContext(req.params.id,req.params.reviewId));}catch(error){next(error);}});
+router.post('/events/:id/venue-activity',async(req,res,next)=>{try{res.json(await require('../safety').recordVenueActivity(req.params.id,req.body));}catch(error){next(error);}});
 router.post('/events/:id/readiness-invalidations',async(req,res,next)=>{
  try{if(typeof req.body?.token!=='string'||!req.body.token)return res.status(422).json({error:{code:'VALIDATION_FAILED',message:'Exact readiness token required'}});return res.json(await require('../safety').invalidate(req.params.id,req.body.token,req.body.reason));}catch(error){next(error);}
+});
+async function attendeeEvent(event){
+ if(!['CONFIRMED','PREPARATION'].includes(event.status)||event.safetyState!=='APPROVED')return null;
+ const request=await repository.findRequest(event.eventRequestId);
+ if(!request||request.status!=='APPROVED')return null;
+ return {id:event.id,eventId:event.id,title:event.title,description:event.description,status:'CONFIRMED',startAt:event.startAt,endAt:event.endAt,timeZone:event.timeZone,organiserId:event.organiserId,registrationWindow:request.registrationEnabled?{startAt:request.registrationOpensAt,endAt:request.registrationClosesAt}:null,createdAt:event.createdAt,updatedAt:event.updatedAt};
+}
+router.get('/attendee-events',async(_req,res,next)=>{
+ try{const items=[];for(const event of await repository.listEvents({})){const item=await attendeeEvent(event);if(item)items.push(item);}res.json({items});}catch(error){next(error);}
+});
+router.get('/attendee-events/:id',async(req,res,next)=>{
+ try{const [event]=await repository.listEvents({id:req.params.id}),item=event&&await attendeeEvent(event);if(!item)return res.status(404).json({error:{code:'NOT_FOUND',message:'Current confirmed Event not found'}});res.json(item);}catch(error){next(error);}
 });
 router.get('/requests/:id/technical-context',async(req,res,next)=>{
  try{

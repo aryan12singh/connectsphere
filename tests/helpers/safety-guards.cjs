@@ -8,6 +8,7 @@ const { createHash } = require('node:crypto');
 const realLoad = Module._load;
 const root=process.argv[2]||path.resolve(__dirname,'../..');
 const target = path.resolve(root, 'services/event-service/src/safety.js');
+const eventLock = path.resolve(root, 'services/event-service/src/eventLock.js');
 const actor = { id: 'coordinator', role: 'EVENT_COORDINATOR', roles: ['EVENT_COORDINATOR'], permissions: ['safety.submit', 'safety.rework', 'events.confirm'] };
 let state, logs;
 const clone = x => JSON.parse(JSON.stringify(x));
@@ -23,12 +24,12 @@ const tx = {
   eventRequest: { findUnique: async () => clone(state.eventRequest) },
   safetyRound: { findUnique: async () => clone(state.round), update: async ({ data }) => Object.assign(state.round, data) },
   activityLog: { create: async ({ data }) => { logs.push(data); return data; } },
-  outbox: { create: async ({ data }) => data },
+  outbox: { findMany:async()=>[],create: async ({ data }) => data },
   idempotencyRecord: { findUnique: async () => null, create: async () => ({}) },
 };
 const db = { ...tx, $transaction: async fn => fn(tx) };
 Module._load = function (spec, parent, ...rest) {
-  if (parent?.filename === target && spec === './db') return db;
+  if ([target,eventLock].includes(parent?.filename) && spec === './db') return db;
   if (parent?.filename === target && spec === './config') return { bookingServiceUrl: 'http://booking', equipmentServiceUrl: 'http://equipment', internalApiKey: 'isolated' };
   if (spec === '@prisma/client') return { Prisma: { DbNull: null } };
   return realLoad.call(this, spec, parent, ...rest);

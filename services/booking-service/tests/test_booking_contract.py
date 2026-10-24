@@ -237,7 +237,7 @@ class BookingServiceContractTest(unittest.TestCase):
     def test_coordinator_can_cancel_their_own_tentative_booking(self):
         booking = self.create_booking("booking-3")
         status, updated = self.request("PUT", f"/venue-bookings/{booking['id']}", {
-            **booking, "status": "CANCELLED", "reason": "Date changed",
+            **booking, "status": "CANCELLED", "reason": "Date changed", "confirmLastVenue": True,
         })
         self.assertEqual(status, 200)
         self.assertEqual(updated["status"], "CANCELLED")
@@ -257,7 +257,7 @@ class BookingServiceContractTest(unittest.TestCase):
             }, role="VENUE_STAFF", user_id="staff-1")
             self.assertEqual(status,409 if next_status in ['CONFIRMED','REJECTED'] else 403)
             _, current=self.request('GET',f"/venue-bookings/{booking['id']}",role='VENUE_STAFF',user_id='staff-1')
-            self.assertEqual(current,approved)
+            self.assertEqual({k:v for k,v in current.items() if k != "effectiveStatus"},approved)
 
     def test_repeating_a_submission_returns_the_original_booking(self):
         first_status, first = self.request("POST", "/venue-bookings", self.valid_payload(), key="booking-5")

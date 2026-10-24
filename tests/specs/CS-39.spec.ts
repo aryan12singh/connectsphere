@@ -86,14 +86,15 @@ describe('CS-39 — server-side atomic commitment checks',()=>{
     const result=await api.booking.http(`/venue-bookings/${current.id}/decision`,{method:'PUT',headers:f.staff,body:{version:current.version,status:'CONFIRMED',reason:'Expired partner no longer occupies'}})
     expect(result.status).toBe(200);expect(result.body.flags).toEqual([])
   })
-  it('TC-CS39-11 an operational closure flags inherited holds without cancelling them and releasing it clears the flags',async()=>{
+  it('TC-CS39-11 an operational closure flags inherited holds without cancelling them and releasing it retains affected status until explicit Staff restoration',async()=>{
     const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput()}),body={eventId:event.id,venueId:v.body.id,title:'Conference',reason:'Main room',startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z',timeZone:'Asia/Singapore'}
     const hold=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.coordinator,'idempotency-key':'operational-hold'},body})
     expect(hold.status).toBe(201)
-    const closed=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.staff,'idempotency-key':'closure'},body:{...body,eventId:null,status:'UNAVAILABLE',reason:'Emergency repair'}})
-    expect(closed.status).toBe(201);expect(f.bookings.getBooking(hold.body.id)).toMatchObject({status:'TENTATIVELY_HELD',flags:['BUFFER_CONFLICT']})
+    const preview=await api.booking.http('/venue-bookings/impact-preview',{method:'POST',headers:f.staff,body})
+    const closed=await api.booking.http('/venue-bookings',{method:'POST',headers:{...f.staff,'idempotency-key':'closure'},body:{...body,eventId:null,status:'UNAVAILABLE',reason:'Emergency repair',confirmImpact:true,impactFingerprint:preview.body.impactFingerprint}})
+    expect(closed.status).toBe(201);expect(f.bookings.getBooking(hold.body.id)).toMatchObject({status:'TENTATIVELY_HELD',flags:['AFFECTED_UNAVAILABLE','BUFFER_CONFLICT']})
     const released=await api.booking.http(`/venue-bookings/${closed.body.id}`,{method:'PUT',headers:f.staff,body:{...closed.body,status:'CANCELLED',reason:'Repair completed'}})
-    expect(released.status).toBe(200);expect(f.bookings.getBooking(hold.body.id)).toMatchObject({status:'TENTATIVELY_HELD',flags:[]})
+    expect(released.status).toBe(200);expect(f.bookings.getBooking(hold.body.id)).toMatchObject({status:'TENTATIVELY_HELD',flags:['AFFECTED_UNAVAILABLE']});const current=f.bookings.getBooking(hold.body.id);expect((await api.booking.http(`/venue-bookings/${current.id}/restore`,{method:'POST',headers:f.staff,body:{version:current.version,confirm:true,reason:'Staff verified the full interval'}})).status).toBe(200);expect(f.bookings.getBooking(current.id).flags).toEqual([])
   })
   it('TC-CS39-07 refuses a conflict acknowledgement or override at approval after a configuration change',async()=>{
     const {event}=await f.eventFixture(),v=await api.venue.http('/venues',{method:'POST',headers:f.staff,body:f.venueInput({setupMinutes:0,turnaroundMinutes:0})}),holds=[]

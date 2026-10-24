@@ -16,6 +16,7 @@ enum BookingStatus {
   UNAVAILABLE
   REJECTED
   CANCELLED
+  REPLACED
 }
 
 model VenueBookingRequest {
@@ -54,6 +55,14 @@ model VenueBookingRequest {
   flags             String[]           @default([])
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+  originalBookingId String?
+  originalBookingVersion Int?
+  changeReviewId    String?
+  resubmittedFromId String?
+  unavailabilityCategory String?
+  unavailabilityNote String?
+  originalBooking   VenueBookingRequest? @relation("Replacement", fields:[originalBookingId], references:[id], onDelete:Restrict)
+  replacementRequests VenueBookingRequest[] @relation("Replacement")
   activity          VenueBookingActivity[]
   primarySelections EventPrimaryVenue[]
 
@@ -121,4 +130,17 @@ model EventReadinessFence {
   createdAt DateTime @default(now())
   @@index([eventId,active])
   @@map("event_readiness_fences")
+}
+
+// Successful action receipts commit beside state, history and outbox.
+model BookingMutationReceipt {
+  id String @id @default(uuid())
+  actorId String
+  key String
+  path String
+  fingerprint String
+  response Json
+  createdAt DateTime @default(now())
+  @@unique([actorId,key,path])
+  @@map("booking_mutation_receipts")
 }

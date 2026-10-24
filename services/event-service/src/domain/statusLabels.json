@@ -9,6 +9,7 @@
   "EVENT_LABELS": {
     "ARRANGEMENT_PENDING": "Planning",
     "CONFIRMED": "Confirmed",
+    "CANCELLING": "Cancelling",
     "CANCELLED": "Cancelled",
     "COMPLETED": "Completed",
     "REJECTED": "Rejected",

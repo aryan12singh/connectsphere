@@ -167,6 +167,28 @@ jobs:
           cache: npm
           cache-dependency-path: services/${{ matrix.service }}/package-lock.json
       - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy
+      - name: Install Booking HTTP boundary fixtures
+        if: matrix.service == 'booking-service'
+        working-directory: .
+        run: |
+          npm ci --prefix services/event-service
+          npm ci --prefix services/venue-service
+          npm run build --prefix services/event-service
+          npm run prisma:generate --prefix services/venue-service
+          DATA_MODE=memory NODE_ENV=test node -e 'require("./services/venue-service/src/app")'
+      - name: Migrate isolated Event source for Booking cancellation integration
+        if: matrix.service == 'booking-service'
+        run: |
+          node - <<'NODE'
+          const {Pool}=require('pg');
+          (async()=>{
+            const db=new Pool({connectionString:process.env.DATABASE_URL});
+            try{if(!(await db.query("SELECT 1 FROM pg_database WHERE datname='event_test'")).rowCount)await db.query('CREATE DATABASE event_test');}
+            finally{await db.end();}
+          })().catch(error=>{console.error(error);process.exitCode=1;});
+          NODE
+          cd ../event-service
+          DATABASE_URL="${DATABASE_URL%/*}/event_test" npx prisma migrate deploy
       - run: npm run test:coverage | tee "$RUNNER_TEMP/coverage.txt"
       - run: npm run test:contract --if-present 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
       - name: PostgreSQL HTTP integration and source coverage
@@ -253,7 +275,9 @@ jobs:
   live:
     name: Live E2E and restart checks
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # Serial desktop/mobile journeys honour the production login rate limit.
+    # Allow the full suite, stack setup and restart checks to finish.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.0.0

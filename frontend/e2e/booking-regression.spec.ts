@@ -21,6 +21,10 @@ test('Booking regression: staff can create operational windows in the UI but dec
       await page.getByLabel('End date and time', { exact: true }).fill(`2028-12-22T${index + 10}:00`)
       const result = page.waitForResponse(response => response.url().endsWith('/api/bookings') && response.request().method() === 'POST')
       await page.getByRole('button', { name: 'Save booking', exact: true }).click()
+      const impact = page.getByRole('dialog', { name: 'Confirm affected bookings', exact: true })
+      await expect(impact).toContainText('No current bookings or holds overlap.')
+      await impact.getByRole('button', { name: 'Confirm unavailable window', exact: true }).click()
+      await expect(impact).toHaveCount(0)
       const response = await result
       // The existing booking BFF returns200; direct booking-service creation is201.
       expect(response.status()).toBe(200)
@@ -36,11 +40,13 @@ test('Booking regression: staff can create operational windows in the UI but dec
     expect(denied.status()).toBe(403)
     expect(await denied.json()).not.toHaveProperty('id')
     expect((await (await staff.get(historyPath)).json()).items).toEqual(prior.items)
+    const retained = await (await staff.get(`/api/bookings/${saved.id}`)).json()
+    expect(retained).toEqual({ ...saved, effectiveStatus: saved.status })
     // Recreate the app container, preserving its database and the live session.
     // Kong must resolve the current upstream and return the same persisted data.
     recreateBookingService()
     await expect.poll(async () => (await staff.get(`/api/bookings/${saved.id}`)).status(), { timeout: 45_000 }).toBe(200)
-    expect(await (await staff.get(`/api/bookings/${saved.id}`)).json()).toEqual(saved)
+    expect(await (await staff.get(`/api/bookings/${saved.id}`)).json()).toEqual(retained)
     expect((await (await staff.get(historyPath)).json()).items).toEqual(prior.items)
   }
   finally { await staff.dispose() }

@@ -1,6 +1,22 @@
 # CS-47 — Test Case Specification (IS212 / IEEE 829)
 
-Date of Creation: 2026-10-20T23:37:47+08:00. Story: view confirmed Event information. [Jira CS-47](https://spmg8.atlassian.net/browse/CS-47) governs, including its 14 October 2026 operative requirements and agreed policies. Integration test steps are specified below where applicable. Browser automation covers the runnable attendee read-model scenarios and retains dependency-bound scenarios as explicit stubs.
+Date of Creation: 2026-10-20T23:37:47+08:00. Story: view confirmed Event information. [Jira CS-47](https://spmg8.atlassian.net/browse/CS-47) governs, including its operative requirements and agreed policies. The current checkpoint below supersedes the old stub descriptions. Original specification rows and their creation dates are retained as history.
+
+## Current execution checkpoint — 23 October 2026
+
+[CI run 39875392403](https://github.com/aryan12singh/connectsphere/actions/runs/39875392403) passed all 11 jobs at branch source `d5b2dde0aae77cebff34b28d8b94ae99ff8dc637`. The tested merge checkout `e6f57e7c221a294d16521430868dc872dfde20cb` has the same complete tree. Its 254 passing browser results include 18 desktop/mobile executions tagged with TC-CS47-01–09, with no failures, skips or retries.
+
+| Former stub | Executed coverage | Runner |
+| --- | --- | --- |
+| TC-CS47-02 | Current confirmed multi-venue presentation, using two approved rooms in this browser fixture | [`CS-47.spec.ts`](../../../frontend/e2e/CS-47.spec.ts) |
+| TC-CS47-06 | Real linked replacement request and Staff approval; preserved registrations/history/siblings; fresh Safety review and Event reconfirmation publish the effective locations | [`CS-92.spec.ts`](../../../frontend/e2e/CS-92.spec.ts), shared with TC-CS92-01/02/08/09 and TC-CS91-21 |
+| TC-CS47-07 | Attendee access is refused before the actual Safety/confirmation flow and allowed afterwards | `CS-47.spec.ts` |
+
+Cases 01/03/04/05/08/09 also passed in both viewport projects. These results prove the named assertions, not every broader manual procedure in the historical table. Case 03 checks truthful registration navigation, not CS-48 registration delivery. Case 08 uses a persisted cancelled-Event fixture, not the missing CS-54 cancellation saga. Case 09 checks a controlled responsive empty state, not the whole loading/error matrix. The two-room case 02 alone is not proof of the historical four-room/Organiser procedure.
+
+At this checkpoint, [PR #18](https://github.com/aryan12singh/connectsphere/pull/18) is not yet merged. The [integration map](../../../docs/sprint4-venue-test-map.md) and [original images/raw verification](https://drive.google.com/drive/folders/1mUowew2lG7Swu8EAh946DhmsM904nQUt) retain the proof levels and actual source revisions. Independent manual/PO acceptance and green merged-main CI remain separate gates.
+
+## Original specification — 20 October 2026
 
 | Test Case ID | Scenario | Pre-conditions | Test Steps / Test Data | Expected Result | Automated evidence | Date of Creation |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -26,7 +42,7 @@ Case **03** checks truthful registration-navigation availability for the deliver
 
 No execution result, automation file, completion claim or historical ID remapping is introduced by this specification. Record actual results, dates and tested revisions separately when the E2E placeholders are implemented and run.
 
-## Browser automation boundary
+## Browser automation boundary — historical 20 October checkpoint
 
 `frontend/e2e/CS-47.spec.ts` runs **TC-CS47-01, 03, 04, 05, 08 and 09** against the isolated Compose stack. It creates only synthetic attendee projections and removes them after each test, so the empty-state scenario does not inherit data from an earlier case.
 

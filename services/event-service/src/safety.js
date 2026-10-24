@@ -3,6 +3,7 @@
 const {randomUUID,createHash}=require('node:crypto');
 const config=require('./config');
 const prisma=require('./db');
+const {getEvent,lockEvent}=require('./eventLock');
 const {toEvent}=require('./serializers');
 const path=require('node:path');
 const {hasPermission,rolesForUser}=require(path.join(process.env.SERVICE_UTILS_PATH||path.resolve(__dirname,'../../utils'),'role-policy'));
@@ -17,19 +18,6 @@ function role(actor,name){return rolesForUser(actor).includes(name);}
 function coordinator(actor,event){return role(actor,'EVENT_COORDINATOR')&&actor.id===event.eventRequest.currentCoordinatorId&&actor.id!==event.organiserId;}
 function requireCoordinator(actor,event,permission='safety.submit'){if(!coordinator(actor,event)||!hasPermission(actor,permission))throw fail(403,'FORBIDDEN','Only the current assigned Coordinator may perform this action');}
 function requireOfficer(actor,permission='safety.view'){if(!hasPermission(actor,permission))throw fail(403,'FORBIDDEN','Safety Officer permission is required');}
-async function getEvent(id,db=prisma){
- if(!db)throw fail(503,'SAFETY_UNAVAILABLE','Database-backed Safety review is unavailable');
- const event=await db.event.findUnique({where:{id},include:{eventRequest:true}});
- if(!event)throw fail(404,'NOT_FOUND','Event not found');return event;
-}
-async function lockEvent(tx,id){
- const source=await tx.event.findUnique({where:{id},select:{eventRequestId:true}});
- if(!source)throw fail(404,'NOT_FOUND','Event not found');
- // Match the source workflow lock order; reassignment cannot race authorization.
- await tx.$queryRaw`SELECT id FROM event_requests WHERE id=${source.eventRequestId} FOR UPDATE`;
- await tx.$queryRaw`SELECT id FROM events WHERE id=${id} FOR UPDATE`;
- return getEvent(id,tx);
-}
 function open(event){if(event.eventRequest.status!=='APPROVED'||!['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(event.status))throw fail(409,'EVENT_CLOSED','Safety actions require a current open Planning Event');}
 function sourceCurrent(event,round){return round?.snapshot?.sourceRevision===revision(event,event.eventRequest);}
 function withPlacement(venues,technical){return {...venues,venues:venues.venues.map(v=>({...v,equipmentPlacement:technical.placementDetails||null}))};}
@@ -225,7 +213,14 @@ async function advance(req,id,stage){
   if(!sourceCurrent(event,round)||event.status!==(stage==='CONFIRMED'?'ARRANGEMENT_PENDING':'CONFIRMED')||event.safetyState!=='APPROVED'||!round||round.status!=='APPROVE'||event.safetyToken!==round.token||event.safetyGeneration!==round.generation)throw fail(409,'CURRENT_SAFETY_REQUIRED','Current Safety approval and all required arrangements are required');
   const next=await tx.event.update({where:{id},data:{status:stage,version:{increment:1},...(stage==='CONFIRMED'?{confirmedAt:new Date(),confirmedById:req.actor.id}:{})}});
   await activity(tx,event,req.actor,stage==='CONFIRMED'?'CONFIRMED':'PREPARATION_STARTED',stage==='CONFIRMED'?'Current approved Safety review verified':'Separate Preparation stage started',stage);
-  await notice(tx,event,stage==='CONFIRMED'?'EventConfirmed':'PreparationStarted',{roundId:round.id,newStatus:stage});
+  // A Safety approval may never have been published as the effective Event.
+  // Compare with the highest round actually committed by a prior confirmation.
+  const confirmations=stage==='CONFIRMED'?await tx.outbox.findMany({where:{aggregateType:'Event',aggregateId:id,eventType:'EventConfirmed'},select:{payload:true}}):[];
+  const confirmedRoundIds=confirmations.map(row=>row.payload.roundId).filter(value=>typeof value==='string');
+  const previous=confirmedRoundIds.length?await tx.safetyRound.findFirst({where:{eventId:id,id:{in:confirmedRoundIds}},orderBy:{number:'desc'}}):null;
+  const attendeeFacts=snapshot=>(snapshot?.venues||[]).map(row=>[row.venueId,row.bookingStartAt,row.bookingEndAt]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  const attendeeVenueChanged=Boolean(previous&&hash(attendeeFacts(previous.snapshot))!==hash(attendeeFacts(round.snapshot)));
+  await notice(tx,event,stage==='CONFIRMED'?'EventConfirmed':'PreparationStarted',{roundId:round.id,newStatus:stage,attendeeVenueChanged,venueNames:round.snapshot.venues.map(row=>row.venueName)});
   const response={event:toEvent(next),state:next.safetyState};await remember(tx,req.actor,key,url,requestHash,response);return response;
  });
 }
@@ -276,4 +271,45 @@ async function preparationUpdate(req,id){
   const update=await tx.preparationUpdate.create({data:{eventId:id,actorId:req.actor.id,area,bookingId,note,roundId:round.id,safetyToken:round.token}});await activity(tx,event,req.actor,'PREPARATION_UPDATED','Staff preparation updated');const response={id:update.id,area,bookingId,note,occurredAt:update.occurredAt};await remember(tx,req.actor,key,url,requestHash,response,201);return response;
  });
 }
-module.exports={view,submit,queue,officerView,decide,rework,invalidate,advance,preparationUpdate,preparationView,preparationQueue,correctPlanning,revision,fail};
+// An explicit Coordinator decision scoped to one versioned venue arrangement.
+// It does not implement Organiser field proposals or approve a whole Event.
+async function reviewVenueChange(req,id){
+ const body=req.body||{},key=operationKey(req),url=`/events/${id}/venue-change-reviews`,requestHash=hash(body);
+ const event=await getEvent(id);requireCoordinator(req.actor,event);open(event);
+ const cached=await replay(prisma,req.actor,key,url,requestHash);if(cached)return cached.responseBody;
+ if(!['CHANGE','CANCEL','REPLACEMENT'].includes(body.action)||typeof body.reason!=='string'||!body.reason.trim()||body.reason.length>500||!Number.isSafeInteger(body.bookingVersion))throw fail(422,'VALIDATION_FAILED','Choose one current venue booking, action and review reason');
+ const source=await rpc(config.bookingServiceUrl,`/internal/bookings/${encodeURIComponent(body.bookingId||'')}/arrangement-context`);
+ if(source.eventId!==id||source.version!==body.bookingVersion||!['CONFIRMED','TENTATIVELY_HELD'].includes(source.status))throw fail(409,'STALE_BOOKING','Review the current active booking');
+ const contract=require(path.join(process.env.SERVICE_UTILS_PATH||path.resolve(__dirname,'../../utils'),'venue-change-contract'));
+ let proposed;try{proposed=contract.proposal(body.proposed||{},body.action);}catch{throw fail(422,'VALIDATION_FAILED','Use a complete proposed arrangement');}
+ const outcome=await prisma.$transaction(async tx=>{
+  const current=await lockEvent(tx,id);requireCoordinator(req.actor,current);open(current);
+  const replayed=await replay(tx,req.actor,key,url,requestHash);if(replayed)return {body:replayed.responseBody,token:null};checkVersion(current,body);
+  const review=await tx.venueChangeReview.create({data:{eventId:id,bookingId:source.id,bookingVersion:source.version,action:body.action,proposed,source:json(source),reason:body.reason.trim(),reviewedById:req.actor.id,requestVersion:current.eventRequest.version}});
+  const round=await latestRound(current,tx);
+  if(round&&['PENDING','APPROVE'].includes(round.status))await tx.safetyRound.update({where:{id:round.id},data:{status:'SUPERSEDED'}});
+  const next=await tx.event.update({where:{id},data:{status:'ARRANGEMENT_PENDING',safetyToken:null,safetyGeneration:{increment:1},safetyState:round?'STALE':'NOT_SUBMITTED',safetyOperation:require('@prisma/client').Prisma.DbNull,safetyRework:require('@prisma/client').Prisma.DbNull,version:{increment:1}}});
+  await tx.activityLog.create({data:{eventRequestId:current.eventRequestId,action:'VENUE_CHANGE_REVIEWED',actorType:'USER',actorId:req.actor.id,fromStatus:current.status,toStatus:'ARRANGEMENT_PENDING',details:{eventId:id,reviewId:review.id,bookingId:source.id,bookingVersion:source.version,action:body.action,before:json(source),proposed,reason:review.reason,actorName:[req.actor.firstName,req.actor.lastName].filter(value=>typeof value==='string').join(' ')||req.actor.id}}});
+  if(current.safetyToken)await notice(tx,current,'SafetyEvidenceInvalidated',{reason:'Coordinator approved a targeted venue change'});
+  const response={reviewId:review.id,event:toEvent(next),review};await remember(tx,req.actor,key,url,requestHash,response);return {body:response,token:current.safetyToken};
+ });
+ await release(outcome.token,id);return outcome.body;
+}
+async function venueChangeContext(id,reviewId){
+ const event=await getEvent(id),review=await prisma.venueChangeReview.findUnique({where:{id:reviewId}});
+ if(!review||review.eventId!==id)throw fail(404,'NOT_FOUND','Venue review not found');
+ return {...review,currentCoordinatorId:event.eventRequest.currentCoordinatorId,currentRequestVersion:event.eventRequest.version,eventStatus:event.status,safetyState:event.safetyState};
+}
+// Booking calls this only from its committed durable outbox. The outbox ID is
+// the retry identity; a lost acknowledgement cannot create duplicate history.
+async function recordVenueActivity(id,message){
+ if(!message?.id||!message.kind||message.payload?.eventId!==id)throw fail(422,'VALIDATION_FAILED','Committed booking action identity required');
+ return prisma.$transaction(async tx=>{
+  const event=await lockEvent(tx,id),actor={id:'booking-outbox'};
+  const url=`/internal/events/${id}/venue-activity`,requestHash=hash(message);
+  const cached=await replay(tx,actor,message.id,url,requestHash);if(cached)return cached.responseBody;
+  await tx.activityLog.create({data:{eventRequestId:event.eventRequestId,action:message.kind,actorType:message.payload.actorId?'USER':'SYSTEM',actorId:message.payload.actorId||null,fromStatus:event.status,toStatus:event.status,details:json({...message.payload,bookingActionId:message.id,actorName:message.payload.actorName||message.payload.actorId||'System'})}});
+  const response={recorded:true,bookingActionId:message.id};await remember(tx,actor,message.id,url,requestHash,response);return response;
+ });
+}
+module.exports={reviewVenueChange,venueChangeContext,recordVenueActivity,view,submit,queue,officerView,decide,rework,invalidate,advance,preparationUpdate,preparationView,preparationQueue,correctPlanning,revision,fail};

@@ -83,8 +83,8 @@ const TABLE = {
     { scope: 'EVENT', from: ['CONFIRMED'], who: 'COORDINATOR', to: 'ARRANGEMENT_PENDING' },
   ],
   [ACTIONS.CANCEL]: [
-    { scope: 'EVENT', from: ['ARRANGEMENT_PENDING', 'CONFIRMED'], who: 'COORDINATOR', to: 'CANCELLED',
-      check: 'beforeStart' },
+    { scope: 'EVENT', from: ['ARRANGEMENT_PENDING', 'CONFIRMED'], who: 'COORDINATOR', to: 'CANCELLING',
+      noteRequired: true, check: 'beforeStart' },
   ],
   [ACTIONS.COMPLETE]: [
     { scope: 'EVENT', from: ['CONFIRMED'], who: 'SYSTEM', to: 'COMPLETED', check: 'afterEnd' },

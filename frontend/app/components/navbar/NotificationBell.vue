@@ -8,6 +8,7 @@ interface Notice { id: string, type: string, text: string, link: string | null, 
 interface Inbox { items: Notice[], unread: number, badge: string }
 
 const open = ref(false)
+const ready = ref(false)
 const inbox = ref<Inbox>({ items: [], unread: 0, badge: '' })
 const loading = ref(false)
 const { showError } = useErrorAlert()
@@ -44,7 +45,7 @@ function timeAgo(value: string) {
 
 // Refresh the badge every minute while the page is open.
 let timer: ReturnType<typeof setInterval> | undefined
-onMounted(() => { load(); timer = setInterval(load, 60_000) })
+onMounted(() => { ready.value = true; load(); timer = setInterval(load, 60_000) })
 onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 
 const label = computed(() => inbox.value.unread ? `Notifications, ${inbox.value.unread} unread` : 'Notifications')
@@ -52,7 +53,7 @@ const label = computed(() => inbox.value.unread ? `Notifications, ${inbox.value.
 
 <template>
   <div class="relative">
-    <button type="button" class="relative flex size-8 items-center justify-center rounded-full hover:bg-muted" :aria-label="label" :aria-expanded="open" data-testid="bell" @click="toggle">
+    <button type="button" class="relative flex size-8 items-center justify-center rounded-full hover:bg-muted" :disabled="!ready" :aria-label="label" :aria-expanded="open" data-testid="bell" @click="toggle">
       <BellIcon class="size-4" aria-hidden="true" />
       <span v-if="inbox.badge" id="bell-badge" class="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] leading-4 text-white">{{ inbox.badge }}</span>
     </button>

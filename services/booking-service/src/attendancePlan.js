@@ -1,7 +1,7 @@
 // Attendance applies to simultaneous room use, never the sum across a day.
 function attendancePlan(context,rooms) {
   const expectedAttendance=context?.expectedAttendance;
-  const required=rooms.filter(r=>r.required && r.status!=='CANCELLED');
+  const required=rooms.filter(r=>r.required && !['CANCELLED','REPLACED'].includes(r.status));
   const points=[...new Set(required.flatMap(r=>[Date.parse(r.startAt),Date.parse(r.endAt)]))].sort((a,b)=>a-b);
   const sessions=[];
   for(let i=0;i<points.length-1;i++){
