@@ -64,6 +64,26 @@ test('TC-CS40-08 current assignment controls both reads and revisions after reas
   });
 });
 
+test('TC-CS40-18 history returns immutable version snapshots only to the current Coordinator', async () => {
+  await withServer(async baseUrl => {
+    const path = `${baseUrl}/event-requests/versioned-history/technical-request`;
+    const current = { ...actorHeaders('current-coordinator', 'EVENT_COORDINATOR'), 'x-test-current-coordinator-id': 'current-coordinator' };
+    const submitted = await fetch(path, { method: 'POST', headers: current, body: JSON.stringify(requestBody) });
+    assert.equal(submitted.status, 201);
+    const revised = await fetch(path, { method: 'POST', headers: current, body: JSON.stringify({ ...requestBody, version: 1, equipment: [{ equipmentType: 'projector', quantity: 3, venueId: 'B1' }], placementDetails: 'Version two placement' }) });
+    assert.equal(revised.status, 200);
+
+    const history = await fetch(`${path}/history`, { headers: current });
+    assert.equal(history.status, 200);
+    assert.deepEqual((await history.json()).items.map(item => [item.version, item.snapshot.equipment[0].quantity, item.snapshot.placementDetails]), [
+      [2, 3, 'Version two placement'],
+      [1, 2, 'Room A: 1; Room B: 1'],
+    ]);
+    const former = { ...actorHeaders('former-coordinator', 'EVENT_COORDINATOR'), 'x-test-current-coordinator-id': 'current-coordinator' };
+    assert.equal((await fetch(`${path}/history`, { headers: former })).status, 403);
+  });
+});
+
 test('TC-CS40-02 rejects invalid equipment with field feedback and no saved request', async () => {
   await withServer(async baseUrl => {
     const response = await fetch(`${baseUrl}/event-requests/event-invalid/technical-request`, {

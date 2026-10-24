@@ -34,13 +34,13 @@ export async function snapshot(service: 'venue'|'booking'|'event'|'attendance', 
     registrations: service === 'attendance' ? (await pool.query('SELECT * FROM registrations WHERE event_id=$1', [eventId])).rows : [],
   }))
 }
-async function insertAttendanceEvent(eventId: string, title: string, startAt: string, endAt: string, timeZone: string, primaryVenueId: string | null, primaryVenueName: string | null, registrationLimit: number | null, registrationWindow: unknown, organiserId: string | null) {
+async function insertAttendanceEvent(eventId: string, title: string, startAt: string, endAt: string, timeZone: string, primaryVenueId: string | null, primaryVenueName: string | null, registrationLimit: number | null, registrationWindow: unknown, organiserId: string | null, registrationEnabled: boolean) {
   await reviewDatabase('attendance', async pool => {
     await pool.query(
-      `INSERT INTO events (id, "eventId", title, description, status, "startAt", "endAt", "timeZone", "primaryVenueId", "primaryVenueName", "registrationLimit", "registrationWindow", "organiserId", "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, 'CONFIRMED', $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        ON CONFLICT ("eventId") DO NOTHING`,
-      [eventId, eventId, title, title, startAt, endAt, timeZone, primaryVenueId, primaryVenueName, registrationLimit, JSON.stringify(registrationWindow), organiserId]
+      `INSERT INTO events (id, "eventId", title, description, status, "startAt", "endAt", "timeZone", "primaryVenueId", "primaryVenueName", "registrationLimit", "registrationWindow", "organiserId", "registrationEnabled", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, 'CONFIRMED', $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT ("eventId") DO UPDATE SET "registrationLimit"=EXCLUDED."registrationLimit", "registrationWindow"=EXCLUDED."registrationWindow", "registrationEnabled"=EXCLUDED."registrationEnabled"`,
+      [eventId, eventId, title, title, startAt, endAt, timeZone, primaryVenueId, primaryVenueName, registrationLimit, JSON.stringify(registrationWindow), organiserId, registrationEnabled]
     )
   })
 }
@@ -62,7 +62,7 @@ class AttendanceFixtures {
     expect(body.user?.id).toEqual(expect.any(String))
     return body.user.id as string
   }
-  async event(options: { date?: string, rooms?: number, startAt?: string, endAt?: string, eventName?: string, registrationEnabled?: boolean, registrationLimit?: number } = {}): Promise<AttendanceEvent> {
+  async event(options: { date?: string, rooms?: number, startAt?: string, endAt?: string, eventName?: string, registrationEnabled?: boolean, registrationLimit?: number | null } = {}): Promise<AttendanceEvent> {
     const date = options.date ?? new Date(Date.UTC(2038, 0, 1 + this.dateOffset + this.worker * 500 + this.sequence++)).toISOString().slice(0, 10)
     const owner = await this.actor(emails.owner)
     const submitted = await created(owner, 'submit', validRequest({ eventName: options.eventName ?? `E2E ${randomUUID()}`, proposedDate: date, expectedAttendance: 80, minimumCapacity: 80, accessibilityNeeds: [], venueRequirements: 'Projector', registrationEnabled: options.registrationEnabled ?? true, registrationOpensAt: `${date}T08:00`, registrationClosesAt: `${date}T08:30` }))
@@ -84,6 +84,10 @@ class AttendanceFixtures {
     }
     if(rooms.length)expect((await mutation(coordinator,'PUT',`/api/bookings/events/${approved.eventId}/primary-venue`,{bookingId:rooms[0].id,bookingVersion:rooms[0].version,version:0})).status()).toBe(200)
     await safeConfirm(coordinator,await this.actor(emails.officer),approved.eventId,submitted.id)
+    await expect.poll(async () => reviewDatabase('attendance', async db => {
+      const result = await db.query('SELECT "eventVersion" FROM events WHERE "eventId"=$1', [approved.eventId])
+      return Number(result.rows[0]?.eventVersion ?? 0)
+    }), { timeout: 15_000 }).toBeGreaterThan(0)
     // Attendance owns existing registration policy; current visibility/venues now come from source services.
     await insertAttendanceEvent(
       approved.eventId,
@@ -93,9 +97,10 @@ class AttendanceFixtures {
       'Asia/Singapore',
       primaryVenueId,
       primaryVenueId ? `Venue ${primaryVenueId.slice(-4)}` : null,
-      options.registrationLimit ?? 100,
+      options.registrationLimit === undefined ? 100 : options.registrationLimit,
       { startAt: `${date}T02:00:00.000Z`, endAt: `${date}T04:00:00.000Z` },
-      contact.email
+      contact.email,
+      options.registrationEnabled ?? true
     )
     this.attendanceEventIds.add(approved.eventId)
     return { id: submitted.id, eventId: approved.eventId, eventName: submitted.eventName, coordinator, email: contact.email, date, rooms, venueId: primaryVenueId, primaryVenueId }

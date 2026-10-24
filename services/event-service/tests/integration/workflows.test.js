@@ -383,6 +383,68 @@ test('TC-CS92-15 reconfirmation compares the last confirmed venue round through 
  }
 });
 
+test('TC-CS48-11 confirmation writes a versioned attendee-safe EventConfirmed snapshot',async()=>{
+ const request=await create({...valid,description:'Details visible to attendees'}),who=request.body.currentCoordinatorId==='test-coord'?'coord':'coord2';
+ const approved=await call('POST',`/event-requests/${request.body.id}/decision`,{action:'APPROVE',version:request.body.version},who);assert.equal(approved.status,200);
+ const eventId=approved.body.eventId,safety=require('../../src/safety');
+ const current=await prisma.event.findUnique({where:{id:eventId},include:{eventRequest:true}}),token=randomUUID();
+ const round=await prisma.safetyRound.create({data:{eventId,number:1,token,generation:1,requirementsRevision:'cs48-11',status:'APPROVE',submittedById:actors[who].id,snapshot:{sourceRevision:safety.revision(current,current.eventRequest),venues:[{venueId:'venue-cs48-11',venueName:'Attendee Hall'}]},decision:{create:{officerId:'test-officer',outcome:'APPROVE',reason:'Approved fixture',privateNotes:'',areas:[],rejectedBookingIds:[],checklist:{attendance:true,layout:true,emergencyAccess:true,accessibility:true,equipmentPlacement:true,crowdMovement:true,restrictions:true}}}}});
+ const ready=await prisma.event.update({where:{id:eventId},data:{status:'ARRANGEMENT_PENDING',safetyState:'APPROVED',safetyRoundId:round.id,safetyToken:token,safetyGeneration:1}});
+ const confirmed=await call('POST',`/events/${eventId}/confirm`,{version:ready.version},who);assert.equal(confirmed.status,200);
+ const intent=await prisma.outbox.findFirst({where:{aggregateId:eventId,eventType:'EventConfirmed'}});
+ assert.ok(intent);assert.equal(typeof intent.id,'string');assert.ok(intent.id.length>0);
+ assert.equal(intent.payload.eventId,eventId);assert.equal(intent.payload.eventVersion,confirmed.body.event.version);
+ assert.equal(intent.payload.status,'CONFIRMED');assert.equal(intent.payload.title,'Synthetic summit');assert.equal(intent.payload.description,'Details visible to attendees');
+ assert.equal(new Date(intent.payload.startAt).toISOString(),confirmed.body.event.startAt);assert.equal(new Date(intent.payload.endAt).toISOString(),confirmed.body.event.endAt);
+ assert.equal(intent.payload.timeZone,'Asia/Singapore');assert.equal(intent.payload.organiserId,actors.owner.id);
+ assert.equal(intent.payload.registrationEnabled,false);assert.equal(intent.payload.registrationOpensAt,null);assert.equal(intent.payload.registrationClosesAt,null);
+ const envelope=await require('../../src/notificationOutbox').project(intent,prisma);
+ assert.equal(envelope.id,intent.id);assert.equal(envelope.type,'EventConfirmed');assert.equal(envelope.payload.eventVersion,confirmed.body.event.version);
+});
+
+test('TC-CS48-11 confirmation reaches Attendance through the outbox and RabbitMQ, with duplicate and stale replay protection',{
+ skip:process.env.TC_CS48_11_MESSAGING!=='1'||!process.env.ATTENDANCE_DATABASE_URL||!process.env.RABBITMQ_URL,
+},async()=>{
+ const request=await create({...valid,description:'Broker-delivered attendee details'}),who=request.body.currentCoordinatorId==='test-coord'?'coord':'coord2';
+ const approved=await call('POST',`/event-requests/${request.body.id}/decision`,{action:'APPROVE',version:request.body.version},who);assert.equal(approved.status,200);
+ const eventId=approved.body.eventId,safety=require('../../src/safety');
+ const current=await prisma.event.findUnique({where:{id:eventId},include:{eventRequest:true}}),token=randomUUID();
+ const round=await prisma.safetyRound.create({data:{eventId,number:1,token,generation:1,requirementsRevision:'cs48-11-broker',status:'APPROVE',submittedById:actors[who].id,snapshot:{sourceRevision:safety.revision(current,current.eventRequest),venues:[{venueId:'venue-cs48-11',venueName:'Attendee Hall'}]},decision:{create:{officerId:'test-officer',outcome:'APPROVE',reason:'Approved fixture',privateNotes:'',areas:[],rejectedBookingIds:[],checklist:{attendance:true,layout:true,emergencyAccess:true,accessibility:true,equipmentPlacement:true,crowdMovement:true,restrictions:true}}}}});
+ const ready=await prisma.event.update({where:{id:eventId},data:{status:'ARRANGEMENT_PENDING',safetyState:'APPROVED',safetyRoundId:round.id,safetyToken:token,safetyGeneration:1}});
+ const confirmed=await call('POST',`/events/${eventId}/confirm`,{version:ready.version},who);assert.equal(confirmed.status,200);
+ const intent=await prisma.outbox.findFirst({where:{aggregateId:eventId,eventType:'EventConfirmed'}});assert.ok(intent);
+ const original={DATA_MODE:process.env.DATA_MODE,DATABASE_URL:process.env.DATABASE_URL,RABBITMQ_QUEUE:process.env.RABBITMQ_QUEUE};
+ process.env.DATA_MODE='prisma';process.env.DATABASE_URL=process.env.ATTENDANCE_DATABASE_URL;process.env.RABBITMQ_QUEUE=`attendance-service.cs48-11-${eventId}`;
+ await prisma.outbox.updateMany({where:{publishedAt:null,suppressedAt:null,aggregateId:{not:eventId}},data:{suppressedAt:new Date(),lastError:'Suppressed unrelated pre-existing intent in disposable integration database'}});
+ const attendanceConsumer=require('../../../attendance-service/src/consumer').start();
+ const bus=require('../../../utils/domain-bus'),config=bus.settings(process.env);
+ const relay=require('../../../utils/outbox-relay').startOutboxRelay({prisma,connect:require('amqplib').connect,config,source:'event',project:require('../../src/notificationOutbox').project});
+ const publisher=bus.createTransport({connect:require('amqplib').connect,config});
+ const {Client}=require('pg'),attendanceDb=new Client({connectionString:process.env.ATTENDANCE_DATABASE_URL});
+ const waitFor=async(predicate)=>{const until=Date.now()+10000;while(Date.now()<until){if(await predicate())return true;await new Promise(resolve=>setTimeout(resolve,100));}return false;};
+ try{
+  await attendanceDb.connect();
+  assert.equal(await waitFor(async()=>Number((await attendanceDb.query('SELECT count(*) FROM events WHERE "eventId"=$1',[eventId])).rows[0].count)===1),true,'outbox delivery creates one Attendance Event');
+  const attendeeEvent=await attendanceDb.query('SELECT * FROM events WHERE "eventId"=$1',[eventId]);
+  assert.equal(attendeeEvent.rows[0].title,'Synthetic summit');assert.equal(attendeeEvent.rows[0].description,'Broker-delivered attendee details');
+  assert.equal(Number((await attendanceDb.query('SELECT count(*) FROM registrations WHERE "eventId"=$1',[eventId])).rows[0].count),0);
+  const message=await require('../../src/notificationOutbox').project(intent,prisma);
+  await publisher.publish(message,'event.EventConfirmed');
+  await new Promise(resolve=>setTimeout(resolve,300));
+  const newerMessage={...message,id:randomUUID(),payload:{...message.payload,eventVersion:message.payload.eventVersion+2,title:'Newer snapshot'}};
+  await publisher.publish(newerMessage,'event.EventConfirmed');
+  assert.equal(await waitFor(async()=>(await attendanceDb.query('SELECT title FROM events WHERE "eventId"=$1',[eventId])).rows[0]?.title==='Newer snapshot'),true,'newer Event version is applied');
+  await publisher.publish(message,'event.EventConfirmed');
+  await new Promise(resolve=>setTimeout(resolve,300));
+  const final=await attendanceDb.query('SELECT * FROM events WHERE "eventId"=$1',[eventId]);
+  assert.equal(final.rows.length,1);assert.equal(final.rows[0].title,'Newer snapshot');assert.equal(Number(final.rows[0].eventVersion),message.payload.eventVersion+2);
+  assert.equal(Number((await attendanceDb.query('SELECT count(*) FROM registrations WHERE "eventId"=$1',[eventId])).rows[0].count),0);
+ }finally{
+  await Promise.allSettled([relay.stop(),attendanceConsumer?.stop(),publisher.stop(),attendanceDb.end()]);
+  for(const [key,value] of Object.entries(original)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
+ }
+});
+
 test('TC-CS88-16 component: internal cancellation proof requires the committed terminal Event, exact outbox and immutable accepted action',async(t)=>{
  const r=await create(),who=r.body.currentCoordinatorId==='test-coord'?'coord':'coord2';
  const approved=await call('POST',`/event-requests/${r.body.id}/decision`,{action:'APPROVE',version:r.body.version},who);assert.equal(approved.status,200);

@@ -10,7 +10,7 @@ async function topology(channel,config){
  await channel.assertQueue(deadQueue,{durable:true});
  await channel.bindQueue(deadQueue,deadExchange,'');
  await channel.assertQueue(config.queue,{durable:true,arguments:{'x-dead-letter-exchange':deadExchange}});
- for(const key of ['booking.#','event.#','safety.#'])await channel.bindQueue(config.queue,config.exchange,key);
+ for(const key of ['booking.#','event.#','safety.#','attendance.#'])await channel.bindQueue(config.queue,config.exchange,key);
 }
 function validEnvelope(value){
  return Boolean(value && typeof value.id==='string' && value.id.length>0 && value.id.length<=200 && typeof value.type==='string' && value.type.length>0 && value.type.length<=100 && value.payload && typeof value.payload==='object' && !Array.isArray(value.payload));

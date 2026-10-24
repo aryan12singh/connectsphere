@@ -6,6 +6,8 @@ const {
   getOwnRegistration,
   canReadOwnRegistration,
   isEventVisible,
+  canCreateRegistration,
+  placesRemaining,
 } = require('../../src/domain/registration');
 
 test('computeRegistrationLimit returns Coordinator-set limit', () => {
@@ -43,4 +45,39 @@ test('isEventVisible returns true for CONFIRMED and CANCELLED', () => {
   assert.equal(isEventVisible('CANCELLED'), true);
   assert.equal(isEventVisible('APPROVED'), false);
   assert.equal(isEventVisible('SUBMITTED'), false);
+});
+
+test('TC-CS48-01 permits registration only for an enabled confirmed event inside its window with a free place', () => {
+  const event = {
+    status: 'CONFIRMED', registrationEnabled: true, registrationLimit: 2,
+    registrationWindow: { startAt: '2026-11-01T00:00:00Z', endAt: '2026-11-10T00:00:00Z' },
+  };
+  assert.deepEqual(canCreateRegistration(event, 1, new Date('2026-11-05T12:00:00Z')), { allowed: true });
+});
+
+test('TC-CS48-04 rejects registration when the event is disabled, ineligible, outside the window, or has no limit', () => {
+  const event = {
+    status: 'CONFIRMED', registrationEnabled: true, registrationLimit: 2,
+    registrationWindow: { startAt: '2026-11-01T00:00:00Z', endAt: '2026-11-10T00:00:00Z' },
+  };
+  assert.equal(canCreateRegistration({ ...event, registrationEnabled: false }, 0, new Date('2026-11-05T00:00:00Z')).reason, 'REGISTRATION_DISABLED');
+  assert.equal(canCreateRegistration({ ...event, status: 'CANCELLED' }, 0, new Date('2026-11-05T00:00:00Z')).reason, 'EVENT_NOT_CONFIRMED');
+  assert.equal(canCreateRegistration(event, 0, new Date('2026-10-31T23:59:59Z')).reason, 'REGISTRATION_NOT_OPEN');
+  assert.equal(canCreateRegistration({ ...event, registrationLimit: null }, 0, new Date('2026-11-05T00:00:00Z')).reason, 'REGISTRATION_LIMIT_UNSET');
+});
+
+test('TC-CS48-05 rejects a full or over-cap event without negative places remaining', () => {
+  const event = { status: 'CONFIRMED', registrationEnabled: true, registrationLimit: 1,
+    registrationWindow: { startAt: '2026-11-01T00:00:00Z', endAt: '2026-11-10T00:00:00Z' } };
+  const now = new Date('2026-11-05T00:00:00Z');
+  assert.equal(canCreateRegistration(event, 1, now).reason, 'EVENT_FULL');
+  assert.equal(placesRemaining(event, 3), 0);
+  assert.equal(placesRemaining({ ...event, registrationLimit: null }, 0), null);
+});
+
+test('TC-CS48-08 accepts the inclusive opening and closing instants', () => {
+  const event = { status: 'CONFIRMED', registrationEnabled: true, registrationLimit: 1,
+    registrationWindow: { startAt: '2026-11-01T00:00:00Z', endAt: '2026-11-10T00:00:00Z' } };
+  assert.equal(canCreateRegistration(event, 0, new Date(event.registrationWindow.startAt)).allowed, true);
+  assert.equal(canCreateRegistration(event, 0, new Date(event.registrationWindow.endAt)).allowed, true);
 });

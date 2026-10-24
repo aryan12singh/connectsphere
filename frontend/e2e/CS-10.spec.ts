@@ -18,7 +18,7 @@ test('TC-CS10-12 LIVE multi-role switch survives reload; unassigned roles cannot
   await signIn(page, emails.multi)
   await page.getByRole('button', { name: 'Your account' }).click()
   await page.getByRole('combobox', { name: 'Active role' }).selectOption('ATTENDEE')
-  await expect(page).toHaveURL(/\/attendee$/)
+  await expect(page).toHaveURL(/\/attendances$/)
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Your events', exact: true })).toBeVisible()
   // Use Chromium's current Secure cookie, including the selected role.

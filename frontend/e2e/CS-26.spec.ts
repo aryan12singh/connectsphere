@@ -31,8 +31,8 @@ test('TC-CS26-01 LIVE Attendee signup and duplicate-email field guidance preserv
   }
   await fill(); await page.getByRole('button', { name: 'Create account', exact: true }).click()
   await expect(page).toHaveURL(/\/login\?registered=1$/)
-  await signIn(page, email, password, '/attendee')
-  await expect(page).toHaveURL(/\/attendee$/)
+  await signIn(page, email, password, '/attendances')
+  await expect(page).toHaveURL(/\/attendances$/)
   await page.context().clearCookies()
   await fill(); await page.getByRole('button', { name: 'Create account', exact: true }).click()
   await expect(page.locator('#email-error')).toContainText('already exists')

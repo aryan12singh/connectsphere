@@ -20,7 +20,7 @@ async function attendeeEvent(event){
  if(!['CONFIRMED','PREPARATION'].includes(event.status)||event.safetyState!=='APPROVED')return null;
  const request=await repository.findRequest(event.eventRequestId);
  if(!request||request.status!=='APPROVED')return null;
- return {id:event.id,eventId:event.id,title:event.title,description:event.description,status:'CONFIRMED',startAt:event.startAt,endAt:event.endAt,timeZone:event.timeZone,organiserId:event.organiserId,registrationWindow:request.registrationEnabled?{startAt:request.registrationOpensAt,endAt:request.registrationClosesAt}:null,createdAt:event.createdAt,updatedAt:event.updatedAt};
+ return {id:event.id,eventId:event.id,title:event.title,description:event.description,status:'CONFIRMED',startAt:event.startAt,endAt:event.endAt,timeZone:event.timeZone,organiserId:event.organiserId,registrationEnabled:request.registrationEnabled===true,registrationWindow:request.registrationEnabled?{startAt:request.registrationOpensAt,endAt:request.registrationClosesAt}:null,createdAt:event.createdAt,updatedAt:event.updatedAt};
 }
 router.get('/attendee-events',async(_req,res,next)=>{
  try{const items=[];for(const event of await repository.listEvents({})){const item=await attendeeEvent(event);if(item)items.push(item);}res.json({items});}catch(error){next(error);}

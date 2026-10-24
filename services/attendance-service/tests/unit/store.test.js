@@ -5,7 +5,7 @@ const store = require('../../src/store');
 test('memory store lists only confirmed events', async () => {
   const eventId = `store-event-${Date.now()}`;
   await store.saveEvent({
-    id: eventId,
+    id: `local-row-${eventId}`,
     eventId,
     title: 'Test Event',
     description: 'A test event',
@@ -84,4 +84,59 @@ test('saveRegistration stores and retrieves own registration', async () => {
   assert.ok(found);
   assert.equal(found.userId, 'user-1');
   assert.equal(await store.findRegistration(eventId, 'user-2'), null);
+});
+
+test('TC-CS48-11 duplicate and older EventConfirmed snapshots cannot roll back the local Event', async () => {
+  const eventId = `confirmed-projection-${Date.now()}`;
+  const base = {
+    id: `local-row-${eventId}`,
+    eventId,
+    status: 'CONFIRMED',
+    title: 'Version one',
+    description: 'Attendee-safe details',
+    startAt: '2026-11-01T00:00:00.000Z',
+    endAt: '2026-11-01T02:00:00.000Z',
+    timeZone: 'Asia/Singapore',
+    organiserId: 'organiser-1',
+    eventVersion: 1,
+    registrationEnabled: true,
+    registrationWindow: { startAt: '2026-10-01T00:00:00.000Z', endAt: '2026-10-31T00:00:00.000Z' },
+  };
+
+  await store.saveEvent({ ...base, eventVersion: 0, registrationLimit: 80 });
+  await store.upsertConfirmedEvent(base);
+  await store.saveRegistration({ eventId, userId: 'attendee-1', status: 'CONFIRMED', registeredAt: '2026-10-01T00:00:00.000Z' });
+  await store.upsertConfirmedEvent({ ...base, title: 'Duplicate v1', registrationLimit: null });
+  await store.upsertConfirmedEvent({ ...base, eventVersion: 3, title: 'Version three', registrationLimit: null });
+  await store.upsertConfirmedEvent({ ...base, title: 'Late version one', registrationLimit: null });
+
+  const saved = await store.findEvent(eventId);
+  assert.equal(saved.eventVersion, 3);
+  assert.equal(saved.title, 'Version three');
+  assert.equal(saved.registrationLimit, 80);
+  assert.equal(await store.findRegistration(eventId, 'attendee-1').then(Boolean), true);
+  assert.equal((await store.listEvents()).filter(event => event.eventId === eventId).length, 1);
+  assert.equal(saved.id, `local-row-${eventId}`);
+});
+
+test('TC-CS48-11 first EventConfirmed creates a local Event without creating a registration', async () => {
+  const eventId = `confirmed-create-${Date.now()}`;
+  const saved = await store.upsertConfirmedEvent({
+    id: eventId,
+    eventId,
+    title: 'Newly confirmed',
+    description: 'Public information',
+    status: 'CONFIRMED',
+    eventVersion: 1,
+    startAt: '2026-11-01T00:00:00.000Z',
+    endAt: '2026-11-01T02:00:00.000Z',
+    timeZone: 'Asia/Singapore',
+    organiserId: 'organiser-1',
+    registrationEnabled: false,
+    registrationWindow: null,
+  });
+  assert.equal(saved.eventId, eventId);
+  assert.equal(saved.eventVersion, 1);
+  assert.equal(await store.findRegistration(eventId, 'attendee-1'), null);
+  assert.equal((await store.listEvents()).filter(event => event.eventId === eventId).length, 1);
 });

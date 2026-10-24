@@ -2,6 +2,21 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const store = require('../../src/store');
 
+test('TC-CS40-18 stores immutable technical request snapshots for each version', async () => {
+  const eventRequestId = `store-history-${Date.now()}`;
+  const actor = { id: 'coordinator-history', role: 'EVENT_COORDINATOR' };
+  const requirements = quantity => ({ equipment: [{ equipmentType: 'projector', quantity, venueId: 'venue-history' }], supportRequired: true, supportDetails: 'Operator at lectern', placementDetails: `Position ${quantity}`, notRequired: false });
+  await store.saveSubmission({ eventRequestId, actor, context: { eventId: 'event-history' }, value: { version: 1, status: 'PENDING_TECH_REVIEW', requirements: requirements(2) }, hash: 'v1' });
+  await store.saveSubmission({ eventRequestId, actor, context: { eventId: 'event-history' }, value: { version: 2, status: 'PENDING_TECH_REVIEW', requirements: requirements(3) }, hash: 'v2' });
+
+  const history = await store.listHistory(eventRequestId);
+  assert.deepEqual(history.map(({ version, action, snapshot }) => ({ version, action, quantity: snapshot.equipment[0].quantity, placement: snapshot.placementDetails })), [
+    { version: 2, action: 'TechRequestSubmitted', quantity: 3, placement: 'Position 3' },
+    { version: 1, action: 'TechRequestSubmitted', quantity: 2, placement: 'Position 2' },
+  ]);
+  assert.equal((await store.findRequest(eventRequestId)).requirements.equipment[0].quantity, 3);
+});
+
 test('memory store exposes stock-enriched catalog, request views, history actions, and idempotency replay', async () => {
   const types = await store.listEquipmentTypes();
   assert.ok(types.find(item => item.name === 'projector').total >= 0);

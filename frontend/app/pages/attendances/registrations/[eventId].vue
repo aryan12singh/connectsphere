@@ -28,7 +28,7 @@ function statusBadge(status: string) {
 
 <template>
   <main class="mx-auto w-full max-w-3xl px-5 py-8 md:px-8">
-    <NuxtLink to="/attendee" class="inline-block mb-4 underline text-sm text-muted-foreground">← Back to your events</NuxtLink>
+    <NuxtLink to="/attendances" class="inline-block mb-4 underline text-sm text-muted-foreground">← Back to your events</NuxtLink>
 
     <Card v-if="error" class="mt-6">
       <CardHeader>
@@ -61,7 +61,7 @@ function statusBadge(status: string) {
         <Button as-child variant="outline" disabled>
           Manage registration (coming soon – CS-48)
         </Button>
-        <NuxtLink to="/attendee" class="underline text-sm text-muted-foreground">Back to your events</NuxtLink>
+        <NuxtLink to="/attendances" class="underline text-sm text-muted-foreground">Back to your events</NuxtLink>
       </CardFooter>
     </Card>
   </main>

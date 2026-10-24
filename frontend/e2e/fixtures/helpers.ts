@@ -49,7 +49,7 @@ export async function signIn(page: Page, email = emails.owner, password?: string
     expect(attempt, 'Gateway kept rate limiting live login').toBeLessThan(2)
     await rateLimitPause(response.headers())
   }
-  await expect(page).toHaveURL(new URL(expectedHome ?? (email === emails.staff ? '/venue' : email === emails.attendee || email === emails.otherAttendee ? '/attendee' : email === emails.support ? '/technical-requirements' : '/'), baseURL).href)
+  await expect(page).toHaveURL(new URL(expectedHome ?? (email === emails.staff ? '/venue' : email === emails.attendee || email === emails.otherAttendee ? '/attendances' : email === emails.support ? '/technical-requirements' : '/'), baseURL).href)
 }
 
 export async function session(request: APIRequest, email = emails.owner) {

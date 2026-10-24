@@ -28,7 +28,11 @@ const PLANNING_TYPES = [
   'BookingRequested', 'BookingDecided', 'BookingCancelled','BookingChanged','BookingRestored','ReplacementApproved', 'VenueUnavailable', 'BufferConflictFlagged',
   'HoldExpiring', 'HoldExpired', 'HoldExtensionRequested', 'HoldExtended', 'SafetySubmitted', 'SafetyApproved', 'SafetyEvidenceInvalidated', 'SafetyChangesRequested',
 ];
-const HANDLED = [...LIFECYCLE_TYPES, ...PLANNING_TYPES];
+const ATTENDEE_TYPES = [
+  'RegistrationCreated', 'RegistrationWaitlisted', 'WaitlistOfferMade',
+  'WaitlistOfferExpired', 'WaitlistOfferAccepted', 'RegistrationWithdrawn',
+];
+const HANDLED = [...LIFECYCLE_TYPES, ...PLANNING_TYPES, ...ATTENDEE_TYPES, 'EventCancelled'];
 
 // Pages a notice may link to. Venue booking notices open the venue
 // workspace; a dedicated booking review page does not exist yet (CS-38).
@@ -41,6 +45,7 @@ function standardData(message, extra = {}) {
     eventName: p.eventName || 'your event',
     requestId: p.eventRequestId || message.aggregateId || null,
     eventId: p.eventId || null,
+    eventVersion: p.eventVersion || null,
     oldStatus: p.oldStatus || null,
     newStatus: p.newStatus || null,
     timestamp: p.occurredAt || null,
@@ -69,6 +74,33 @@ async function noticesFor(message, lookups) {
   });
 
   switch (message.type) {
+    case 'RegistrationCreated':
+    case 'RegistrationWaitlisted':
+    case 'WaitlistOfferMade':
+    case 'WaitlistOfferExpired':
+    case 'WaitlistOfferAccepted':
+    case 'RegistrationWithdrawn': {
+      const userId = p.userId || p.attendeeId;
+      const types = {
+        RegistrationCreated: ['REGISTRATION_CONFIRMED', 'Your registration for'],
+        RegistrationWaitlisted: ['REGISTRATION_WAITLISTED', 'You joined the waitlist for'],
+        WaitlistOfferMade: ['WAITLIST_OFFER_MADE', 'A place is available for'],
+        WaitlistOfferExpired: ['WAITLIST_OFFER_EXPIRED', 'The offer for'],
+        WaitlistOfferAccepted: ['WAITLIST_OFFER_ACCEPTED', 'Your place is confirmed for'],
+        RegistrationWithdrawn: ['REGISTRATION_WITHDRAWN', 'Your registration for'],
+      };
+      const [type, lead] = types[message.type];
+      const suffix = message.type === 'WaitlistOfferExpired' ? ' has expired.'
+        : message.type === 'RegistrationWithdrawn' ? ' was withdrawn.'
+          : message.type === 'RegistrationWaitlisted' ? ' is waitlisted.'
+            : message.type === 'RegistrationCreated' ? ' is confirmed.'
+              : message.type === 'WaitlistOfferMade' ? ' Review the offer before its deadline.' : '.';
+      return userId ? [notice(userId, type, `${lead} ${name}${suffix}`, p.eventId ? `/attendances/events/${p.eventId}` : null)] : [];
+    }
+    case 'EventCancelled': {
+      const attendees = attendeeIds ? await attendeeIds(p.eventId) : [];
+      return attendees.map(id => notice(id, 'EVENT_CANCELLED', `${name} has been cancelled.`, `/attendances/events/${p.eventId}`));
+    }
     case 'RequestSubmitted':
       return [notice(p.organiserId, 'REQUEST_SUBMITTED', `Your event request ${name} was submitted. A Coordinator will be assigned to review it.`)];
     case 'RequestResubmitted':
@@ -98,11 +130,21 @@ async function noticesFor(message, lookups) {
       return [notice(p.organiserId, 'REQUEST_RETURNED', `${name} was returned for changes.${comment}`, requestLink, { comment: p.comment || null })];
     }
     case 'EventConfirmed': {
-      const changedText=`The confirmed venue arrangement for ${name} changed to ${(p.venueNames||[]).join(', ')}. Open the Event for current locations and times.`;
+      const venueChanged = Boolean(p.attendeeVenueChanged);
+      const changed = Boolean(p.attendeeMaterialChange || venueChanged);
+      const zone = p.timeZone || 'Asia/Singapore';
+      const formatDateTime = value => new Intl.DateTimeFormat('en-SG', { timeZone: zone, day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
+      const period = p.startAt ? `${formatDateTime(p.startAt)}${p.endAt ? `–${formatDateTime(p.endAt)}` : ''} (${zone})` : null;
+      const places = (p.venueNames || []).join(', ');
+      const changedText = `The confirmed details for ${name} changed${period ? ` to ${period}` : ''}${places ? ` at ${places}` : ''}. Open the Event for current details.`;
+      const changeType = venueChanged ? 'VENUE_CHANGED' : 'EVENT_CHANGED';
       const notices=[p.attendeeVenueChanged
         ? notice(p.organiserId,'VENUE_CHANGED',changedText,`/attendances/events/${p.eventId}`)
         : notice(p.organiserId,'EVENT_CONFIRMED',`${name} is confirmed.`,p.eventId?`/events/${p.eventId}`:requestLink)];
-      if(p.attendeeVenueChanged&&attendeeIds)for(const id of await attendeeIds(p.eventId))notices.push(notice(id,'VENUE_CHANGED',changedText,`/attendances/events/${p.eventId}`));
+      if(changed && attendeeIds) {
+        const safeDetails = { eventVersion: p.eventVersion || null, startAt: p.startAt || null, endAt: p.endAt || null, timeZone: zone, venueNames: p.venueNames || [] };
+        for (const id of await attendeeIds(p.eventId)) notices.push(notice(id, changeType, changedText, `/attendances/events/${p.eventId}`, safeDetails));
+      }
       return notices;
     }
     default:
@@ -216,4 +258,4 @@ function badgeLabel(unread) {
   return unread > 99 ? '99+' : String(unread);
 }
 
-module.exports = { HANDLED, LIFECYCLE_TYPES, PLANNING_TYPES, noticesFor, standardData, badgeLabel };
+module.exports = { HANDLED, LIFECYCLE_TYPES, PLANNING_TYPES, ATTENDEE_TYPES, noticesFor, standardData, badgeLabel };

@@ -41,6 +41,12 @@ async function currentContext(message){
  }
  if(message.type==='SafetyEvidenceInvalidated'&&request?.safetyState!=='STALE')return null;
  if(message.type==='EventConfirmed'&&(!['CONFIRMED','PREPARATION'].includes(request?.status)||request.safetyState!=='APPROVED'||request.safetyRoundId!==p.roundId))return null;
+ if(message.type==='EventCancelled'){
+  if(!p.eventId||!p.cancellationActionId||!Number.isInteger(p.eventVersion))return null;
+  const proof=await read(config.eventServiceUrl,`/internal/events/${encodeURIComponent(p.eventId)}/cancellation-context?actionId=${encodeURIComponent(p.cancellationActionId)}`,true);
+  if(!proof||proof.eventId!==p.eventId||proof.eventVersion!==p.eventVersion||proof.cancellationActionId!==p.cancellationActionId||proof.status!=='CANCELLED')return null;
+  if(p.eventRequestId&&proof.eventRequestId!==p.eventRequestId)return null;
+ }
  if(message.type==='RequestReturned'&&(request?.status!=='RETURNED_FOR_AMENDMENT'||p.requestVersion&&request.requestVersion!==p.requestVersion))return null;
  if(!request)throw Error('Notification is missing current ownership proof');
  if(['CoordinatorAssigned','CoordinatorReassigned'].includes(message.type) && p.coordinatorId!==request.currentCoordinatorId)return null;

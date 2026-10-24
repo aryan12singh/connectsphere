@@ -24,6 +24,7 @@ type TechnicalRequest = {
 
 const route = useRoute()
 const eventRequestId = computed(() => String(route.params.id ?? ''))
+const snapshotVersion = computed(() => route.query.version ? Number(route.query.version) : null)
 const { user } = useUserSession()
 const canEdit = computed(() => user.value?.role === 'EVENT_COORDINATOR')
 const { data: typesData, error: typesError } = await useFetch<{ equipmentTypes: { id: string, name: string, total?: number, version?: number }[] }>('/api/technical-equipment-types')
@@ -31,6 +32,20 @@ const { data: existing, error: requestError, refresh } = await useFetch<Technica
   () => `/api/events/${encodeURIComponent(eventRequestId.value)}/technical-request`,
   { default: () => null },
 )
+const { data: historyData } = await useFetch<{ items: Array<{ id: string, version: number, action: string, actorId: string, createdAt: string, snapshot: TechnicalRequest | null }> }>(
+  () => `/api/events/${encodeURIComponent(eventRequestId.value)}/technical-request/history`,
+  { default: () => ({ items: [] }) },
+)
+const historyVersions = computed(() => {
+  const byVersion = new Map<number, { version: number, createdAt: string, snapshot: TechnicalRequest }>()
+  for (const item of historyData.value?.items ?? []) {
+    if (item.snapshot && !byVersion.has(item.version)) byVersion.set(item.version, { version: item.version, createdAt: item.createdAt, snapshot: item.snapshot })
+  }
+  return [...byVersion.values()].sort((a, b) => b.version - a.version)
+})
+const selectedSnapshot = computed(() => historyVersions.value.find(item => item.version === snapshotVersion.value) ?? null)
+const displayed = computed(() => selectedSnapshot.value?.snapshot ?? existing.value)
+const isHistoricalSnapshot = computed(() => selectedSnapshot.value !== null)
 const requestNotFound = computed(() => Number((requestError.value as { statusCode?: number, status?: number } | null)?.statusCode ?? (requestError.value as { status?: number } | null)?.status) === 404)
 const requestUnavailable = computed(() => Boolean(requestError.value && !requestNotFound.value))
 const types = computed(() => typesData.value?.equipmentTypes ?? [])
@@ -54,10 +69,10 @@ const errorMessage = ref('')
 const fieldError = ref('')
 const saved = ref(false)
 onMounted(() => { pageReady.value = true })
-const readOnly = computed(() => !canEdit.value || (existing.value?.coordinatorId && existing.value.coordinatorId !== user.value?.id))
-const statusLabel = computed(() => ({ PENDING_TECH_REVIEW: 'Pending Technical Support review', SUBMITTED: 'Pending Technical Support review', APPROVED: 'Approved', REJECTED: 'Rejected', NOT_REQUIRED: 'No technical requirements' }[existing.value?.status ?? 'PENDING_TECH_REVIEW']))
+const readOnly = computed(() => isHistoricalSnapshot.value || !canEdit.value || Boolean(existing.value?.coordinatorId && existing.value.coordinatorId !== user.value?.id))
+const statusLabel = computed(() => ({ PENDING_TECH_REVIEW: 'Pending Technical Support review', SUBMITTED: 'Pending Technical Support review', APPROVED: 'Approved', REJECTED: 'Rejected', NOT_REQUIRED: 'No technical requirements' }[displayed.value?.status ?? 'PENDING_TECH_REVIEW']))
 
-watch(existing, (request) => {
+watch(displayed, (request) => {
   if (!request) {
     rows.value = [emptyRow()]
     return
@@ -77,7 +92,7 @@ const supportDetailsRef = ref('')
 const placementDetails = ref('')
 const notRequired = ref(false)
 
-watch(existing, (request) => {
+watch(displayed, (request) => {
   if (!request) return
   supportRequired.value = request.supportRequired
   supportDetailsRef.value = request.supportDetails
@@ -184,7 +199,7 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
         <NuxtLink :to="`/requests/${eventRequestId}`">← Back to event request</NuxtLink>
       </Button>
       <div class="flex flex-col gap-1">
-        <h1 class="text-3xl font-semibold">Technical requirements</h1>
+        <h1 class="text-3xl font-semibold">{{ isHistoricalSnapshot ? `Technical requirements · Version ${selectedSnapshot?.version}` : 'Technical requirements' }}</h1>
         <p class="text-sm text-muted-foreground">Specify equipment, support, and placement needs for this event.</p>
       </div>
     <p v-if="venuesError" class="text-xs text-destructive">Venues could not be loaded.</p>
@@ -193,19 +208,31 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
     <p v-if="requestUnavailable" role="alert" class="text-destructive">Could not load technical requirements. Check access or try again.</p>
     <p v-else-if="typesError" role="alert" class="text-destructive">Equipment types are unavailable right now.</p>
 
-    <Card v-if="existing">
+    <Card v-if="historyVersions.length">
+      <CardHeader><CardTitle>Version history</CardTitle></CardHeader>
+      <CardContent class="flex flex-wrap gap-3">
+        <NuxtLink v-for="item in historyVersions" :key="item.version" :to="{ path: route.path, query: { version: String(item.version) } }" class="underline">
+          Version {{ item.version }}{{ item.version === existing?.version ? ' · Current' : '' }}
+        </NuxtLink>
+        <NuxtLink v-if="isHistoricalSnapshot" :to="route.path" class="underline">Open latest version</NuxtLink>
+      </CardContent>
+    </Card>
+    <p v-if="isHistoricalSnapshot" role="status">Viewing saved version {{ selectedSnapshot?.version }}. This snapshot is read-only.</p>
+    <p v-else-if="snapshotVersion && !selectedSnapshot" role="alert">That saved version is unavailable.</p>
+
+    <Card v-if="displayed">
       <CardHeader>
         <CardTitle>Status</CardTitle>
       </CardHeader>
       <CardContent class="flex flex-col gap-2">
         <p role="status" data-testid="technical-status" class="rounded-lg border p-3">Status: {{ statusLabel }}</p>
-        <p v-if="existing.status === 'NOT_REQUIRED'" class="text-sm text-muted-foreground">No Technical Support review or equipment reservation is required.</p>
-        <p v-if="existing.status === 'REJECTED' && existing.decisionReason" class="rounded-lg bg-muted p-3">Technical Support feedback: {{ existing.decisionReason }}</p>
+        <p v-if="displayed.status === 'NOT_REQUIRED'" class="text-sm text-muted-foreground">No Technical Support review or equipment reservation is required.</p>
+        <p v-if="displayed.status === 'REJECTED' && displayed.decisionReason" class="rounded-lg bg-muted p-3">Technical Support feedback: {{ displayed.decisionReason }}</p>
       </CardContent>
     </Card>
 
     <form v-if="!requestUnavailable && !typesError" class="flex flex-col gap-6" @submit.prevent="submit">
-      <fieldset :disabled="!pageReady" aria-label="Technical requirements" class="m-0 flex min-w-0 flex-col gap-6 border-0 p-0">
+      <fieldset :disabled="!pageReady || readOnly" aria-label="Technical requirements" class="m-0 flex min-w-0 flex-col gap-6 border-0 p-0">
       <Card>
         <CardHeader>
           <CardTitle>Equipment</CardTitle>

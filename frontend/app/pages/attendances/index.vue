@@ -15,7 +15,8 @@ const { data: events, error, refresh } = await useFetch<{ events: Array<{
   id: string, eventId: string, title: string, description: string,
   status: string, startAt: string, endAt: string, timeZone: string,
   primaryVenueId: string | null, primaryVenueName: string | null,
-  registrationLimit: number | null, registrationWindow: { startAt: string, endAt: string } | null,
+  registrationLimit: number | null, confirmedRegistrationCount: number, placesRemaining: number | null,
+  registrationWindow: { startAt: string, endAt: string } | null,
   organiserId: string | null, createdAt: string, updatedAt: string
 }> }>('/api/attendances/events')
 
@@ -38,6 +39,7 @@ function statusBadge(status: string) {
     <div class="flex flex-col gap-2">
       <h1 class="text-3xl font-semibold">Your events</h1>
       <p class="text-sm text-muted-foreground">Track your confirmed events and view confirmed arrangements.</p>
+      <NuxtLink to="/attendances/registrations" class="w-fit text-sm underline text-primary">My registrations</NuxtLink>
     </div>
 
     <p v-if="error" role="alert" class="mt-4 text-destructive">Unable to load events. Please try again later.</p>
@@ -69,7 +71,8 @@ function statusBadge(status: string) {
                 <TableHead scope="col" class="px-4 py-3">Event</TableHead>
                 <TableHead scope="col" class="px-4 py-3">Date &amp; time</TableHead>
                 <TableHead scope="col" class="px-4 py-3">Primary location</TableHead>
-                <TableHead scope="col" class="px-4 py-3">Capacity</TableHead>
+                <TableHead scope="col" class="px-4 py-3">Registration limit</TableHead>
+                <TableHead scope="col" class="px-4 py-3">Places left</TableHead>
                 <TableHead scope="col" class="px-4 py-3">Status</TableHead>
                 <TableHead scope="col" class="px-4 py-3"></TableHead>
               </TableRow>
@@ -89,7 +92,12 @@ function statusBadge(status: string) {
                   <span class="text-xs text-muted-foreground">Primary venue</span>
                 </TableCell>
                 <TableCell class="px-4 py-3">
-                  {{ event.registrationLimit }} attendees
+                  <div v-if="event.registrationLimit != null">{{ event.registrationLimit }} {{ event.registrationLimit === 1 ? 'attendee' : 'attendees' }}</div>
+                  <div v-else>Not set</div>
+                </TableCell>
+                <TableCell class="px-4 py-3">
+                  <div v-if="event.placesRemaining != null">{{ event.placesRemaining }} {{ event.placesRemaining === 1 ? 'place' : 'places' }} left</div>
+                  <div v-else>Limit not set</div>
                 </TableCell>
                 <TableCell class="px-4 py-3">
                   <Badge :class="statusBadge(event.status)">{{ event.status }}</Badge>

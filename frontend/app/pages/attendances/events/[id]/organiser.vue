@@ -37,7 +37,7 @@ function statusBadge(status: string) {
 
 <template>
   <main class="mx-auto w-full max-w-5xl px-5 py-8 md:px-8">
-    <NuxtLink to="/attendee" class="inline-block mb-4 underline text-sm text-muted-foreground">← Back to your events</NuxtLink>
+    <NuxtLink to="/attendances" class="inline-block mb-4 underline text-sm text-muted-foreground">← Back to your events</NuxtLink>
 
     <Card v-if="error || !isOrganiser" class="mt-6">
       <CardHeader>
@@ -85,7 +85,7 @@ function statusBadge(status: string) {
       </CardContent>
       <CardFooter class="flex justify-between">
         <Button as-child variant="outline">
-          <NuxtLink to="/attendee">Back to your events</NuxtLink>
+          <NuxtLink to="/attendances">Back to your events</NuxtLink>
         </Button>
         <NuxtLink :to="`/attendances/events/${event.eventId}`" class="underline text-sm text-muted-foreground">Attendee view</NuxtLink>
       </CardFooter>

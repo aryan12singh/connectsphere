@@ -29,12 +29,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if(to.path==='/technical-requirements' && !can('technical.review'))return navigateTo('/access-denied')
   if(to.path==='/technical-requirements/preparation' && !can('venue_bookings.decide') && !can('technical.review'))return navigateTo('/access-denied')
   if(to.path.startsWith('/technical-requirements/') && to.path!=='/technical-requirements/preparation' && !can('technical.view'))return navigateTo('/access-denied')
-  if (to.path === '/attendee' && !roles.includes('ATTENDEE')) return navigateTo('/access-denied')
+  if (to.path === '/attendances' && !roles.includes('ATTENDEE')) return navigateTo('/access-denied')
   if (to.path.startsWith('/attendances/events/') && to.path.includes('/organiser')) {
     if (!roles.includes('EVENT_ORGANISER')) return navigateTo('/access-denied')
   }
   if (to.path.startsWith('/attendances/events/') && !to.path.includes('/organiser')) {
-    if (!roles.includes('ATTENDEE') && !roles.includes('EVENT_ORGANISER')) return navigateTo('/access-denied')
+    if (!roles.includes('ATTENDEE') && !roles.includes('EVENT_ORGANISER') && !roles.includes('EVENT_COORDINATOR')) return navigateTo('/access-denied')
   }
   if (to.path.startsWith('/attendances/registrations/')) {
     if (!roles.includes('ATTENDEE')) return navigateTo('/access-denied')
