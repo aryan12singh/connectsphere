@@ -35,7 +35,7 @@ What's where in the repo:
 | `infra/keycloak/connectsphere-realm.json` | Keycloak realm: seed users, `auth-service` client and its service account, lockout rules |
 | `infra/postgres/init-databases.sh` | Creates one database per service, the first time the Postgres volume is created |
 | `gateway/kong/kong.yml` | Routes, login rate limit, CORS |
-| `backend/seed_data/` | Seed SQL per database (01 user, 02 auth, ...). Copies of 01/02 also sit in each service's `prisma/seed/` |
+| `services/<name>-service/prisma/seed/` | Canonical SQL seed owned by each service |
 | `frontend/` (auth parts) | See section 7 |
 
 **If you ran an earlier version of this stack**, the simplest fix is
@@ -175,7 +175,7 @@ calls Kong on the browser's behalf, so the browser never talks to Kong.
   such as `organiser@example.com`, the event mocks, and your existing tests.
   No backend needed. The admin API returns 501 in this mode.
 - `NUXT_AUTH_MODE=live`. Real login with the seed users (e.g.
-  `sarah.tan@nexuslabs.sg` / `Sarah@CS01!`; each seed user has their own password, listed in `backend/seed_data/01_user_db.sql`). Needs the Docker stack and
+  `sarah.tan@nexuslabs.sg` / `Sarah@CS01!`; each seed user has their own password, listed in `services/user-service/prisma/seed/01_user_db.sql`). Needs the Docker stack and
   `NUXT_API_BASE_URL=http://localhost:8000`.
 
   Note: the event pages still use mock data keyed to mock user IDs, so real

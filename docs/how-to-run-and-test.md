@@ -115,33 +115,18 @@ requests to the old containers, and logins fail with a 502 until you do:
 docker compose -f infra/docker-compose.yml restart kong
 ```
 
-The tables are created automatically when the services start. Then load the
-seed rows. `docker compose cp` works in both PowerShell and bash (PowerShell
-has no `<` redirect):
+The tables are created automatically when the services start. The one-shot
+Compose seed loader reads the canonical per-service SQL files:
 
 ```powershell
-docker compose -f infra/docker-compose.yml cp backend/seed_data/01_user_db.sql postgres:/tmp/01_user_db.sql
-docker compose -f infra/docker-compose.yml cp backend/seed_data/02_auth_db.sql postgres:/tmp/02_auth_db.sql
-docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d user_db -f /tmp/01_user_db.sql
-docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d auth_db -f /tmp/02_auth_db.sql
+docker compose -f infra/docker-compose.yml run --rm seed
 ```
 
-Each should end with `COMMIT`. Running them twice is safe.
+Running the loader again is safe. It waits for each service database to be
+migrated, then loads the canonical seed under that service's `prisma/seed/`
+directory, including the Attendance Event projection.
 
-The venue and booking seed files are also available:
-
-```powershell
-docker compose -f infra/docker-compose.yml cp backend/seed_data/03_venue_db.sql postgres:/tmp/03_venue_db.sql
-docker compose -f infra/docker-compose.yml cp backend/seed_data/04_booking_db.sql postgres:/tmp/04_booking_db.sql
-docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d venue_db -f /tmp/03_venue_db.sql
-docker compose -f infra/docker-compose.yml exec postgres psql -U connectsphere -d booking_db -f /tmp/04_booking_db.sql
-```
-
-Run those two commands after the venue and booking Prisma migrations have
-created their tables. Compose now runs both services with `DATA_MODE=prisma`,
-so requests and history are persisted in `venue_db` and `booking_db` just as
-auth and user data are persisted in their service-owned databases. The seed
-files are idempotent and can be rerun after a database reset.
+All services persist to their own databases.
 
 The remaining databases are reserved for services still marked
 `not-built-yet` in the compose file.
@@ -203,7 +188,7 @@ while Nuxt compiles it.
 ### Seed users (live mode)
 
 Each seed user has their own password. The full list is in the row comments of
-`backend/seed_data/01_user_db.sql`. The ones used in the test cases:
+`services/user-service/prisma/seed/01_user_db.sql`. The ones used in the test cases:
 
 | Role | Email | Password |
 |---|---|---|

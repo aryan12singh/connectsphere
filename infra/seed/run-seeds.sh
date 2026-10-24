@@ -8,6 +8,7 @@
 #
 # Event and Venue must be seeded before Booking, and all dependencies before
 # Equipment so seeded Technical Review rows can resolve their live context.
+# Attendance runs last so its Event projection matches Event Service's seed.
 set -euo pipefail
 
 SEEDS=/seed/services
@@ -19,6 +20,7 @@ LIST=(
   "event_db|activity_log|$SEEDS/event-service/prisma/seed/04_event_db.sql"
   "booking_db|venue_booking_requests|$SEEDS/booking-service/prisma/seed/04_booking_db.sql"
   "equipment_db|equipment_stock|$SEEDS/equipment-service/prisma/seed/05_equipment_db.sql"
+  "attendance_db|events|$SEEDS/attendance-service/prisma/seed/01_attendance_db.sql"
 )
 
 for entry in "${LIST[@]}"; do
