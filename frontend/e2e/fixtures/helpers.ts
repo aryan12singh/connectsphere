@@ -111,7 +111,7 @@ export async function completeForm(page: Page, name = `Browser ${randomUUID()}`)
   await page.getByRole('option', { name: 'Physical', exact: true }).click()
   await field(page, 'Preferred layout').click()
   await page.getByRole('option', { name: 'Theatre', exact: true }).click()
-  await field(page, 'Venue / location requirements').fill('Accessible meeting room')
+  await field(page, 'Venue or location requirements').fill('Accessible meeting room')
   return name
 }
 

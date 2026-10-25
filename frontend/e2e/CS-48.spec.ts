@@ -82,6 +82,21 @@ test('TC-CS48-05 simultaneous last-place registrations admit only one Attendee',
 test('TC-CS48-02 current Coordinator sets the registration limit and the Attendee sees the limit and places left', async ({ attendance, page }) => {
   const event = await attendance.event({ date: '2026-10-30', registrationLimit: null })
   await signIn(page, event.email)
+  await page.goto(`/events/${event.eventId}`)
+  const registrationPageButton = page.getByRole('link', { name: 'Go to registration page', exact: true })
+  await expect(registrationPageButton).toHaveAttribute('href', `/attendances/events/${event.eventId}`)
+  await registrationPageButton.click()
+  await expect(page).toHaveURL(new RegExp(`/attendances/events/${event.eventId}$`))
+  await expect(page.getByRole('heading', { name: event.eventName, exact: true })).toBeVisible()
+
+  await page.goto(`/attendances/events/${event.eventId}`)
+  await expect(page.getByRole('link', { name: 'Back to event request' })).toHaveAttribute('href', `/requests/${event.id}`)
+  const requestButton = page.getByRole('link', { name: 'View event request' })
+  await expect(requestButton).toHaveAttribute('href', `/requests/${event.id}`)
+  await requestButton.click()
+  await expect(page.getByRole('heading', { name: event.eventName, exact: true })).toBeVisible()
+  await expect(page.getByText(`Request ID: ${event.id}`, { exact: false })).toBeVisible()
+
   await page.goto(`/attendances/events/${event.eventId}`)
   await page.getByRole('link', { name: 'Manage registrations' }).click()
   await expect(page.getByRole('heading', { name: 'Event registrations' })).toBeVisible()

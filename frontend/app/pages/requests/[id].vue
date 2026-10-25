@@ -62,13 +62,13 @@ useHead({title:'Event request | ConnectSphere'})
 
    <Tabs v-model="tab" class="mt-8">
     <TabsList variant="line" aria-label="Request details and history" class="h-auto w-fit gap-1 rounded-none border-b bg-transparent p-0">
-     <TabsTrigger id="request-details-tab" value="details" :disabled="!tabsReady" class="h-auto rounded-none px-3 py-2">Details</TabsTrigger>
-     <TabsTrigger id="request-history-tab" value="history" :disabled="!tabsReady" class="h-auto rounded-none px-3 py-2">History</TabsTrigger>
+     <TabsTrigger value="details" :disabled="!tabsReady" class="h-auto rounded-none px-3 py-2">Details</TabsTrigger>
+     <TabsTrigger value="history" :disabled="!tabsReady" class="h-auto rounded-none px-3 py-2">History</TabsTrigger>
     </TabsList>
-    <TabsContent id="request-details-panel" value="details" aria-labelledby="request-details-tab" class="mt-6">
+    <TabsContent value="details" class="mt-6">
      <RequestFormPage v-model="form" :title="loaded.eventName || 'Untitled draft'" :status-label="loaded.statusLabel ?? REQUEST_STATUS_LABELS[loaded.status] ?? loaded.status" :show-header="false" :banner="coordinator as any" :disabled="mode==='readonly'" :is-submitting="isSubmitting" :submit-error="submitError" :field-errors="fieldErrors" :mode="mode" :can-edit="canEdit" :return-comments="loaded.decisionReason ?? ''" @save="save(false)" @submit="save(true)" @edit="editMode=true" />
     </TabsContent>
-    <TabsContent id="request-history-panel" value="history" aria-labelledby="request-history-tab" class="mt-6">
+    <TabsContent value="history" class="mt-6">
      <RequestActivityHistory :key="historyRevision" :request-id="id" inside-tabs />
     </TabsContent>
    </Tabs>

@@ -12,7 +12,7 @@ import SafetyReworkPanel from './SafetyReworkPanel.vue'
 import type {SafetyRound,SafetySnapshot,SafetyFeedback} from './safety-review-state'
 interface Decision {outcome:'APPROVE'|'REJECT'|'REQUEST_CHANGES';reason:string;areas:string[];privateNotes?:string;rejectedBookingIds:string[]}
 interface SafetyView {planningDetails?:Record<string,unknown>;canCorrect?:boolean;eventRequestId?:string;event:{id:string;title:string;status:string;version:number};state:string;canSubmit:boolean;venueReady?:boolean;requirementsRevision?:string;snapshot?:SafetySnapshot;technical?:{status:string;reason?:string};outstanding:Array<{reasons:string[];bookingId?:string;venueName?:string}>;nextAction?:string;round:(SafetyRound&{status:string;decision:Decision|null})|null;rework?:{reviewedRevision:string;roundId:string;note:string};activeOperation?:{key:string;version:number}|null}
-const props=defineProps<{eventId:string}>(),emit=defineEmits<{changed:[]}>()
+const props=defineProps<{eventId:string}>(),emit=defineEmits<{changed:[status:string]}>()
 const {user}=useUserSession()
 const coordinator=computed(()=>user.value?.roles?.includes('EVENT_COORDINATOR')||user.value?.role==='EVENT_COORDINATOR')
 const {data,error,refresh}=await useFetch<SafetyView>(()=>`/api/safety/events/${encodeURIComponent(props.eventId)}`,{watch:[()=>props.eventId]})
@@ -26,7 +26,7 @@ async function command(action:string,body:Record<string,unknown>,key?:string){
  pending.value=true;message.value=''
  const encoded=JSON.stringify(body),saved=keys.get(action)
  const actionKey=key||(saved?.body===encoded?saved.key:crypto.randomUUID());keys.set(action,{body:encoded,key:actionKey})
- try{await $fetch(`/api/safety/events/${encodeURIComponent(props.eventId)}/${action}`,{method:'POST',body,headers:{'idempotency-key':actionKey}});keys.delete(action);await refresh();emit('changed')}
+ try{await $fetch(`/api/safety/events/${encodeURIComponent(props.eventId)}/${action}`,{method:'POST',body,headers:{'idempotency-key':actionKey}});keys.delete(action);await refresh();if(data.value?.event.status)emit('changed',data.value.event.status)}
  catch(caught:any){message.value=caught?.data?.data?.error?.message||caught?.data?.error?.message||caught?.statusMessage||'Unable to save. Refresh and retry.';await refresh()}
  finally{pending.value=false}
 }

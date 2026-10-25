@@ -59,7 +59,7 @@ describe('CS-93 independent Coordinator preparation UI',()=>{
     ui.summary.venueReady=true;ui.summary.outstanding=[]
     ui.summary.items=[{id:'room-a',eventId:'event-1',venueId:'venue-a',venueName:'Main hall',venueCapacity:100,expectedAttendance:80,layout:'THEATRE',status:'CONFIRMED',effectiveStatus:'CONFIRMED',version:2,required:true,startAt:'2028-11-20T02:00:00Z',endAt:'2028-11-20T04:00:00Z',occupiedStart:'2028-11-20T01:30:00Z',occupiedEnd:'2028-11-20T04:30:00Z',timeZone:'Asia/Singapore',expiresAt:null,flags:[],accessibilityNeeds:[]}]
     const wrapper=await mountSuspended(EventVenueArrangements,{props:{eventId:'event-1'}}),panel=wrapper.find('[aria-label="Safety preparation"]')
-    expect(panel.exists()).toBe(true);expect(panel.text()).toContain('Venues ready')
+    expect(panel.exists()).toBe(true);expect(panel.text()).toContain('Venues are ready for the current requirements')
     expect(panel.text()).toContain('Technical/support approval has not been verified')
     expect(panel.find('button').attributes('disabled')).toBeDefined()
     expect(panel.text()).not.toContain('No equipment required')

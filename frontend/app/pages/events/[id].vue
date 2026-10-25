@@ -9,10 +9,13 @@ const { can } = usePermissions()
 const route = useRoute()
 const id = String(route.params.id ?? '')
 const dashboard = ref<InstanceType<typeof EventReadinessDashboard> | null>(null)
+const eventStatusOverride = ref<string | null>(null)
 
 useHead({ title: 'Event activity | ConnectSphere' })
 
-function refreshDashboard() {
+function refreshDashboard(status?: string) {
+  if (status)
+    eventStatusOverride.value = status
   return dashboard.value?.refresh()
 }
 </script>
@@ -23,7 +26,7 @@ function refreshDashboard() {
       <NuxtLink to="/">My requests</NuxtLink>
     </Button>
 
-    <EventReadinessDashboard ref="dashboard" :event-id="id" class="mt-5" />
+    <EventReadinessDashboard ref="dashboard" :event-id="id" :status-override="eventStatusOverride" class="mt-5" />
 
     <div class="mt-8 grid gap-8">
       <EventVenueArrangements v-if="can('venue_bookings.create')" :event-id="id" @changed="refreshDashboard" />

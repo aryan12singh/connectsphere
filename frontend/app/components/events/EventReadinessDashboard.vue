@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import RequestActivityHistory from './RequestActivityHistory.vue'
@@ -31,6 +32,7 @@ interface EventSummary {
 }
 
 interface SafetyView {
+  event?: { status: string }
   state: string
   canSubmit: boolean
   venueReady?: boolean
@@ -38,7 +40,8 @@ interface SafetyView {
   nextAction?: string
 }
 
-const props = defineProps<{ eventId: string }>()
+const props = defineProps<{ eventId: string, statusOverride?: string | null }>()
+const { user } = useUserSession()
 
 const { data: summary, error: summaryError, refresh: refreshSummary } = await useFetch<EventSummary>(
   () => `/api/bookings/events/${encodeURIComponent(props.eventId)}/summary`,
@@ -50,7 +53,10 @@ const { data: safety, error: safetyError, refresh: refreshSafety } = await useFe
 )
 
 const event = computed(() => summary.value?.event)
-const eventStatus = computed(() => statusLabel(event.value?.status))
+const currentEventStatus = computed(() => props.statusOverride ?? safety.value?.event?.status ?? event.value?.status)
+const eventStatus = computed(() => statusLabel(currentEventStatus.value))
+const canOpenRegistrationPage = computed(() => (user.value?.role === 'EVENT_COORDINATOR' || user.value?.roles?.includes('EVENT_COORDINATOR'))
+  && ['CONFIRMED', 'PREPARATION'].includes(currentEventStatus.value ?? ''))
 const primaryVenue = computed(() => {
   const bookingId = summary.value?.primaryVenue?.bookingId
   if (!bookingId)
@@ -70,7 +76,7 @@ const venueSummary = computed(() => {
 const technicalStatus = computed(() => safety.value?.technical ? statusLabel(safety.value.technical.status) : 'Unavailable')
 const safetyStatus = computed(() => safety.value ? statusLabel(safety.value.state) : 'Unavailable')
 const activeStage = computed(() => {
-  const status = event.value?.status
+  const status = currentEventStatus.value
   if (!status || ['CANCELLING', 'CANCELLED', 'COMPLETED', 'REJECTED'].includes(status))
     return -1
   if (status === 'PREPARATION')
@@ -131,7 +137,10 @@ defineExpose({ refresh })
         </p>
         <p class="mt-2 break-all text-sm text-muted-foreground">Event ID: {{ props.eventId }}</p>
       </div>
-      <Badge variant="outline" class="border-transparent bg-muted px-3 py-1 text-sm font-medium text-foreground">
+      <Button v-if="canOpenRegistrationPage" as-child variant="outline" size="sm" aria-label="Go to registration page">
+        <NuxtLink :to="`/attendances/events/${encodeURIComponent(props.eventId)}`">Go to registration page</NuxtLink>
+      </Button>
+      <Badge v-else variant="outline" class="border-transparent bg-muted px-3 py-1 text-sm font-medium text-foreground">
         {{ eventStatus }}
       </Badge>
     </header>

@@ -5,7 +5,9 @@ INSERT INTO equipment_stock ("equipmentType", total, version, "updatedAt") VALUE
   ('speaker', 5, 1, CURRENT_TIMESTAMP),
   ('lighting', 5, 1, CURRENT_TIMESTAMP),
   ('stage', 5, 1, CURRENT_TIMESTAMP)
-ON CONFLICT ("equipmentType") DO NOTHING;
+ON CONFLICT ("equipmentType") DO UPDATE
+SET total = EXCLUDED.total, "updatedAt" = EXCLUDED."updatedAt"
+WHERE equipment_stock.total = 0 AND equipment_stock.version = 1;
 
 -- Two actionable Technical Review examples. Inventory edits are intentionally
 -- untouched on reruns; these rows only add demo requests and their audit trail.

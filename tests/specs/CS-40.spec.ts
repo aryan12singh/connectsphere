@@ -31,7 +31,7 @@ mockNuxtImport('useFetch', () => (url: string) => {
   return { data: fixture.data, error: fixture.error }
 })
 mockNuxtImport('useRequestFetch', () => () => fixture.fetch)
-mockNuxtImport('useRoute', () => () => ({ params: { id: fixture.routeId } }))
+mockNuxtImport('useRoute', () => () => ({ params: { id: fixture.routeId }, query: {} }))
 mockNuxtImport('useUserSession', () => () => ({ user: fixture.user }))
 
 async function chooseEquipment(wrapper: VueWrapper, equipmentType: string) {

@@ -16,13 +16,13 @@ interface Summary {attendancePlan?:{expectedAttendance:number;ready:boolean;sess
 interface Match {id:string;name:string;address?:string;capacity:number|null;setupMinutes:number;turnaroundMinutes:number;match:'FULL'|'PARTIAL';gaps:string[];canRequest:boolean;occupiedStart:string;occupiedEnd:string}
 interface Option {value:string;label:string}
 const props=defineProps<{eventId:string}>()
-const emit=defineEmits<{changed:[]}>()
+const emit=defineEmits<{changed:[status?:string]}>()
 const {user}=useUserSession(),{showError}=useErrorAlert()
 const requestFetch=useRequestFetch()
 const {data,error,refresh}=await useFetch<Summary>(()=>`/api/bookings/events/${encodeURIComponent(props.eventId)}/summary`,{watch:[()=>props.eventId]})
 const {data:safetyData}=await useFetch<any>(()=>`/api/safety/events/${encodeURIComponent(props.eventId)}`,{watch:[()=>props.eventId]})
 const {data:options}=await useFetch<{supportedLayouts?:Option[];facilities?:Option[];accessibilityTags?:Option[]}>('/api/venues/options')
-async function refreshAndNotify(){await refresh();emit('changed')}
+async function refreshAndNotify(status?:string){await refresh();emit('changed',status)}
 watch(error,value=>{if(value)showError(value,'Unable to load venue arrangements')},{immediate:true})
 const canReview=computed(()=>!error.value&&data.value?.event.id===props.eventId&&data.value?.event.currentCoordinatorId===user.value?.id&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(data.value?.event.status||''))
 const canArrange=computed(()=>!error.value && data.value?.event.id===props.eventId && data.value.event.status==='ARRANGEMENT_PENDING' && !['PREPARING','PENDING','APPROVED'].includes(data.value.event.safetyState || '') && data.value.event.currentCoordinatorId===user.value?.id)

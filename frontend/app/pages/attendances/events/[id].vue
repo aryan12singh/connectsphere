@@ -22,7 +22,14 @@ const { data: event, error, refresh } = await useFetch<{
   organiserId: string | null, createdAt: string, updatedAt: string
 }>(`/api/attendances/events/${encodeURIComponent(eventId)}`)
 
-const backHref = computed(() => user.value?.role === 'EVENT_ORGANISER' ? '/' : '/attendances')
+const canViewEventRequest = computed(() => ['EVENT_COORDINATOR', 'EVENT_ORGANISER'].includes(user.value?.role ?? ''))
+const { data: eventHistory } = await useFetch<{ entity?: { eventRequestId?: string | null } }>(
+  `/api/event-history/${encodeURIComponent(eventId)}`,
+  { immediate: canViewEventRequest.value },
+)
+const eventRequestId = computed(() => eventHistory.value?.entity?.eventRequestId ?? null)
+const eventRequestHref = computed(() => eventRequestId.value ? `/requests/${encodeURIComponent(eventRequestId.value)}` : null)
+const backHref = computed(() => eventRequestHref.value ?? (user.value?.role === 'EVENT_ORGANISER' ? '/' : '/attendances'))
 const registering = ref(false)
 const hydrated = ref(false)
 const registerError = ref('')
@@ -102,7 +109,7 @@ function formatStatus(status: string) {
   <NuxtPage v-if="route.name === 'attendances-events-id-organiser'" />
   <main v-else class="mx-auto w-full max-w-3xl px-5 py-8 md:px-8 md:py-12">
     <NuxtLink :to="backHref" class="inline-flex items-center gap-2 rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-      <ArrowLeftIcon :size="16" aria-hidden="true" />Back to your events
+      <ArrowLeftIcon :size="16" aria-hidden="true" />{{ eventRequestHref ? 'Back to event request' : 'Back to your events' }}
     </NuxtLink>
 
     <Card v-if="error" class="mt-8 max-w-2xl" aria-labelledby="event-unavailable-heading">
@@ -171,6 +178,9 @@ function formatStatus(status: string) {
             </div>
 
             <nav v-if="user?.role === 'EVENT_COORDINATOR' || user?.role === 'EVENT_ORGANISER'" class="mt-5 flex flex-wrap gap-2" aria-label="Event actions">
+              <Button v-if="eventRequestHref" as-child variant="outline" size="sm">
+                <NuxtLink :to="eventRequestHref">View event request</NuxtLink>
+              </Button>
               <Button as-child variant="outline" size="sm">
                 <NuxtLink :to="`/attendances/registration-management/${event.eventId}`">Manage registrations</NuxtLink>
               </Button>
