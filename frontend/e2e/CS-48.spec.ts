@@ -46,8 +46,9 @@ test('TC-CS48-01 Attendee registers from the Event page and sees their saved sta
   await page.goto('/attendances/registrations')
   await expect(page.getByRole('heading', { name: 'Your events' })).toBeVisible()
   await expect(page.getByRole('tab', { name: 'My registrations', selected: true })).toBeVisible()
-  await expect(page.getByText(event.eventName)).toBeVisible()
-  await expect(page.getByText('Registered', { exact: true })).toBeVisible()
+  const signedInRegistrationCard = page.getByRole('link', { name: new RegExp(event.eventName) })
+  await expect(signedInRegistrationCard).toBeVisible()
+  await expect(signedInRegistrationCard).toContainText('Registered')
   const state = await reviewDatabase('attendance', async db => ({
     registrations: (await db.query('SELECT id,status FROM registrations WHERE "eventId"=$1 AND "userId"=$2', [event.eventId, attendeeId])).rows,
     actions: (await db.query('SELECT id,kind,"deliveredAt",payload FROM attendance_outbox WHERE "aggregateId"=$1', [event.eventId])).rows,

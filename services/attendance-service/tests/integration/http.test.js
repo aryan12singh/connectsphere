@@ -224,6 +224,16 @@ test('TC-CS48-05 full capacity and duplicate registrations do not create extra r
 
 test('TC-CS48-04 registration POST fails closed for disabled, unconfirmed, missing-limit, and closed-window events', async () => {
   await withServer(async baseUrl => {
+    const forbidden = await fetch(`${baseUrl}/events/${confirmedEvent.id}/registrations`, {
+      method: 'POST', headers: { ...actorHeaders('org-1', 'EVENT_ORGANISER'), 'content-type': 'application/json' }, body: '{}',
+    });
+    assert.equal(forbidden.status, 403);
+    assert.equal((await forbidden.json()).error.code, 'FORBIDDEN');
+    const missing = await fetch(`${baseUrl}/events/missing-event/registrations`, {
+      method: 'POST', headers: { ...actorHeaders('attendee-missing', 'ATTENDEE'), 'content-type': 'application/json' }, body: '{}',
+    });
+    assert.equal(missing.status, 404);
+    assert.equal((await missing.json()).error.code, 'NOT_FOUND');
     const cases = [
       [{ ...confirmedEvent, registrationEnabled: false }, 'REGISTRATION_DISABLED'],
       [{ ...confirmedEvent, status: 'CANCELLED' }, 'EVENT_NOT_CONFIRMED'],
@@ -253,6 +263,9 @@ test('TC-CS48-06 attendee can list only their own persisted registrations', asyn
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.deepEqual(body.registrations.map(row => row.userId), ['mine']);
+    const forbidden = await fetch(`${baseUrl}/registrations`, { headers: actorHeaders('org-1', 'EVENT_ORGANISER') });
+    assert.equal(forbidden.status, 403);
+    assert.equal((await forbidden.json()).error.code, 'FORBIDDEN');
   });
 });
 
@@ -266,6 +279,7 @@ test('TC-CS48-07 management list is restricted to the Event Organiser and curren
     assert.equal((await fetch(endpoint, { headers: actorHeaders('coord-1', 'EVENT_COORDINATOR') })).status, 200);
     assert.equal((await fetch(endpoint, { headers: actorHeaders('coord-old', 'EVENT_COORDINATOR') })).status, 403);
     assert.equal((await fetch(endpoint, { headers: actorHeaders('attendee-1', 'ATTENDEE') })).status, 403);
+    assert.equal((await fetch(`${baseUrl}/events/missing-event/registrations`, { headers: actorHeaders('coord-1', 'EVENT_COORDINATOR') })).status, 404);
   });
 });
 
@@ -277,6 +291,14 @@ test('TC-CS48-02 current Coordinator can set a positive registration limit but o
     const body = JSON.stringify({ registrationLimit: 7 });
     const denied = await fetch(endpoint, { method: 'PUT', headers: { ...actorHeaders('coord-old', 'EVENT_COORDINATOR'), 'content-type': 'application/json' }, body });
     assert.equal(denied.status, 403);
+    for (const registrationLimit of [0, 1.5]) {
+      const invalid = await fetch(endpoint, {
+        method: 'PUT', headers: { ...actorHeaders('coord-1', 'EVENT_COORDINATOR'), 'content-type': 'application/json' },
+        body: JSON.stringify({ registrationLimit }),
+      });
+      assert.equal(invalid.status, 422);
+      assert.equal((await invalid.json()).error.code, 'VALIDATION_FAILED');
+    }
     const response = await fetch(endpoint, { method: 'PUT', headers: { ...actorHeaders('coord-1', 'EVENT_COORDINATOR'), 'content-type': 'application/json' }, body });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).registrationLimit, 7);

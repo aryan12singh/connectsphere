@@ -89,7 +89,7 @@ test('TC-CS47-08: Cancelled event - registered attendee sees own record; unrelat
   expect(own.status()).toBe(200)
   await signIn(page, emails.attendee); await page.goto(`/attendances/registrations/${event.eventId}`)
   await expect(page.getByText('Your registration')).toBeVisible()
-  await expect(page.getByText('CANCELLED', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Cancelled', { exact: true }).first()).toBeVisible()
   const unrelated = await attendance.checkRegistration(event.eventId, await attendance.actor(emails.otherAttendee))
   expect(unrelated.status()).toBe(404)
   await signIn(page, emails.otherAttendee); await page.goto(`/attendances/registrations/${event.eventId}`)
