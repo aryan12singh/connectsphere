@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { ArrowLeftIcon, UsersRoundIcon } from '@lucide/vue'
 import { useUserSession } from '#imports'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 const eventId = String(useRoute().params.eventId ?? '')
 const { user } = useUserSession()
@@ -22,6 +22,14 @@ const notice = ref('')
 const formError = ref('')
 if (roster.value?.registrationLimit != null) limitInput.value = String(roster.value.registrationLimit)
 onMounted(() => { hydrated.value = true })
+
+function formatStatus(status: string) {
+  return status
+    .toLowerCase()
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
 
 async function saveLimit() {
   const registrationLimit = Number(limitInput.value)
@@ -43,37 +51,72 @@ async function saveLimit() {
 </script>
 
 <template>
-  <main class="mx-auto w-full max-w-5xl px-5 py-8 md:px-8">
-    <NuxtLink :to="`/attendances/events/${eventId}`" class="mb-4 inline-block text-sm underline text-muted-foreground">← Back to Event</NuxtLink>
-    <h1 class="text-3xl font-semibold">Event registrations</h1>
-    <p class="mt-2 text-muted-foreground">{{ event?.title || eventId }}</p>
-    <p v-if="error" role="alert" class="mt-4 text-destructive">You are not authorized to view this registration list, or it is unavailable.</p>
+  <main class="mx-auto w-full max-w-5xl px-5 py-8 md:px-8 md:py-12">
+    <NuxtLink :to="`/attendances/events/${eventId}`" class="inline-flex items-center gap-2 rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+      <ArrowLeftIcon :size="16" aria-hidden="true" />Back to Event
+    </NuxtLink>
+
+    <header class="mt-7">
+      <p class="text-sm text-muted-foreground">Event {{ eventId }}</p>
+      <h1 class="mt-2 text-3xl font-medium tracking-tight md:text-4xl">Event registrations</h1>
+      <p class="mt-2 text-base leading-7 text-muted-foreground">{{ event?.title || eventId }}</p>
+    </header>
+
+    <p v-if="error" role="alert" class="mt-6 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+      You are not authorized to view this registration list, or it is unavailable.
+    </p>
+
     <template v-else-if="roster">
-      <Card class="mt-6">
-        <CardHeader><CardTitle>Registration capacity</CardTitle></CardHeader>
-        <CardContent class="grid gap-3">
-          <p>{{ roster.confirmedRegistrationCount }} registered · {{ roster.registrationLimit == null ? 'Limit not set' : `${roster.registrationLimit} attendees` }} · {{ roster.placesRemaining == null ? 'No places available' : `${roster.placesRemaining} places left` }}</p>
-          <p v-if="roster.overCapacity" role="status" class="text-destructive">The registration limit is below the number already registered. Existing registrations are retained and further registration is closed.</p>
-          <form v-if="isCoordinator" class="flex flex-wrap items-end gap-3" @submit.prevent="saveLimit">
-            <label class="grid gap-2 text-sm">Set registration limit<input v-model="limitInput" aria-label="Registration limit" inputmode="numeric" type="number" min="1" step="1" class="rounded-md border bg-background px-3 py-2"></label>
-            <Button type="submit" :disabled="saving || !hydrated">{{ saving ? 'Saving…' : 'Save limit' }}</Button>
-          </form>
-          <p v-if="notice" role="status">{{ notice }}</p>
-          <p v-if="formError" role="alert" class="text-destructive">{{ formError }}</p>
-        </CardContent>
-      </Card>
-      <Card class="mt-6">
-        <CardHeader><CardTitle>Attendees</CardTitle></CardHeader>
-        <CardContent>
-          <p v-if="roster.registrations.length === 0" role="status" class="text-sm text-muted-foreground">No one is registered for this event yet.</p>
-          <div v-else class="overflow-x-auto rounded-lg border">
-            <Table class="w-full text-sm">
-              <TableHeader><TableRow class="bg-muted"><TableHead>Attendee ID</TableHead><TableHead>Registered at</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-              <TableBody><TableRow v-for="row in roster.registrations" :key="row.id"><TableCell>{{ row.userId }}</TableCell><TableCell>{{ new Date(row.registeredAt).toLocaleString() }}</TableCell><TableCell><Badge>{{ row.status }}</Badge></TableCell></TableRow></TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <div class="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
+        <section aria-labelledby="registered-attendees-heading">
+          <Card class="gap-0 rounded-[18px] border border-border !bg-transparent p-0 !shadow-none !ring-0">
+            <CardHeader class="px-5 pb-0 pt-5 md:px-6 md:pt-6">
+              <CardTitle id="registered-attendees-heading" class="text-xl font-medium">Attendees</CardTitle>
+            </CardHeader>
+            <CardContent class="px-5 pb-5 pt-5 md:px-6 md:pb-6">
+              <p v-if="roster.registrations.length === 0" role="status" class="text-sm leading-6 text-muted-foreground">No one is registered for this event yet.</p>
+              <ol v-else class="grid gap-3">
+                <li v-for="row in roster.registrations" :key="row.id" class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border px-4 py-3">
+                  <div class="min-w-0">
+                    <p class="break-all font-medium">{{ row.userId }}</p>
+                    <p class="mt-1 text-sm text-muted-foreground">{{ new Date(row.registeredAt).toLocaleString() }}</p>
+                  </div>
+                  <Badge class="shrink-0">{{ formatStatus(row.status) }}</Badge>
+                </li>
+              </ol>
+            </CardContent>
+          </Card>
+        </section>
+
+        <aside aria-label="Registration settings">
+          <Card class="gap-0 rounded-[18px] border border-border !bg-transparent p-0 !shadow-none !ring-0">
+            <CardHeader class="px-5 pb-0 pt-5 md:px-6 md:pt-6">
+              <section aria-label="Registration capacity">
+                <CardTitle class="flex items-center gap-2 text-base font-medium leading-6"><UsersRoundIcon :size="18" aria-hidden="true" />Registration capacity</CardTitle>
+                <dl class="mt-5 grid gap-3 text-sm">
+                  <div class="flex items-baseline justify-between gap-4"><dt class="text-muted-foreground">Registered</dt><dd class="font-semibold">{{ roster.confirmedRegistrationCount }}</dd></div>
+                  <div class="flex items-baseline justify-between gap-4"><dt class="text-muted-foreground">Registration limit</dt><dd class="font-semibold">{{ roster.registrationLimit == null ? 'Limit not set' : `${roster.registrationLimit} attendees` }}</dd></div>
+                  <div class="flex items-baseline justify-between gap-4"><dt class="text-muted-foreground">Places left</dt><dd class="font-semibold">{{ roster.placesRemaining == null ? 'No places available' : `${roster.placesRemaining} places left` }}</dd></div>
+                </dl>
+                <p v-if="roster.overCapacity" role="status" class="mt-5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-3 text-sm leading-6 text-destructive">The registration limit is below the number already registered. Existing registrations are retained and further registration is closed.</p>
+              </section>
+            </CardHeader>
+
+            <CardContent v-if="isCoordinator" class="px-5 pb-5 pt-5 md:px-6 md:pb-6">
+              <form @submit.prevent="saveLimit">
+                <label for="registration-limit" class="block text-sm font-medium">Set registration limit</label>
+                <p id="registration-limit-help" class="mt-1 text-sm text-muted-foreground">Use a positive whole number.</p>
+                <div class="mt-3 flex flex-col gap-3 sm:flex-row">
+                  <input id="registration-limit" v-model="limitInput" aria-describedby="registration-limit-help" aria-label="Registration limit" inputmode="numeric" type="number" min="1" step="1" class="min-h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                  <Button type="submit" :disabled="saving || !hydrated" class="sm:shrink-0">{{ saving ? 'Saving…' : 'Save limit' }}</Button>
+                </div>
+                <p v-if="notice" role="status" class="mt-3 text-sm text-success">{{ notice }}</p>
+                <p v-if="formError" role="alert" class="mt-3 text-sm text-destructive">{{ formError }}</p>
+              </form>
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
     </template>
   </main>
 </template>

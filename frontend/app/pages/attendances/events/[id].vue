@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { ArrowLeftIcon, CalendarDaysIcon, MapPinIcon, UsersRoundIcon } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Alert } from '@/components/ui/alert'
-import { Separator } from '@/components/ui/separator'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useUserSession } from '#imports'
 
 const route = useRoute()
@@ -15,7 +14,7 @@ useHead({ title: 'Event details | ConnectSphere' })
 const { data: event, error, refresh } = await useFetch<{
   id: string, eventId: string, title: string, description: string,
   status: string, startAt: string, endAt: string, timeZone: string,
-  venues?: Array<{id:string;name:string;startAt:string;endAt:string}>,
+  venues?: Array<{ id: string, name: string, startAt: string, endAt: string }>,
   primaryVenueId: string | null, primaryVenueName: string | null,
   registrationLimit: number | null, confirmedRegistrationCount: number, placesRemaining: number | null,
   registrationEnabled: boolean,
@@ -23,8 +22,7 @@ const { data: event, error, refresh } = await useFetch<{
   organiserId: string | null, createdAt: string, updatedAt: string
 }>(`/api/attendances/events/${encodeURIComponent(eventId)}`)
 
-const loading = ref(!event.value && !error.value)
-const backHref=computed(()=>user.value?.role==='EVENT_ORGANISER'?'/':'/attendances')
+const backHref = computed(() => user.value?.role === 'EVENT_ORGANISER' ? '/' : '/attendances')
 const registering = ref(false)
 const hydrated = ref(false)
 const registerError = ref('')
@@ -84,77 +82,123 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('en-SG', { dateStyle: 'medium', timeStyle: 'short', timeZone: event.value?.timeZone || 'Asia/Singapore' }).format(new Date(value))
 }
 
+function formatDateTimeRange(startAt: string, endAt: string) {
+  return `${formatDate(startAt)} – ${formatDate(endAt)}`
+}
+
 function statusBadge(status: string) {
   if (status === 'CONFIRMED') return 'bg-success-soft text-success'
   if (status === 'CANCELLED') return 'bg-destructive/10 text-destructive'
   return 'bg-warning-soft text-warning'
 }
+
+function formatStatus(status: string) {
+  return status
+    .toLowerCase()
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
 </script>
 
 <template>
   <NuxtPage v-if="route.name === 'attendances-events-id-organiser'" />
-  <main v-else class="mx-auto w-full max-w-4xl px-5 py-8 md:px-8">
-    <NuxtLink :to="backHref" class="inline-block mb-4 underline text-sm text-muted-foreground">← Back to your events</NuxtLink>
+  <main v-else class="mx-auto w-full max-w-3xl px-5 py-8 md:px-8 md:py-12">
+    <NuxtLink :to="backHref" class="inline-flex items-center gap-2 rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+      <ArrowLeftIcon :size="16" aria-hidden="true" />Back to your events
+    </NuxtLink>
 
-    <Card v-if="error" class="mt-6">
+    <Card v-if="error" class="mt-8 max-w-2xl" aria-labelledby="event-unavailable-heading">
       <CardHeader>
-        <CardTitle>Event not found</CardTitle>
+        <CardTitle id="event-unavailable-heading" class="text-2xl">Event not found</CardTitle>
       </CardHeader>
       <CardContent>
-        <p class="text-sm">This event is not available. It may not be confirmed yet, or you do not have permission to view it.</p>
-
+        <p class="text-sm leading-6 text-muted-foreground">This event is not available. It may not be confirmed yet, or you do not have permission to view it.</p>
       </CardContent>
     </Card>
 
-    <Card v-if="event && !error" class="mt-6">
-      <CardHeader>
-        <div class="flex flex-col gap-2">
-          <CardTitle><h1>{{ event.title }}</h1></CardTitle>
-          <p class="text-sm text-muted-foreground">Event {{ event.eventId }}</p>
+    <template v-else-if="event">
+      <header class="mt-7">
+        <div class="flex flex-wrap items-center gap-2">
+          <Badge :class="statusBadge(event.status)">{{ formatStatus(event.status) }}</Badge>
+          <span class="text-sm text-muted-foreground">Event {{ event.eventId }}</span>
         </div>
-        <Badge :class="statusBadge(event.status)">{{ event.status }}</Badge>
-      </CardHeader>
-      <CardContent class="grid gap-4 md:grid-cols-2">
-        <div class="flex flex-col gap-3">
-          <p class="text-sm font-medium">Description</p>
-          <p class="text-sm">{{ event.description || 'No description provided.' }}</p>
+        <h1 class="mt-4 max-w-3xl text-3xl font-medium leading-tight tracking-tight md:text-5xl">{{ event.title }}</h1>
+      </header>
+
+      <section class="mt-8 grid gap-4 sm:grid-cols-2" aria-label="Event essentials">
+        <div class="flex min-w-0 items-start gap-3">
+          <div class="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground"><CalendarDaysIcon :size="19" aria-hidden="true" /></div>
+          <div class="min-w-0 pt-0.5">
+            <p class="font-medium leading-6"><time>{{ formatDateTimeRange(event.startAt, event.endAt) }}</time></p>
+            <p class="mt-0.5 text-sm text-muted-foreground">{{ event.timeZone }}</p>
+          </div>
         </div>
-        <div class="flex flex-col gap-3">
-          <p class="text-sm font-medium">Date &amp; time</p>
-          <p class="text-sm"><time>{{ formatDate(event.startAt) }}</time></p>
-          <p class="text-xs text-muted-foreground">{{ event.timeZone }}</p>
+        <div class="flex min-w-0 items-start gap-3">
+          <div class="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground"><MapPinIcon :size="19" aria-hidden="true" /></div>
+          <div class="min-w-0 pt-0.5">
+            <p class="truncate font-medium leading-6">{{ event.primaryVenueName || 'Not assigned' }}</p>
+            <p class="mt-0.5 text-sm text-muted-foreground">Primary venue</p>
+          </div>
         </div>
-        <div class="flex flex-col gap-3">
-          <p class="text-sm font-medium">Primary location</p>
-          <p class="text-sm font-medium">{{ event.primaryVenueName || 'Not assigned' }}</p>
-          <p class="text-xs text-muted-foreground">Designated primary venue for this event</p>
-        </div>
-        <div class="flex flex-col gap-3">
-          <p class="text-sm font-medium">Capacity</p>
-          <p class="text-sm">{{ event.registrationLimit === null ? 'Not set' : `${event.registrationLimit} ${event.registrationLimit === 1 ? 'attendee' : 'attendees'}` }}</p>
-          <p class="text-xs text-muted-foreground">Coordinator-set registration limit</p>
-          <p v-if="event.registrationLimit !== null" class="text-sm" data-testid="places-remaining">
-            {{ event.placesRemaining }} {{ event.placesRemaining === 1 ? 'place' : 'places' }} left
-          </p>
-        </div>
-        <div v-if="event.registrationWindow" class="flex flex-col gap-3">
-          <p class="text-sm font-medium">Registration window</p>
-          <p class="text-sm">{{ formatDate(event.registrationWindow.startAt) }} – {{ formatDate(event.registrationWindow.endAt) }}</p>
-          <p class="text-xs text-muted-foreground">Registration is available during this window while places remain.</p>
-        </div>
-        <section v-if="event.venues?.length" aria-label="Confirmed venues" class="md:col-span-2 grid gap-2"><h2 class="font-medium">Confirmed venues</h2><p v-for="venue in event.venues" :key="venue.id+venue.startAt" class="text-sm">{{ venue.name }} · {{ formatDate(venue.startAt) }} – {{ formatDate(venue.endAt) }}</p></section>
-      </CardContent>
-      <CardFooter class="flex flex-wrap justify-between gap-3">
-        <div class="flex flex-col gap-2">
-          <Button v-if="canRegister" :disabled="registering || !hydrated" @click="registerForEvent">{{ registering ? 'Registering…' : 'Register' }}</Button>
-          <p v-else-if="user?.role === 'ATTENDEE' && !registerSuccess" class="text-sm text-muted-foreground" role="status">{{ registrationAvailability }}</p>
-          <p v-if="registerSuccess" role="status" class="text-sm text-success">{{ registerSuccess }}</p>
-          <p v-if="registerError" role="alert" class="text-sm text-destructive">{{ registerError }}</p>
-        </div>
-        <NuxtLink v-if="user?.role === 'ATTENDEE'" to="/attendances/registrations" class="underline text-sm text-primary">My registrations</NuxtLink>
-        <NuxtLink v-if="user?.role === 'EVENT_COORDINATOR' || user?.role === 'EVENT_ORGANISER'" :to="`/attendances/registration-management/${event.eventId}`" class="underline text-sm text-primary">Manage registrations</NuxtLink>
-        <NuxtLink :to="backHref" class="underline text-sm text-muted-foreground">Back to your events</NuxtLink>
-      </CardFooter>
-    </Card>
+      </section>
+
+      <section class="mt-8" aria-label="Registration capacity">
+        <Card class="gap-0 rounded-[18px] border border-border !bg-transparent p-0 !shadow-none !ring-0">
+          <CardHeader class="px-5 pb-0 pt-5 md:px-6 md:pt-6">
+            <CardTitle class="flex items-center gap-2 text-base font-medium leading-6"><UsersRoundIcon :size="18" aria-hidden="true" />Registration</CardTitle>
+          </CardHeader>
+          <CardContent class="px-5 pb-5 pt-5 md:px-6 md:pb-6">
+            <dl class="grid gap-5 sm:grid-cols-2">
+              <div>
+                <dt class="text-sm font-medium text-muted-foreground">Registration limit</dt>
+                <dd class="mt-1.5 text-lg font-medium">{{ event.registrationLimit === null ? 'Not set' : `${event.registrationLimit} ${event.registrationLimit === 1 ? 'attendee' : 'attendees'}` }}</dd>
+                <dd v-if="event.registrationLimit !== null" data-testid="places-remaining" class="mt-1 text-sm text-muted-foreground">{{ event.placesRemaining }} {{ event.placesRemaining === 1 ? 'place' : 'places' }} left</dd>
+                <dd v-else class="mt-1 text-sm text-muted-foreground">Coordinator-set registration limit</dd>
+              </div>
+              <div v-if="event.registrationWindow">
+                <dt class="text-sm font-medium text-muted-foreground">Registration window</dt>
+                <dd class="mt-1.5 font-medium leading-6">{{ formatDate(event.registrationWindow.startAt) }} – {{ formatDate(event.registrationWindow.endAt) }}</dd>
+                <dd class="mt-1 text-sm text-muted-foreground">Registration is available during this window while places remain.</dd>
+              </div>
+            </dl>
+
+            <div class="mt-5">
+              <Button v-if="canRegister" :disabled="registering || !hydrated" class="w-full" @click="registerForEvent">{{ registering ? 'Registering…' : 'Register' }}</Button>
+              <p v-else-if="user?.role === 'ATTENDEE' && !registerSuccess" role="status" class="text-sm leading-6 text-muted-foreground">{{ registrationAvailability }}</p>
+              <p v-if="registerSuccess" role="status" class="text-sm font-medium text-success">{{ registerSuccess }}</p>
+              <p v-if="registerError" role="alert" class="mt-2 text-sm leading-6 text-destructive">{{ registerError }}</p>
+            </div>
+
+            <nav class="mt-5 flex flex-wrap gap-2" aria-label="Event actions">
+              <Button v-if="user?.role === 'ATTENDEE'" as-child variant="outline" size="sm">
+                <NuxtLink to="/attendances/registrations">My registrations</NuxtLink>
+              </Button>
+              <Button v-if="user?.role === 'EVENT_COORDINATOR' || user?.role === 'EVENT_ORGANISER'" as-child variant="outline" size="sm">
+                <NuxtLink :to="`/attendances/registration-management/${event.eventId}`">Manage registrations</NuxtLink>
+              </Button>
+              <Button as-child variant="ghost" size="sm" class="!text-muted-foreground hover:!text-foreground">
+                <NuxtLink :to="backHref">Back to your events</NuxtLink>
+              </Button>
+            </nav>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section class="mt-10" aria-labelledby="about-event-heading">
+        <h2 id="about-event-heading" class="text-xl font-medium">About this event</h2>
+        <p class="mt-3 max-w-3xl whitespace-pre-line text-base leading-7">{{ event.description || 'No description provided.' }}</p>
+      </section>
+
+      <section v-if="event.venues?.length" class="mt-10" aria-label="Confirmed venues">
+        <h2 class="text-xl font-medium">Confirmed venues</h2>
+        <ul class="mt-3 grid gap-3">
+          <li v-for="venue in event.venues" :key="venue.id + venue.startAt" class="rounded-xl border border-border bg-card px-4 py-3 text-sm">
+            <p class="font-medium">{{ venue.name }}</p>
+            <p class="mt-1 text-muted-foreground">{{ formatDate(venue.startAt) }} – {{ formatDate(venue.endAt) }}</p>
+          </li>
+        </ul>
+      </section>
+    </template>
   </main>
 </template>
