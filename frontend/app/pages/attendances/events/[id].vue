@@ -26,7 +26,6 @@ const backHref = computed(() => user.value?.role === 'EVENT_ORGANISER' ? '/' : '
 const registering = ref(false)
 const hydrated = ref(false)
 const registerError = ref('')
-const registerSuccess = ref('')
 const registration = ref<{ id: string, status: string } | null>(null)
 onMounted(() => { hydrated.value = true })
 
@@ -64,11 +63,9 @@ async function registerForEvent() {
   if (!canRegister.value || registering.value) return
   registering.value = true
   registerError.value = ''
-  registerSuccess.value = ''
   try {
     const result = await $fetch<{ registration: { id: string, status: string }, placesRemaining: number }>('/api/attendances/events/' + encodeURIComponent(eventId) + '/registrations', { method: 'POST', body: {} })
     registration.value = result.registration
-    registerSuccess.value = 'You are registered for this event.'
     await refresh()
   }
   catch (error: any) {
@@ -149,36 +146,33 @@ function formatStatus(status: string) {
             <CardTitle class="flex items-center gap-2 text-base font-medium leading-6"><UsersRoundIcon :size="18" aria-hidden="true" />Registration</CardTitle>
           </CardHeader>
           <CardContent class="px-5 pb-5 pt-5 md:px-6 md:pb-6">
-            <dl class="grid gap-5 sm:grid-cols-2">
-              <div>
-                <dt class="text-sm font-medium text-muted-foreground">Registration limit</dt>
-                <dd class="mt-1.5 text-lg font-medium">{{ event.registrationLimit === null ? 'Not set' : `${event.registrationLimit} ${event.registrationLimit === 1 ? 'attendee' : 'attendees'}` }}</dd>
-                <dd v-if="event.registrationLimit !== null" data-testid="places-remaining" class="mt-1 text-sm text-muted-foreground">{{ event.placesRemaining }} {{ event.placesRemaining === 1 ? 'place' : 'places' }} left</dd>
-                <dd v-else class="mt-1 text-sm text-muted-foreground">Coordinator-set registration limit</dd>
-              </div>
-              <div v-if="event.registrationWindow">
+            <dl class="grid items-start gap-5 sm:grid-cols-2">
+              <div v-if="event.registrationWindow" class="grid content-start">
                 <dt class="text-sm font-medium text-muted-foreground">Registration window</dt>
-                <dd class="mt-1.5 font-medium leading-6">{{ formatDate(event.registrationWindow.startAt) }} – {{ formatDate(event.registrationWindow.endAt) }}</dd>
-                <dd class="mt-1 text-sm text-muted-foreground">Registration is available during this window while places remain.</dd>
+                <dd class="mt-1.5 text-lg font-medium leading-7">{{ formatDate(event.registrationWindow.startAt) }} – {{ formatDate(event.registrationWindow.endAt) }}</dd>
+                <dd class="mt-1 text-sm leading-6 text-muted-foreground">Registration is available during this window while places remain.</dd>
+              </div>
+              <div class="grid content-start">
+                <dt class="text-sm font-medium text-muted-foreground">Registration limit</dt>
+                <dd class="mt-1.5 text-lg font-medium leading-7">{{ event.registrationLimit === null ? 'Not set' : `${event.registrationLimit} ${event.registrationLimit === 1 ? 'attendee' : 'attendees'}` }}</dd>
+                <dd v-if="event.registrationLimit !== null" data-testid="places-remaining" class="mt-1 text-sm leading-6 text-muted-foreground">{{ event.placesRemaining }} {{ event.placesRemaining === 1 ? 'place' : 'places' }} left</dd>
+                <dd v-else class="mt-1 text-sm leading-6 text-muted-foreground">Coordinator-set registration limit</dd>
               </div>
             </dl>
 
             <div class="mt-5">
+              <p v-if="user?.role === 'ATTENDEE' && registration" role="status" class="mb-3 text-sm font-medium text-success">You are registered for this event.</p>
               <Button v-if="canRegister" :disabled="registering || !hydrated" class="w-full" @click="registerForEvent">{{ registering ? 'Registering…' : 'Register' }}</Button>
-              <p v-else-if="user?.role === 'ATTENDEE' && !registerSuccess" role="status" class="text-sm leading-6 text-muted-foreground">{{ registrationAvailability }}</p>
-              <p v-if="registerSuccess" role="status" class="text-sm font-medium text-success">{{ registerSuccess }}</p>
+              <Button v-else-if="user?.role === 'ATTENDEE' && registration" as-child class="w-full">
+                <NuxtLink to="/attendances/registrations" data-testid="registration-primary-action">My registrations</NuxtLink>
+              </Button>
+              <p v-else-if="user?.role === 'ATTENDEE'" role="status" class="text-sm leading-6 text-muted-foreground">{{ registrationAvailability }}</p>
               <p v-if="registerError" role="alert" class="mt-2 text-sm leading-6 text-destructive">{{ registerError }}</p>
             </div>
 
-            <nav class="mt-5 flex flex-wrap gap-2" aria-label="Event actions">
-              <Button v-if="user?.role === 'ATTENDEE'" as-child variant="outline" size="sm">
-                <NuxtLink to="/attendances/registrations">My registrations</NuxtLink>
-              </Button>
-              <Button v-if="user?.role === 'EVENT_COORDINATOR' || user?.role === 'EVENT_ORGANISER'" as-child variant="outline" size="sm">
+            <nav v-if="user?.role === 'EVENT_COORDINATOR' || user?.role === 'EVENT_ORGANISER'" class="mt-5 flex flex-wrap gap-2" aria-label="Event actions">
+              <Button as-child variant="outline" size="sm">
                 <NuxtLink :to="`/attendances/registration-management/${event.eventId}`">Manage registrations</NuxtLink>
-              </Button>
-              <Button as-child variant="ghost" size="sm" class="!text-muted-foreground hover:!text-foreground">
-                <NuxtLink :to="backHref">Back to your events</NuxtLink>
               </Button>
             </nav>
           </CardContent>
