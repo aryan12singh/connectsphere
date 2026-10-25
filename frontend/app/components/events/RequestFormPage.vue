@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert } from '@/components/ui/alert'
 import EventRequestForm from './EventRequestForm.vue'
 import { hasMeaningfulInput, type RequestFormState } from './request-form-state'
 
@@ -20,6 +22,7 @@ withDefaults(defineProps<{
   canEdit?: boolean
   returnComments?: string
   fieldErrors?: Record<string,string[]>
+  showHeader?: boolean
   mode: 'create' | 'draft' | 'edit' | 'readonly'
 }>(), {
   banner: null,
@@ -29,6 +32,7 @@ withDefaults(defineProps<{
   canEdit: true,
   returnComments: '',
   fieldErrors: () => ({}),
+  showHeader: true,
 })
 
 defineEmits<{
@@ -42,7 +46,7 @@ onMounted(() => { ready.value = true })
 </script>
 
 <template>
-  <div class="flex items-center gap-3">
+  <div v-if="showHeader" class="flex flex-wrap items-center gap-3">
     <h1 class="text-3xl font-semibold tracking-tight md:text-4xl">
       {{ title }}
     </h1>
@@ -51,51 +55,51 @@ onMounted(() => { ready.value = true })
     </Badge>
   </div>
 
-  <div
+  <Card
     v-if="banner"
     data-testid="coordinator-banner"
-    class="mt-4 rounded-3xl border border-border bg-card p-4"
+    class="mt-6 gap-0 rounded-[18px] border border-border !bg-transparent py-0 !shadow-none !ring-0"
   >
-    <p class="text-[10px] font-medium uppercase tracking-[0.5px] text-muted-foreground">
-      Assigned coordinator
-    </p>
-    <p class="mt-1 text-sm font-medium">
-      {{ banner.name }}
-    </p>
-    <p class="text-sm text-muted-foreground break-all">
-      {{ banner.email }}
-    </p>
-  </div>
+    <CardHeader class="px-5 py-4 md:px-6">
+      <CardDescription>Assigned coordinator</CardDescription>
+      <CardTitle v-if="typeof banner.name === 'string' && banner.name.trim()" class="mt-1">{{ banner.name }}</CardTitle>
+      <CardDescription class="break-all">{{ banner.email }}</CardDescription>
+    </CardHeader>
+  </Card>
 
-  <aside v-if="returnComments" data-testid="return-comments" class="mt-5 rounded-3xl border border-border bg-card p-4"><h2 class="font-semibold">Coordinator comments</h2><p class="mt-2 whitespace-pre-wrap text-sm">{{ returnComments }}</p></aside>
+  <Card v-if="returnComments" data-testid="return-comments" class="mt-5 gap-0 rounded-[18px] border border-border !bg-transparent py-0 !shadow-none !ring-0">
+    <CardHeader class="px-5 py-4 md:px-6">
+      <CardTitle>Coordinator comments</CardTitle>
+    </CardHeader>
+    <CardContent class="border-t border-border px-5 py-4 text-sm whitespace-pre-wrap md:px-6">{{ returnComments }}</CardContent>
+  </Card>
+
   <form id="request-form" class="mt-6" novalidate @submit.prevent="$emit('submit')">
-    <p v-if="submitError" role="alert" class="mb-4 text-sm text-destructive">
-      {{ submitError }}
-    </p>
+    <Alert v-if="submitError" variant="destructive" class="mb-5"><p class="col-start-2">{{ submitError }}</p></Alert>
     <EventRequestForm v-model="form" :disabled="!ready || disabled || isSubmitting" :field-errors="fieldErrors" />
-    <div class="mt-6 grid gap-3" :class="mode === 'edit' || mode === 'readonly' ? 'grid-cols-1' : 'grid-cols-2'">
+    <div class="mt-8 flex flex-wrap justify-end gap-3 border-t border-border pt-5">
       <template v-if="mode === 'create'">
-        <Button type="button" variant="outline" class="w-full" :disabled="!ready || isSubmitting || !hasMeaningfulInput(form)" @click="$emit('save-draft')">
+        <Button type="button" variant="outline" :disabled="!ready || isSubmitting || !hasMeaningfulInput(form)" @click="$emit('save-draft')">
           Save draft
         </Button>
-        <Button type="submit" class="w-full" :disabled="!ready || isSubmitting">
+        <Button type="submit" :disabled="!ready || isSubmitting">
           Submit request
         </Button>
       </template>
       <template v-else-if="mode === 'draft'">
-        <Button type="button" variant="outline" class="w-full" :disabled="!ready || isSubmitting" @click="$emit('save')">
+        <Button type="button" variant="outline" :disabled="!ready || isSubmitting" @click="$emit('save')">
           Save changes
         </Button>
-        <Button type="submit" class="w-full" :disabled="!ready || isSubmitting">
+        <Button type="submit" :disabled="!ready || isSubmitting">
           Submit request
         </Button>
       </template>
       <template v-else-if="mode === 'edit'">
         <Button type="button" variant="outline" :disabled="!ready || isSubmitting || !hasMeaningfulInput(form)" @click="$emit('save')">Save changes</Button>
-        <Button type="submit" class="w-full" :disabled="!ready || isSubmitting">Resubmit request</Button>
+        <Button type="submit" :disabled="!ready || isSubmitting">Resubmit request</Button>
       </template>
       <template v-else>
-        <Button v-if="canEdit" type="button" class="w-full" :disabled="!ready || isSubmitting" @click="$emit('edit')">
+        <Button v-if="canEdit" type="button" :disabled="!ready || isSubmitting" @click="$emit('edit')">
           Edit request
         </Button>
       </template>

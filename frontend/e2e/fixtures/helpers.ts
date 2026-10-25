@@ -107,8 +107,10 @@ export async function completeForm(page: Page, name = `Browser ${randomUUID()}`)
   await field(page, 'End time').fill('17:00')
   await field(page, 'Time zone').fill('Asia/Singapore')
   await field(page, 'Expected attendance').fill('100')
-  await field(page, 'Venue type').selectOption('physical')
-  await field(page, 'Preferred layout (choose Other when needed)').selectOption('theatre')
+  await field(page, 'Venue type').click()
+  await page.getByRole('option', { name: 'Physical', exact: true }).click()
+  await field(page, 'Preferred layout').click()
+  await page.getByRole('option', { name: 'Theatre', exact: true }).click()
   await field(page, 'Venue / location requirements').fill('Accessible meeting room')
   return name
 }

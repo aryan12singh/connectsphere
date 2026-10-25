@@ -54,8 +54,8 @@ test('CS-44 accessibility: keyboard arrows switch and focus request tabs without
   const serverPage = await owner.get(`/requests/${draft.id}`)
   expect(serverPage.status()).toBe(200)
   const serverHTML = await serverPage.text()
-  for (const name of ['details', 'history']) {
-    expect(new RegExp(`<button[^>]*id="request-${name}-tab"[^>]*disabled`).test(serverHTML), 'Server-rendered tabs must wait for their keyboard handlers').toBe(true)
+  for (const name of ['Details', 'History']) {
+    expect(new RegExp(`<button[^>]*disabled[^>]*>\\s*${name}\\s*</button>`).test(serverHTML), 'Server-rendered tabs must wait for their keyboard handlers').toBe(true)
   }
   await page.goto(`/requests/${draft.id}`)
   await field(page, 'Purpose').fill('Unsaved keyboard input')
