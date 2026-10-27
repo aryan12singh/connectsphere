@@ -72,6 +72,16 @@ async function noticesFor(message, lookups) {
     eventId: p.eventId || null,
     data: standardData(message, extra),
   });
+  // CS-52 AC5: a notice to an Attendee carries Event-level facts only. It
+  // never carries the planning request id, planning statuses or anyone
+  // else's data, and always links to the Attendee's own Event page.
+  const attendeeNotice = (recipientId, type, text, extra = {}) => {
+    const row = notice(recipientId, type, text, p.eventId ? `/attendances/events/${p.eventId}` : null, extra);
+    const { requestId, oldStatus, newStatus, ...safeData } = row.data;
+    return { ...row, eventRequestId: null, data: safeData };
+  };
+  // Each Attendee is told once per message, even if a list repeats them.
+  const uniqueIds = ids => [...new Set((ids || []).filter(id => typeof id === 'string' && id))];
 
   switch (message.type) {
     case 'RegistrationCreated':
@@ -95,11 +105,18 @@ async function noticesFor(message, lookups) {
           : message.type === 'RegistrationWaitlisted' ? ' is waitlisted.'
             : message.type === 'RegistrationCreated' ? ' is confirmed.'
               : message.type === 'WaitlistOfferMade' ? ' Review the offer before its deadline.' : '.';
-      return userId ? [notice(userId, type, `${lead} ${name}${suffix}`, p.eventId ? `/attendances/events/${p.eventId}` : null)] : [];
+      // Only the Attendee named in the message is told (CS-52 AC1).
+      return userId ? [attendeeNotice(userId, type, `${lead} ${name}${suffix}`)] : [];
     }
     case 'EventCancelled': {
-      const attendees = attendeeIds ? await attendeeIds(p.eventId) : [];
-      return attendees.map(id => notice(id, 'EVENT_CANCELLED', `${name} has been cancelled.`, `/attendances/events/${p.eventId}`));
+      // CS-52 AC3 / CS-54 contract: the publisher may attach the registered
+      // and waitlisted Attendees captured when the cancellation was accepted
+      // (attendeeRecipientIds), because closing registrations may change
+      // their status afterwards. Without that list, ask attendance-service,
+      // which already leaves out Withdrawn Attendees.
+      const snapshot = Array.isArray(p.attendeeRecipientIds) ? p.attendeeRecipientIds : null;
+      const attendees = uniqueIds(snapshot || (attendeeIds ? await attendeeIds(p.eventId) : []));
+      return attendees.map(id => attendeeNotice(id, 'EVENT_CANCELLED', `${name} has been cancelled.`));
     }
     case 'RequestSubmitted':
       return [notice(p.organiserId, 'REQUEST_SUBMITTED', `Your event request ${name} was submitted. A Coordinator will be assigned to review it.`)];
@@ -143,7 +160,8 @@ async function noticesFor(message, lookups) {
         : notice(p.organiserId,'EVENT_CONFIRMED',`${name} is confirmed.`,p.eventId?`/events/${p.eventId}`:requestLink)];
       if(changed && attendeeIds) {
         const safeDetails = { eventVersion: p.eventVersion || null, startAt: p.startAt || null, endAt: p.endAt || null, timeZone: zone, venueNames: p.venueNames || [] };
-        for (const id of await attendeeIds(p.eventId)) notices.push(notice(id, changeType, changedText, `/attendances/events/${p.eventId}`, safeDetails));
+        // CS-52 AC2: registered/waitlisted Attendees get the final details only.
+        for (const id of uniqueIds(await attendeeIds(p.eventId))) notices.push(attendeeNotice(id, changeType, changedText, safeDetails));
       }
       return notices;
     }

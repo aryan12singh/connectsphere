@@ -280,3 +280,22 @@ The private cancellation contract now supports pre-final venue release:
 The venue receipt includes `receiptId`, `resource:VENUE`, Event/request/action identity, accepted `eventVersion`, `phase`, `releasedAt`, booking IDs and their advertised/occupied intervals. Pre-final `VenueCancellationReleased` outbox entries append Event history only; they do not announce an already-Cancelled Event. The existing terminal-source component remains TC-CS88-16. TC-CS88-18 covers actual acceptance and pre-final release/recovery, including retained unrelated resources and no false final notices.
 
 TC-CS88-06 still requires Javier's public CS-54 request/decision/orchestration, Alan's equipment release/registration closure and the integrated failure/restart journey. Keep public `Cancelling` until **every required resource receipt** completes; only then commit final `CANCELLED` and one `EventCancelled` containing `eventRequestId`, Event/action/version and actor context, followed by final notices. A venue receipt alone cannot complete the Event. See the [cancellation handoff](sprint3-integration-handoff.md#sprint-4-continuation--23-october-2026).
+
+## CS-52 attendee notification contract
+
+27 October 2026 (Marc). notification-service owns the Attendee templates; attendance-service owns the recipient list. Producers publish to `connectsphere.events` through their committed outbox; the outbox row ID is the message ID.
+
+| Message (`type`) | Producer | Required payload | Attendee notice |
+| --- | --- | --- | --- |
+| `RegistrationCreated` | Attendance (live) | `eventId`, `eventName`, `eventVersion`, `userId`, `registrationId`, `occurredAt` | `REGISTRATION_CONFIRMED` to `userId` only |
+| `RegistrationWaitlisted`, `WaitlistOfferMade`, `WaitlistOfferExpired`, `WaitlistOfferAccepted` | Attendance (not in Release 1: CS-48 excludes the waitlist) | same as above | `REGISTRATION_WAITLISTED`, `WAITLIST_OFFER_MADE`, `WAITLIST_OFFER_EXPIRED`, `WAITLIST_OFFER_ACCEPTED` to `userId` only |
+| `RegistrationWithdrawn` | Attendance (CS-49, pending) | same as above | `REGISTRATION_WITHDRAWN` to `userId` only |
+| `EventConfirmed` with `attendeeMaterialChange` or `attendeeVenueChanged` | Event (live, Safety confirmation) | `eventId`, `eventVersion`, `roundId`, `startAt`, `endAt`, `timeZone`, `venueNames` | `EVENT_CHANGED` or `VENUE_CHANGED` to every active Attendee |
+| `EventCancelled` | Event (CS-54 saga, pending) | `eventId`, `eventRequestId`, `eventVersion`, `cancellationActionId`; optional `attendeeRecipientIds` | `EVENT_CANCELLED` to every active Attendee |
+
+Rules:
+
+- **Active Attendees** come from `GET /internal/events/{id}/notification-recipients` (internal key, read-only): `CONFIRMED`, `WAITLISTED`, `OFFERED`. Withdrawn Attendees are skipped. For `EventCancelled`, the publisher should attach `attendeeRecipientIds` captured when the cancellation was accepted, because closing registrations may change their status. Without it, the lookup is used.
+- **Never pending.** `EventConfirmed` is delivered only while the Event is `CONFIRMED`/`PREPARATION` with Safety `APPROVED` for the same `roundId`. `EventCancelled` is delivered only with an exact `CANCELLED` cancellation proof. Replacement, restoration, change and Safety steps notify planners only. `VenueUnavailable` tells the Organiser at once (`VENUE_CHANGE_NEEDED`), never Attendees.
+- **Privacy.** An Attendee notice carries only the Event name, Event ID, Event version, time and the final schedule/venue names. It has no planning request ID, statuses, Safety/planning comments, evidence or other Attendees, and links to `/attendances/events/{id}`.
+- **Retries.** A notice is unique per (message ID, recipient, notice type). Redelivery creates no second notice. A distinct effective change is a new message and a new notice. Delivery only reads the recipient list; it never re-runs a registration or withdrawal command.

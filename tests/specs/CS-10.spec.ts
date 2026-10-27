@@ -618,3 +618,102 @@ it('TC-CS10-18 the recognized Safety Officer can obtain a sealed BFF session wit
   expect(seal).toHaveBeenCalledOnce()
  }finally{MOCK_USERS.pop();vi.unstubAllGlobals()}
 })
+
+// ── CS-10 Week 7: seven roles (Event Coordinator Lead + Safety Officer) ──────
+// Expected cells are written out here independently of the production
+// ACTION_ROLES table, so a guard that forgets a new role is caught.
+describe('CS-10 Week 7 — seven-role permission matrix and landings', () => {
+  const ALL_ROLES = ['EVENT_ORGANISER', 'EVENT_COORDINATOR', 'EVENT_COORDINATOR_LEAD', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF', 'SAFETY_OFFICER', 'ATTENDEE']
+  const MATRIX: Record<string, string[]> = {
+    EVENT_ORGANISER: ['event_requests.create', 'events.view', 'messages.send'],
+    EVENT_COORDINATOR: ['event_requests.review', 'events.confirm', 'events.view', 'messages.send', 'venues.view', 'venue_bookings.create', 'safety.submit', 'safety.rework', 'technical.submit', 'technical.view'],
+    // Lead: supervision landing + read-only event views. No Coordinator powers (Q11).
+    EVENT_COORDINATOR_LEAD: ['assignments.view', 'events.view', 'messages.send'],
+    VENUE_STAFF: ['events.view', 'messages.send', 'venues.view', 'venues.manage', 'venue_bookings.decide'],
+    TECHNICAL_SUPPORT_STAFF: ['users.view', 'users.manage', 'permissions.manage', 'settings.manage', 'audit.view', 'events.view', 'messages.send', 'venues.view', 'technical.view', 'technical.review'],
+    // Safety Officer: Safety workspace only; no event/venue/equipment editing.
+    SAFETY_OFFICER: ['safety.view', 'safety.decide', 'messages.send'],
+    ATTENDEE: ['events.view', 'messages.send', 'attendance.register'],
+  }
+
+  it('TC-CS10-20 / TC-CS26-04 every role x every action matches the matrix, including the two new roles', async () => {
+    const { hasPermission, ROLES } = await import('../../services/utils/role-policy.js')
+    expect([...ROLES].sort()).toEqual([...ALL_ROLES].sort())
+    expect(Object.keys(MATRIX).sort()).toEqual([...ALL_ROLES].sort())
+    const actions = [...new Set(Object.values(MATRIX).flat())]
+    for (const role of ALL_ROLES) for (const action of actions) {
+      // Even with every capability granted, the role decides (catches over-permissive defaults).
+      expect(hasPermission({ role, roles: [role], permissions: actions }, action), `${role}: ${action}`).toBe(MATRIX[role]!.includes(action))
+    }
+    // A Lead never gains Coordinator powers from Lead membership (TC-CS10-22).
+    for (const action of ['event_requests.review', 'events.confirm', 'venue_bookings.create', 'venues.manage'])
+      expect(hasPermission({ role: 'EVENT_COORDINATOR_LEAD', roles: ['EVENT_COORDINATOR_LEAD'], permissions: actions }, action)).toBe(false)
+  })
+
+  it('TC-CS10-20b default seeded permissions grant each new role exactly its matrix row', async () => {
+    const defaults = (await import('../../services/utils/role-permissions.js')).default as Record<string, string[]>
+    const { MOCK_ROLE_PERMISSIONS } = await import('../../frontend/server/utils/mockPermissions')
+    expect([...defaults.EVENT_COORDINATOR_LEAD!].sort()).toEqual(['assignments.view', 'events.view'])
+    expect([...defaults.SAFETY_OFFICER!].sort()).toEqual(['safety.decide', 'safety.view'])
+    expect([...MOCK_ROLE_PERMISSIONS.EVENT_COORDINATOR_LEAD].sort()).toEqual(['assignments.view', 'events.view'])
+  })
+
+  it('TC-CS10-18 a Lead lands on /queue and a Safety Officer on /safety-checks', async () => {
+    const { roleHome } = await import('../../frontend/lib/roles')
+    expect(roleHome('EVENT_COORDINATOR_LEAD')).toBe('/queue')
+    expect(roleHome('SAFETY_OFFICER')).toBe('/safety-checks')
+    const { default: middleware } = await import('../../frontend/app/middleware/auth.global')
+    authMiddlewareMocks.loggedIn.value = true
+    for (const [role, home, permissions] of [['EVENT_COORDINATOR_LEAD', '/queue', ['assignments.view', 'events.view']], ['SAFETY_OFFICER', '/safety-checks', ['safety.view', 'safety.decide']]] as const) {
+      authMiddlewareMocks.sessionUser.value = { id: role, email: `${role}@example.test`, name: role, role, roles: [role], permissions: [...permissions] }
+      authMiddlewareMocks.navigateToLogin.mockClear()
+      await middleware({ path: '/' } as never)
+      expect(authMiddlewareMocks.navigateToLogin, role).toHaveBeenCalledWith(home)
+    }
+  })
+
+  it('TC-CS10-18b the seeded Lead can obtain a sealed BFF session with its role and permissions', async () => {
+    vi.stubGlobal('defineEventHandler', defineEventHandler); vi.stubGlobal('readBody', readBody); vi.stubGlobal('createError', createError)
+    const seal = vi.fn(); vi.stubGlobal('setUserSession', seal)
+    try {
+      const { default: handler } = await import('../../frontend/server/api/auth.post')
+      const app = createApp(); app.use('/api/auth', handler)
+      const response = await toWebHandler(app)(new Request('http://localhost/api/auth', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'lead@example.com', password: 'Password123!' }) }))
+      expect(response.status).toBe(200)
+      const result = await response.json()
+      expect(result.user).toMatchObject({ role: 'EVENT_COORDINATOR_LEAD', permissions: ['assignments.view', 'events.view'] })
+      expect(result).not.toHaveProperty('token')
+      expect(seal).toHaveBeenCalledOnce()
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('TC-CS10-19 / 22 / 23 new roles are refused Coordinator, venue and each other\'s pages by typed URL', async () => {
+    const { default: middleware } = await import('../../frontend/app/middleware/auth.global')
+    authMiddlewareMocks.loggedIn.value = true
+    const cases: Array<[string, string[], string, boolean]> = [
+      ['SAFETY_OFFICER', ['safety.view', 'safety.decide'], '/venue/V1', false],          // TC-CS10-19 venue editing
+      ['SAFETY_OFFICER', ['safety.view', 'safety.decide'], '/requests/E1', false],       // TC-CS10-23 event editing
+      ['SAFETY_OFFICER', ['safety.view', 'safety.decide'], '/queue', false],
+      ['EVENT_COORDINATOR_LEAD', ['assignments.view', 'events.view'], '/requests/E1', false], // TC-CS10-22 no Coordinator review
+      ['EVENT_COORDINATOR_LEAD', ['assignments.view', 'events.view'], '/venue', false],
+      ['EVENT_COORDINATOR_LEAD', ['assignments.view', 'events.view'], '/safety-checks', false],
+      ['EVENT_COORDINATOR_LEAD', ['assignments.view', 'events.view'], '/technical-requirements', false], // Technical Support review queue (renamed in PR 16)
+      ['EVENT_COORDINATOR', ['event_requests.review', 'events.view'], '/queue', false],   // a Coordinator is not a Lead
+      ['EVENT_COORDINATOR_LEAD', ['assignments.view', 'events.view'], '/queue', true],
+      ['SAFETY_OFFICER', ['safety.view', 'safety.decide'], '/safety-checks', true],
+    ]
+    for (const [role, permissions, path, allowed] of cases) {
+      authMiddlewareMocks.sessionUser.value = { id: role, email: `${role}@example.test`, name: role, role, roles: [role], permissions }
+      authMiddlewareMocks.navigateToLogin.mockClear()
+      await middleware({ path, meta: path === '/queue' ? { permission: 'assignments.view' } : path === '/safety-checks' ? { permission: 'safety.view' } : {} } as never)
+      if (allowed) expect(authMiddlewareMocks.navigateToLogin, `${role} ${path}`).not.toHaveBeenCalled()
+      else expect(authMiddlewareMocks.navigateToLogin, `${role} ${path}`).toHaveBeenCalledWith('/access-denied')
+    }
+  })
+
+  it('TC-CS10-21 the new staff roles are refused by public sign-up at the BFF boundary', async () => {
+    const { PUBLIC_ROLES } = await import('../../services/utils/role-policy.js')
+    expect([...PUBLIC_ROLES].sort()).toEqual(['ATTENDEE', 'EVENT_ORGANISER'])
+    for (const role of ['SAFETY_OFFICER', 'EVENT_COORDINATOR_LEAD']) expect(PUBLIC_ROLES).not.toContain(role)
+  })
+})

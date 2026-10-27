@@ -80,6 +80,40 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 27 October 2026 — Marc — main review and CS-52 attendee notices
+
+**Review of main `af7b92c` for CS-10/26/50/51/79.** All still fit. PR #15 merged
+the Coordinator Lead role but dropped the CS-10 seven-role matrix tests, so
+they are re-added to `tests/specs/CS-10.spec.ts`. One case now checks
+`/technical-requirements`, because PR #16 renamed the Technical Support page from
+`/technical-support`. CS-10/26/50 specs: 43/43. Auth unit: 26/26. The remaining
+frontend failures (CS-11/27/29/30) need the CI databases and are not ours.
+
+**CS-52.** Alan's PR #19 already added the Attendee templates and the
+attendance recipient lookup. This change closes the gaps in
+notification-service only, as agreed:
+- Attendee notices carry no planning request ID or statuses, and each
+  Attendee is told once per message (AC5).
+- `EventCancelled` uses the publisher's `attendeeRecipientIds` snapshot when
+  present, otherwise the lookup (AC3, CS-54 contract).
+- New `tests/unit/cs52-attendee-outcomes.test.js`, TC-CS52-01 to 06.
+- Contract in `docs/api-contract.md`; cases in `tests/records/CS-52`.
+
+Decisions (Shadow, 27 Oct):
+- Waitlist cases are contract-only, because CS-48 excludes the waitlist from
+  Release 1.
+- attendance-service is not touched. Its relay still publishes only
+  `RegistrationCreated`; Alan's CS-49 must allow `RegistrationWithdrawn` in
+  `notificationOutbox.project`.
+- event-service is not touched. Javier's CS-54 saga publishes `EventCancelled`
+  as per the contract.
+
+Results: notification unit 36/36, coverage gate passed, contract 12/12,
+PostgreSQL integration 6/6.
+
+Next: screenshot evidence (guide `docs/sprint4/acceptance-guide-cs52.md`);
+re-test AC1 withdrawal and AC3 live once CS-49 and CS-54 land.
+
 ### 2026-10-21 — Attendance, test evidence and main integration
 
 Delivered the CS-47 attendee read model, title-based event heading and
