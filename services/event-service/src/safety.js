@@ -12,6 +12,13 @@ const areas=['VENUE','TECHNICAL','EVENT_DETAILS'];
 const fail=(status,code,message)=>Object.assign(new Error(message),{status,code});
 const json=value=>JSON.parse(JSON.stringify(value));
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+function attendeeDetails(event){
+ const request=event.eventRequest||event;
+ const instant=value=>value?new Date(value).toISOString():null;
+ return {status:'CONFIRMED',title:event.title,description:event.description||'',startAt:instant(event.startAt),endAt:instant(event.endAt),timeZone:event.timeZone,
+  registrationEnabled:request.registrationEnabled,registrationOpensAt:instant(request.registrationOpensAt),registrationClosesAt:instant(request.registrationClosesAt)};
+}
+function attendeeDetailsChanged(previous,current){return Boolean(previous&&hash(attendeeDetails(previous))!==hash(attendeeDetails(current)));}
 const revision=(event,request)=>hash([event.id,event.startAt,event.endAt,request.expectedAttendance,request.minimumCapacity,request.venueType,request.preferredLayout,request.venueRequirements,request.accessibilityNeeds,request.accessibilityDetails,request.equipmentNeeds,request.technicalDetails]);
 const reviewRevision=(event,venues,technical)=>hash([revision(event,event.eventRequest),venues?.requirementsFingerprint??venues?.fingerprint??null,technical.fingerprint??null]);
 function role(actor,name){return rolesForUser(actor).includes(name);}
@@ -73,7 +80,8 @@ async function activity(tx,event,actor,action,note,toStatus=event.status){
  await tx.activityLog.create({data:{eventRequestId:event.eventRequestId,action,actorType:actor.system?'SYSTEM':'USER',actorId:actor.system?null:actor.id,fromStatus:event.status,toStatus,details:{eventId:event.id,note:note||'',actorName:actor.system?'System':actor.id}}});
 }
 async function notice(tx,event,type,extra={}){
- await tx.outbox.create({data:{aggregateType:'Event',aggregateId:event.id,eventType:type,payload:{eventId:event.id,eventRequestId:event.eventRequestId,organiserId:event.organiserId,coordinatorId:event.eventRequest.currentCoordinatorId,eventName:event.title,occurredAt:new Date().toISOString(),...extra}}});
+ const attendeeSnapshot=type==='EventConfirmed'?{eventVersion:event.version,...attendeeDetails(event),organiserId:event.organiserId}:{};
+ await tx.outbox.create({data:{aggregateType:'Event',aggregateId:event.id,eventType:type,payload:{eventId:event.id,eventRequestId:event.eventRequestId,organiserId:event.organiserId,coordinatorId:event.eventRequest.currentCoordinatorId,eventName:event.title,occurredAt:new Date().toISOString(),...extra,...attendeeSnapshot}}});
 }
 async function release(token,eventId){if(!token)return;await Promise.allSettled([rpc(config.bookingServiceUrl,`/internal/events/${encodeURIComponent(eventId)}/readiness/release`,{token}),rpc(config.equipmentServiceUrl,`/internal/events/${encodeURIComponent(eventId)}/readiness/release`,{token})]);}
 async function replay(tx,actor,key,url,requestHash){
@@ -218,9 +226,11 @@ async function advance(req,id,stage){
   const confirmations=stage==='CONFIRMED'?await tx.outbox.findMany({where:{aggregateType:'Event',aggregateId:id,eventType:'EventConfirmed'},select:{payload:true}}):[];
   const confirmedRoundIds=confirmations.map(row=>row.payload.roundId).filter(value=>typeof value==='string');
   const previous=confirmedRoundIds.length?await tx.safetyRound.findFirst({where:{eventId:id,id:{in:confirmedRoundIds}},orderBy:{number:'desc'}}):null;
+  const previousAttendeeDetails=confirmations.map(row=>row.payload).filter(payload=>Number.isInteger(payload.eventVersion)).sort((a,b)=>b.eventVersion-a.eventVersion)[0];
+  const attendeeMaterialChange=attendeeDetailsChanged(previousAttendeeDetails,{...event,...next});
   const attendeeFacts=snapshot=>(snapshot?.venues||[]).map(row=>[row.venueId,row.bookingStartAt,row.bookingEndAt]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
   const attendeeVenueChanged=Boolean(previous&&hash(attendeeFacts(previous.snapshot))!==hash(attendeeFacts(round.snapshot)));
-  await notice(tx,event,stage==='CONFIRMED'?'EventConfirmed':'PreparationStarted',{roundId:round.id,newStatus:stage,attendeeVenueChanged,venueNames:round.snapshot.venues.map(row=>row.venueName)});
+  await notice(tx,{...event,...next},stage==='CONFIRMED'?'EventConfirmed':'PreparationStarted',{roundId:round.id,newStatus:stage,attendeeVenueChanged,attendeeMaterialChange,venueNames:round.snapshot.venues.map(row=>row.venueName)});
   const response={event:toEvent(next),state:next.safetyState};await remember(tx,req.actor,key,url,requestHash,response);return response;
  });
 }
@@ -312,4 +322,4 @@ async function recordVenueActivity(id,message){
   const response={recorded:true,bookingActionId:message.id};await remember(tx,actor,message.id,url,requestHash,response);return response;
  });
 }
-module.exports={reviewVenueChange,venueChangeContext,recordVenueActivity,view,submit,queue,officerView,decide,rework,invalidate,advance,preparationUpdate,preparationView,preparationQueue,correctPlanning,revision,fail};
+module.exports={reviewVenueChange,venueChangeContext,recordVenueActivity,view,submit,queue,officerView,decide,rework,invalidate,advance,preparationUpdate,preparationView,preparationQueue,correctPlanning,revision,fail,attendeeDetails,attendeeDetailsChanged};

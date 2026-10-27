@@ -14,12 +14,14 @@ model Event {
   title             String
   description       String
   status            String   @default("CONFIRMED")
+  eventVersion      Int      @default(0)
   startAt           DateTime @db.Timestamptz(3)
   endAt             DateTime @db.Timestamptz(3)
   timeZone          String   @default("Asia/Singapore")
   primaryVenueId    String?
   primaryVenueName  String?
   registrationLimit Int?
+  registrationEnabled Boolean @default(false)
   registrationWindow Json?
   organiserId       String?
   createdAt         DateTime @default(now()) @db.Timestamptz(3)
@@ -40,4 +42,20 @@ model Registration {
 
   @@map("registrations")
   @@unique([eventId, userId], name: "Registrations_eventId_userId_key")
+}
+
+model AttendanceOutbox {
+  id            String   @id @default(uuid())
+  aggregateId   String
+  kind          String
+  payload       Json
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  deliveredAt   DateTime? @db.Timestamptz(3)
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now()) @db.Timestamptz(3)
+  lastError     String?
+  suppressedAt  DateTime? @db.Timestamptz(3)
+
+  @@index([deliveredAt, createdAt])
+  @@map("attendance_outbox")
 }

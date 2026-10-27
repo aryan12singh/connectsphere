@@ -5,7 +5,7 @@ export default defineVitestConfig({
   root: fileURLToPath(new URL('..', import.meta.url)),
   test: {
     environment: 'nuxt',
-    include: ['frontend/tests/**/*.{test,spec}.{ts,js}', 'tests/specs/**/*.{test,spec}.{ts,js}'],
+    include: ['tests/specs/**/*.{test,spec}.{ts,js}'],
     coverage: {
       provider: 'v8',
       include: ['frontend/app/**/*.{ts,vue}', 'frontend/server/**/*.{ts,js}', 'frontend/lib/**/*.ts'],

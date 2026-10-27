@@ -1,8 +1,9 @@
 const {createTransport}=require('./domain-bus');
+function retryDelaySeconds(attempts){return Math.min(60,2**Math.min((attempts||0)+1,6));}
 // Each worker locks only rows in its service-owned database. A crash after the
 // broker confirms but before commit replays the SAME ID; the inbox deduplicates it.
 function startOutboxRelay({prisma,connect,config,source,project,log=console.error}){
- const schema={booking:{table:'booking_outbox',sent:'deliveredAt'},event:{table:'outbox',sent:'publishedAt'}}[source];
+ const schema={booking:{table:'booking_outbox',sent:'deliveredAt'},event:{table:'outbox',sent:'publishedAt'},attendance:{table:'attendance_outbox',sent:'deliveredAt'}}[source];
  if(!schema)throw Error('Unknown outbox source');
  const bus=createTransport({connect,config,log});let stopped=false,timer,running;
  async function batch(){
@@ -17,7 +18,7 @@ function startOutboxRelay({prisma,connect,config,source,project,log=console.erro
       await tx.$executeRawUnsafe(`UPDATE "${schema.table}" SET "${schema.sent}"=now(),attempts=attempts+1,"lastError"=NULL WHERE id=$1`,row.id);
      }else await tx.$executeRawUnsafe(`UPDATE "${schema.table}" SET "suppressedAt"=now(),"lastError"='No applicable notification for this intent' WHERE id=$1`,row.id);
     }catch(error){
-     const seconds=Math.min(60,2**Math.min((row.attempts||0)+1,6));
+     const seconds=retryDelaySeconds(row.attempts);
      await tx.$executeRawUnsafe(`UPDATE "${schema.table}" SET attempts=attempts+1,"nextAttemptAt"=now()+($2 * interval '1 second'),"lastError"=$3 WHERE id=$1`,row.id,seconds,String(error.message).slice(0,300));
     }
     return true;
@@ -32,4 +33,4 @@ function startOutboxRelay({prisma,connect,config,source,project,log=console.erro
  running=tick();
  return {stop:async()=>{stopped=true;clearTimeout(timer);await running;await bus.stop();},connected:bus.connected};
 }
-module.exports={startOutboxRelay};
+module.exports={startOutboxRelay,retryDelaySeconds};

@@ -262,3 +262,28 @@ test('TC-CS40-17: missing venue is blocked in the browser', async ({ equipment, 
   await page.getByRole('button', { name: 'Submit requirements', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Select a venue')
 })
+
+test('TC-CS40-18: historical technical requirements open as a prefilled read-only snapshot', async ({ equipment, page }, info) => {
+  await equipment.stock('projector', 5)
+  const event = await equipment.event()
+  await equipment.submit(event, [{ equipmentType: 'projector', quantity: 2 }], { placementDetails: 'Version one placement' })
+  await equipment.submit(event, [{ equipmentType: 'projector', quantity: 3 }], { placementDetails: 'Version two placement' })
+
+  const historyResponse = await event.coordinator.get(`${path(event)}/history`)
+  expect(historyResponse.status()).toBe(200)
+  expect((await historyResponse.json()).items.map((entry: any) => entry.snapshot.placementDetails)).toEqual(['Version two placement', 'Version one placement'])
+
+  await signIn(page, event.email)
+  await page.goto(`/technical-requirements/${event.id}?version=1`)
+  await expect(page.getByRole('heading', { name: 'Technical requirements · Version 1' })).toBeVisible()
+  await expect(page.getByRole('spinbutton', { name: 'projector quantity' })).toHaveValue('2')
+  await expect(page.getByLabel('Placement notes')).toHaveValue('Version one placement')
+  await expect(page.getByRole('button', { name: 'Submit requirements' })).toHaveCount(0)
+  await expect(page.getByText('Version 2 · Current', { exact: true })).toBeVisible()
+  await page.screenshot({ path: info.outputPath('TC-CS40-18-version-1-snapshot.png'), fullPage: true })
+
+  const unchanged = await snapshot(event)
+  await expect(page.getByRole('button', { name: 'Update requirements' })).toHaveCount(0)
+  expect((await snapshot(event)).requests[0].requirements.equipment[0].quantity).toBe(3)
+  expect(unchanged.requests[0].version).toBe(2)
+})

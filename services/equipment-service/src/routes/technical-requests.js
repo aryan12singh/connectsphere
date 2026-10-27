@@ -102,8 +102,20 @@ router.get('/event-requests/:eventRequestId/technical-request', async (req, res,
     if (!request) return sendError(res, 404, 'NOT_FOUND', 'Technical request not found.');
     const coordinator = req.actor.role === 'EVENT_COORDINATOR';
     if (coordinator && !(await isCurrentCoordinator(req, request.eventRequestId))) return sendError(res, 403, 'FORBIDDEN', 'Only the currently assigned Coordinator may view these requirements.');
-    if (!canReadRequirements(req.actor, { eventId: request.eventRequestId, coordinatorId: coordinator ? req.actor.id : request.coordinatorId })) return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to view this technical request.');
+    if (!canReadRequirements(req.actor, { eventId: request.planningEventId || request.eventRequestId, coordinatorId: coordinator ? req.actor.id : request.coordinatorId })) return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to view this technical request.');
     return res.json(store.requestView(coordinator ? { ...request, coordinatorId: req.actor.id } : request));
+  }
+  catch (error) { return next(error); }
+});
+
+router.get('/event-requests/:eventRequestId/technical-request/history', async (req, res, next) => {
+  try {
+    const request = await store.findRequest(req.params.eventRequestId);
+    if (!request) return sendError(res, 404, 'NOT_FOUND', 'Technical request not found.');
+    const coordinator = req.actor.role === 'EVENT_COORDINATOR';
+    if (coordinator && !(await isCurrentCoordinator(req, request.eventRequestId))) return sendError(res, 403, 'FORBIDDEN', 'Only the currently assigned Coordinator may view these requirements.');
+    if (!canReadRequirements(req.actor, { eventId: request.planningEventId || request.eventRequestId, coordinatorId: coordinator ? req.actor.id : request.coordinatorId })) return sendError(res, 403, 'FORBIDDEN', 'You do not have permission to view this technical request.');
+    return res.json({ items: await store.listHistory(request.eventRequestId) });
   }
   catch (error) { return next(error); }
 });

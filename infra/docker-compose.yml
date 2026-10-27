@@ -240,6 +240,7 @@ services:
       AUTH_SERVICE_URL: http://auth-service:3000
       EVENT_SERVICE_URL: http://event-service:3000
       BOOKING_SERVICE_URL: http://booking-service:3000
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-connectsphere}:${RABBITMQ_PASSWORD:-connectsphere-dev-only}@rabbitmq:5672
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     ports:
       - "3005:3000"
@@ -250,6 +251,8 @@ services:
         condition: service_started
       event-service:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
   # One-shot demo-data loader. Waits for each service to create its tables
   # (they migrate on start), then loads that service's seed file. Safe to re-run.
@@ -284,18 +287,24 @@ services:
         condition: service_started
 
   attendance-service:
-    build: ../services/attendance-service
+    build:
+      context: ../services
+      dockerfile: attendance-service/Dockerfile
     restart: unless-stopped
     environment:
       PORT: 3000
       DATA_MODE: prisma
       DATABASE_URL: postgresql://connectsphere:connectsphere@postgres:5432/attendance_db
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-connectsphere}:${RABBITMQ_PASSWORD:-connectsphere-dev-only}@rabbitmq:5672
+      RABBITMQ_QUEUE: attendance-service.domain-events
       EVENT_SERVICE_URL: http://event-service:3000
       BOOKING_SERVICE_URL: http://booking-service:3000
       AUTH_SERVICE_URL: http://auth-service:3000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   messaging-service:

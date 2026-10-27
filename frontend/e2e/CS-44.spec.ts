@@ -40,8 +40,9 @@ test('CS-44 AC02/03/06: distinct Event history is accessible to same organisatio
     expect((await other.get(`/api/event-history/${approved.eventId}`)).status()).toBe(403)
     expect((await attendee.get(`/api/event-history/${approved.eventId}`)).status()).toBe(403)
     await page.goto(`/events/${approved.eventId}`)
-    await expect(page.getByRole('heading', { name: 'Event history', exact: true })).toBeVisible()
-    await expect(page.getByTestId('history-entry').first()).toBeVisible()
+    const activityHistory = page.getByRole('tabpanel', { name: 'Activity history', exact: true })
+    await expect(activityHistory).toBeVisible()
+    await expect(activityHistory.getByTestId('history-entry').first()).toBeVisible()
     const history = await (await owner.get(`/api/event-history/${approved.eventId}`)).json()
     expect(JSON.stringify(history)).not.toMatch(/tokenHash|passwordHash|authorization|bearerToken/)
   }
@@ -54,8 +55,11 @@ test('CS-44 accessibility: keyboard arrows switch and focus request tabs without
   const serverPage = await owner.get(`/requests/${draft.id}`)
   expect(serverPage.status()).toBe(200)
   const serverHTML = await serverPage.text()
-  for (const name of ['details', 'history']) {
-    expect(new RegExp(`<button[^>]*id="request-${name}-tab"[^>]*disabled`).test(serverHTML), 'Server-rendered tabs must wait for their keyboard handlers').toBe(true)
+  const serverButtons = serverHTML.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []
+  for (const name of ['Details', 'History']) {
+    const tab = serverButtons.find(button => button.includes(name))
+    expect(tab, `Server-rendered ${name} tab must exist`).toBeDefined()
+    expect(tab).toMatch(/\sdisabled(?:="(?:disabled)?")?(?:\s|>)/)
   }
   await page.goto(`/requests/${draft.id}`)
   await field(page, 'Purpose').fill('Unsaved keyboard input')

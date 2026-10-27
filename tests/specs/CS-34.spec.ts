@@ -7,10 +7,13 @@ import { calendarRange, calendarSlotState, fullDayCalendarHours, intervalSegment
 const require = createRequire(import.meta.url)
 const { availabilityRange } = require('../../services/booking-service/src/availability') as { availabilityRange: (query: Record<string, string>) => Record<string, string[]> }
 const week = calendarRange('week', new Date('2026-12-21T00:00:00Z'))
-mockNuxtImport('useFetch', () => async (path: string) => ({
-  data: { value: path.includes('availability') ? { items: [{ id: 'early-ui', title: 'Early venue maintenance', status: 'BLOCKED', startAt: '2026-12-20T16:30:00Z', endAt: '2026-12-20T17:30:00Z' }] } : { events: [] } },
-  error: { value: null }, refresh: vi.fn(),
-}))
+mockNuxtImport('useFetch', () => async (path: string | (() => string)) => {
+  const resolvedPath = typeof path === 'function' ? path() : path
+  return {
+    data: { value: resolvedPath.includes('availability') ? { items: [{ id: 'early-ui', title: 'Early venue maintenance', status: 'BLOCKED', startAt: '2026-12-20T16:30:00Z', endAt: '2026-12-20T17:30:00Z' }] } : { events: [] } },
+    error: { value: null }, refresh: vi.fn(),
+  }
+})
 
 describe('CS-34 — venue availability calendar', () => {
   it('TC-CS34-10 displays the early local-day block in the actual calendar component', async () => {

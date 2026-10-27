@@ -49,7 +49,7 @@ export async function signIn(page: Page, email = emails.owner, password?: string
     expect(attempt, 'Gateway kept rate limiting live login').toBeLessThan(2)
     await rateLimitPause(response.headers())
   }
-  await expect(page).toHaveURL(new URL(expectedHome ?? (email === emails.staff ? '/venue' : email === emails.attendee || email === emails.otherAttendee ? '/attendee' : email === emails.support ? '/technical-requirements' : '/'), baseURL).href)
+  await expect(page).toHaveURL(new URL(expectedHome ?? (email === emails.staff ? '/venue' : email === emails.attendee || email === emails.otherAttendee ? '/attendances' : email === emails.support ? '/technical-requirements' : '/'), baseURL).href)
 }
 
 export async function session(request: APIRequest, email = emails.owner) {
@@ -107,9 +107,11 @@ export async function completeForm(page: Page, name = `Browser ${randomUUID()}`)
   await field(page, 'End time').fill('17:00')
   await field(page, 'Time zone').fill('Asia/Singapore')
   await field(page, 'Expected attendance').fill('100')
-  await field(page, 'Venue type').selectOption('physical')
-  await field(page, 'Preferred layout (choose Other when needed)').selectOption('theatre')
-  await field(page, 'Venue / location requirements').fill('Accessible meeting room')
+  await field(page, 'Venue type').click()
+  await page.getByRole('option', { name: 'Physical', exact: true }).click()
+  await field(page, 'Preferred layout').click()
+  await page.getByRole('option', { name: 'Theatre', exact: true }).click()
+  await field(page, 'Venue or location requirements').fill('Accessible meeting room')
   return name
 }
 

@@ -4,26 +4,50 @@ import {planningEvent,createVenue,hold} from './fixtures/venue-fixtures'
 import {safeConfirm,approve} from './fixtures/sprint4-fixtures'
 
 test('TC-CS47-01: Attendee sees confirmed event details on the attendee dashboard', async ({ attendance, page }, info) => {
-  const event = await attendance.event()
-  await signIn(page, emails.attendee); await page.goto('/attendee')
+  const event = await attendance.event({ registrationLimit: null })
+  const detail = await attendance.checkDetail(event.eventId, await attendance.actor(emails.attendee))
+  expect(detail.status()).toBe(200)
+  const eventDetail = await detail.json()
+  const dateTime = new Intl.DateTimeFormat('en-SG', {
+    dateStyle: 'medium', timeStyle: 'short', timeZone: eventDetail.timeZone,
+  })
+  const eventTimeRange = `${dateTime.format(new Date(eventDetail.startAt))} – ${dateTime.format(new Date(eventDetail.endAt))}`
+  await signIn(page, emails.attendee); await page.goto('/attendances')
   await expect(page.getByRole('heading', { name: 'Your events' })).toBeVisible()
+  const eventItem = page.getByRole('article', { name: event.eventName })
+  await expect(eventItem).toContainText(`Event ${event.eventId}`)
+  await expect(eventItem).toContainText(eventTimeRange)
+  await expect(eventItem).toContainText('Not set')
+  await expect(eventItem).not.toContainText('80 attendees')
   await expect(page.getByRole('link', { name: new RegExp(`Event ${event.eventId}`) })).toBeVisible()
   await page.getByRole('link', { name: new RegExp(`Event ${event.eventId}`) }).click()
   await expect(page).toHaveTitle(/Event details | ConnectSphere/)
   await expect(page.getByRole('heading', { name: event.eventName })).toBeVisible()
   await expect(page.getByText(`Event ${event.eventId}`)).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Event essentials' })).toContainText(
+    eventTimeRange,
+  )
   await expect(page.getByText('Registration window')).toBeVisible()
   await page.screenshot({ path: info.outputPath('TC-CS47-01-event-details.png'), fullPage: true })
 })
 
+test('TC-CS47-01: Attendee sees the configured registration limit, not the planned attendance', async ({ attendance, page }) => {
+  const event = await attendance.event({ registrationLimit: 50 })
+  await signIn(page, emails.attendee); await page.goto('/attendances')
+  const eventItem = page.getByRole('article', { name: event.eventName })
+  await expect(eventItem).toContainText('50 attendees')
+  await expect(eventItem).not.toContainText('80 attendees')
+})
+
 test('TC-CS47-03: Event list opens correct detail page; registration availability truthful', async ({ attendance, page }, info) => {
   const event = await attendance.event({ registrationEnabled: true })
-  await signIn(page, emails.attendee); await page.goto('/attendee')
+  await signIn(page, emails.attendee); await page.goto('/attendances')
   await expect(page.getByRole('link', { name: new RegExp(`Event ${event.eventId}`) })).toBeVisible()
   await page.getByRole('link', { name: new RegExp(`Event ${event.eventId}`) }).click()
   await expect(page.getByRole('heading', { name: event.eventName })).toBeVisible()
   await expect(page.getByText(/registration window/i)).toBeVisible()
-  await expect(page.getByText(/register \(coming soon.*CS-48\)/i)).toBeVisible()
+  await expect(page.getByText(/registration opens/i)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Register', exact: true })).toHaveCount(0)
   await page.screenshot({ path: info.outputPath('TC-CS47-03-list-to-detail.png'), fullPage: true })
 })
 
@@ -53,7 +77,7 @@ test('TC-CS47-05: Non-confirmed event is hidden from attendee list and detail re
   const draft = await mutation(owner, 'POST', '/api/events', { ...validRequest(), saveAs: 'draft' })
   expect(draft.status()).toBe(201)
   const draftBody = await draft.json()
-  await signIn(page, emails.attendee); await page.goto('/attendee')
+  await signIn(page, emails.attendee); await page.goto('/attendances')
   await expect(page.getByRole('link', { name: new RegExp(`Event ${draftBody.eventId}`) })).toHaveCount(0)
   const detail = await attendance.checkDetail(draftBody.eventId, await attendance.actor(emails.attendee))
   expect(detail.status()).toBe(404)
@@ -65,7 +89,7 @@ test('TC-CS47-08: Cancelled event - registered attendee sees own record; unrelat
   expect(own.status()).toBe(200)
   await signIn(page, emails.attendee); await page.goto(`/attendances/registrations/${event.eventId}`)
   await expect(page.getByText('Your registration')).toBeVisible()
-  await expect(page.getByText('CANCELLED', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Cancelled', { exact: true }).first()).toBeVisible()
   const unrelated = await attendance.checkRegistration(event.eventId, await attendance.actor(emails.otherAttendee))
   expect(unrelated.status()).toBe(404)
   await signIn(page, emails.otherAttendee); await page.goto(`/attendances/registrations/${event.eventId}`)
@@ -85,7 +109,7 @@ test('TC-CS47-09: Responsive empty state on attendee dashboard', async ({ attend
 test('TC-CS47-02: Current confirmed multi-venue presentation retains the designated primary',async({attendance,page},info)=>{
  const event=await attendance.event({rooms:2})
  await signIn(page,emails.attendee);await page.goto(`/attendances/events/${event.eventId}`)
- await expect(page.getByRole('region',{name:'Confirmed venues'}).locator('p')).toHaveCount(2)
+ await expect(page.getByRole('region',{name:'Confirmed venues'}).locator('li')).toHaveCount(2)
  await page.getByRole('region',{name:'Confirmed venues'}).screenshot({path:info.outputPath('TC-CS47-02-current-confirmed-venues.png')})
 })
 

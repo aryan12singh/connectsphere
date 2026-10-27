@@ -1,0 +1,3 @@
+ALTER TABLE "events"
+  ADD COLUMN "eventVersion" INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN "registrationEnabled" BOOLEAN NOT NULL DEFAULT false;

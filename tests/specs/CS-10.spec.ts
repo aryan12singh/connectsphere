@@ -207,7 +207,7 @@ describe('CS-10 — TC-CS10-07 unauthenticated interface directs to login', () =
 
     await authMiddleware({ path: '/' })
 
-    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/attendee')
+    expect(authMiddlewareMocks.navigateToLogin).toHaveBeenCalledWith('/attendances')
   })
   it('TC-CS10-11 sends Technical Support to the technical requirements review queue and denies an unknown role', async () => {
     const { default: middleware } = await import('../../frontend/app/middleware/auth.global')

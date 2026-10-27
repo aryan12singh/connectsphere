@@ -73,3 +73,15 @@ test('terminal Event suppresses stale notices except exact source-proven Staff v
   proofStatus=409;assert.equal(await currentContext(message('BookingCancelled',p)),null);proofStatus=503;await assert.rejects(()=>currentContext(message('BookingCancelled',p)));
  }finally{global.fetch=native;}
 });
+
+test('EventCancelled attendee notice requires the exact terminal cancellation proof',async()=>{
+ const native=global.fetch;
+ const p={eventId:'event',eventRequestId:'request',eventVersion:8,cancellationActionId:'cancel-action'};
+ let proof={eventId:'event',eventRequestId:'request',eventVersion:8,cancellationActionId:'cancel-action',status:'CANCELLED'};
+ global.fetch=async url=>({ok:true,status:200,json:async()=>String(url).includes('cancellation-context')?proof:{id:'event',eventRequestId:'request',organiserId:'organiser',currentCoordinatorId:'coordinator',title:'Conference',status:'CANCELLED'}});
+ try{
+  assert.ok(await currentContext({...message('EventCancelled',p),aggregateType:'Event'}));
+  proof={...proof,status:'CANCELLING'};assert.equal(await currentContext({...message('EventCancelled',p),aggregateType:'Event'}),null);
+  proof={...proof,status:'CANCELLED',eventVersion:7};assert.equal(await currentContext({...message('EventCancelled',p),aggregateType:'Event'}),null);
+ }finally{global.fetch=native;}
+});

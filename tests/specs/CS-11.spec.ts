@@ -62,7 +62,7 @@ describe('CS-11 — TC-CS11-01 new-request form renders every Figma information 
       'Minimum capacity',
       'Preferred layout',
       'Venue type',
-      'Venue / location requirements',
+      'Venue or location requirements',
       'Accessibility needs',
       'Accessibility details',
       'Equipment & technical requirements',
@@ -169,13 +169,16 @@ describe('CS-11 — TC-CS11-23 required-field accessibility', () => {
 
 // Browser verification found a section heading and control sharing a label target.
 describe('CS-11 — TC-CS11-24 field labels target unique form controls', () => {
-  it('associates each explicit label with exactly one input, select or textarea', async () => {
+  it('associates each explicit label with exactly one native control or accessible combobox trigger', async () => {
     const wrapper = await mountNewRequestPage()
     for (const label of wrapper.findAll('label[for]')) {
       const target = label.attributes('for')
       const controls = wrapper.findAll(`[id="${target}"]`)
       expect(controls, `${target} must be unique`).toHaveLength(1)
-      expect(controls[0]!.element.tagName, `${target} must be a form control`).toMatch(/^(INPUT|SELECT|TEXTAREA)$/)
+      const control = controls[0]!
+      const isNativeControl = /^(INPUT|SELECT|TEXTAREA)$/.test(control.element.tagName)
+      const isComboboxTrigger = control.element.tagName === 'BUTTON' && control.attributes('role') === 'combobox'
+      expect(isNativeControl || isComboboxTrigger, `${target} must be a labelled form control`).toBe(true)
     }
   })
 })
