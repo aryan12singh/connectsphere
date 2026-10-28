@@ -1,7 +1,6 @@
 const express = require('express');
 const { requireAuth, requireAnyPermission, requirePermission } = require('../auth');
 const { decide, ACTIONS } = require('../domain/transitions');
-const { pickCoordinator } = require('../domain/assignment');
 const repository = require('../store');
 const { toRequest } = require('../serializers');
 const config = require('../config');
@@ -95,12 +94,6 @@ async function organiserSummary(organiserId) {
   return { id: organiserId, name: organiserId, email: '', company: '' };
 }
 
-async function assignAutomatically(request, actorId) {
-  const candidates = await coordinatorCandidates();
-  const chosen = pickCoordinator(candidates, await repository.activeCounts());
-  return chosen ? repository.assignCoordinator(request.id, chosen, null, 'AUTO') : null;
-}
-
 async function readable(actor, record) {
   return canRead(actor, record);
 }
@@ -123,11 +116,9 @@ router.get('/review-queue', requirePermission('events.view', 'event_requests.rev
       ? req.query.status
       : req.query.status ? [req.query.status] : REVIEW_QUEUE_STATUSES;
     const requests = await repository.listRequests({ status: requestedStatuses });
-    const assigned = req.query.assigned === 'me'
-      ? requests.filter(record => record.currentCoordinatorId === req.actor.id)
-      : req.query.assigned === 'unassigned'
-        ? requests.filter(record => !record.currentCoordinatorId && record.status === 'SUBMITTED')
-        : requests.filter(record => record.currentCoordinatorId === req.actor.id || (!record.currentCoordinatorId && record.status === 'SUBMITTED'));
+    // Week 7: a Coordinator's queue holds only requests assigned to them. Queued
+    // (unassigned) requests belong to the Lead's queue, never to a Coordinator.
+    const assigned = requests.filter(record => record.currentCoordinatorId === req.actor.id);
     const items = await Promise.all(assigned.map(async (record) => ({ ...(await response(record, req.actor)), organiser: await organiserSummary(record.organiserId) })));
     return res.json(page(items, req));
   } catch (error) { return next(error); }
@@ -158,10 +149,76 @@ router.post('/', requirePermission('event_requests.create'), async (req, res, ne
 // Coordinators a request can be handed to (names for the "Change coordinator"
 // dropdown). Names live in user-service, so event-service passes them through
 // and the browser never talks to user-service directly.
-router.get('/coordinators', requirePermission('events.view', 'event_requests.review'), async (req, res, next) => {
+router.get('/coordinators', requirePermission('events.view', 'assignments.view'), async (req, res, next) => {
   try {
     const items = (await coordinatorCandidates()).map(user => ({ id: user.id, name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || user.id, email: user.email || '' }));
     return res.json({ items });
+  } catch (error) { return next(error); }
+});
+
+// ── Week 7 (CS-81, CS-30): the Coordinator Lead's queue and assignment ─────────
+// Every route here needs assignments.view, which only the Lead role holds, so a
+// Coordinator, Organiser or any other role gets 403.
+function leadItem(record, organiser, allowedActions) {
+  return {
+    id: record.id,
+    eventName: record.eventName || '',
+    status: record.status,
+    version: record.version,
+    organiser,
+    submittedAt: record.submittedAt || null,
+    startAt: record.startAt || null,
+    endAt: record.endAt || null,
+    timeZone: record.timeZone || '',
+    expectedAttendance: record.expectedAttendance ?? null,
+    purpose: record.purpose || '',
+    venueType: record.venueType || null,
+    currentCoordinatorId: record.currentCoordinatorId || null,
+    allowedActions,
+  };
+}
+const submittedTime = record => new Date(record.submittedAt || record.createdAt).getTime();
+
+// The unassigned queue: submitted, no Coordinator yet, oldest first.
+router.get('/unassigned', requirePermission('assignments.view'), async (req, res, next) => {
+  try {
+    const queued = (await repository.listRequests({ status: ['SUBMITTED'] }))
+      .filter(record => !record.currentCoordinatorId)
+      .sort((a, b) => submittedTime(a) - submittedTime(b) || (a.id < b.id ? -1 : 1));
+    const items = await Promise.all(queued.map(async record => leadItem(record, await organiserSummary(record.organiserId), ['assign'])));
+    return res.json(page(items, req));
+  } catch (error) { return next(error); }
+});
+
+// Open requests this Lead assigned, so the Lead can reassign them.
+router.get('/assigned-by-me', requirePermission('assignments.view'), async (req, res, next) => {
+  try {
+    const mine = (await repository.listAssignedBy(req.actor.id))
+      .filter(record => ['SUBMITTED', 'RETURNED_FOR_AMENDMENT'].includes(record.status) || (record.status === 'APPROVED' && ['ARRANGEMENT_PENDING', 'CONFIRMED', 'PREPARATION'].includes(record.event?.status)))
+      .sort((a, b) => submittedTime(a) - submittedTime(b) || (a.id < b.id ? -1 : 1));
+    const items = await Promise.all(mine.map(async record => leadItem(record, await organiserSummary(record.organiserId), ['reassign'])));
+    return res.json(page(items, req));
+  } catch (error) { return next(error); }
+});
+
+router.post('/:id/assign', requirePermission('assignments.view'), async (req, res, next) => {
+  try {
+    if (await runTransactionalMutation(req, res, next, 'assign', req.params.id)) return;
+    const record = await repository.findRequest(req.params.id);
+    if (!record) return sendError(res, 404, 'NOT_FOUND', 'Event request not found');
+    const targetId = typeof req.body?.coordinatorId === 'string' ? req.body.coordinatorId.trim() : '';
+    if (!targetId || req.body?.version == null) return sendError(res, 422, 'VALIDATION_FAILED', 'Coordinator and version are required.');
+    if (record.status !== 'SUBMITTED' || record.currentCoordinatorId) return sendError(res, 409, 'INVALID_TRANSITION', 'Only a queued request without a Coordinator can be assigned');
+    if (targetId === record.organiserId) return sendError(res, 422, 'VALIDATION_FAILED', 'An Organiser cannot coordinate their own request.');
+    const target = await coordinatorById(targetId);
+    if (target && (target.isActive === false || !(target.roles || [target.role]).includes('EVENT_COORDINATOR'))) return sendError(res, 422, 'VALIDATION_FAILED', 'The target user must be an active Coordinator.');
+    const updated = await repository.updateRequest(record.id, {}, req.body.version);
+    if (!updated) return sendError(res, 409, 'STALE_VERSION', 'This request was changed by someone else. Reload and try again.');
+    await repository.assignCoordinator(record.id, targetId, req.actor.id, 'ASSIGNED');
+    const result = await repository.findRequest(record.id);
+    await repository.addActivity({ eventRequestId: record.id, action: 'COORDINATOR_ASSIGNED', fromStatus: record.status, toStatus: record.status, actorType: 'USER', actorId: req.actor.id, details: { toCoordinatorId: targetId } });
+    await repository.addOutbox({ aggregateType: 'EventRequest', aggregateId: record.id, eventType: 'CoordinatorAssigned', payload: { eventRequestId: record.id, organiserId: record.organiserId, coordinatorId: targetId, eventName: record.eventName, actorId: req.actor.id } });
+    return res.json(await response(result, req.actor));
   } catch (error) { return next(error); }
 });
 
@@ -239,11 +296,9 @@ router.post('/:id/submit', requirePermission('event_requests.create'), async (re
     if (record.status !== 'DRAFT') return sendError(res, 409, 'INVALID_TRANSITION', `Cannot submit when the status is ${record.status}`);
     const invalid = validate(record, true);
     if (invalid) return sendError(res, 422, 'VALIDATION_FAILED', 'Please fix the highlighted fields.', invalid);
-    let updated = await repository.updateRequest(record.id, { status: 'SUBMITTED', submittedAt: new Date() }, req.body?.version);
+    const updated = await repository.updateRequest(record.id, { status: 'SUBMITTED', submittedAt: new Date() }, req.body?.version);
     if (!updated) return sendError(res, 409, 'STALE_VERSION', 'This request was changed by someone else. Reload and try again.');
-    const assignment = await assignAutomatically(updated, req.actor.id);
-    updated = await repository.findRequest(record.id);
-    if (assignment) await repository.addActivity({ eventRequestId: record.id, action: 'COORDINATOR_ASSIGNED', fromStatus: 'DRAFT', toStatus: 'SUBMITTED', actorType: 'SYSTEM', actorId: null, details: { coordinatorId: assignment.coordinatorId } });
+    // Week 7: a first submission stays unassigned and waits in the Lead's queue.
     await repository.addActivity({ eventRequestId: record.id, action: 'SUBMITTED', fromStatus: 'DRAFT', toStatus: 'SUBMITTED', actorType: 'USER', actorId: req.actor.id, details: null });
     return res.json(await response(updated, req.actor));
   } catch (error) { return next(error); }
@@ -327,7 +382,7 @@ router.post('/:id/decision', requirePermission('event_requests.review'), async (
   }
 });
 
-router.post('/:id/reassign', requirePermission('event_requests.review'), async (req, res, next) => {
+router.post('/:id/reassign', requirePermission('assignments.view'), async (req, res, next) => {
   try {
     if (await runTransactionalMutation(req, res, next, 'reassign', req.params.id)) return;
     const record = await repository.findRequest(req.params.id);
@@ -335,8 +390,7 @@ router.post('/:id/reassign', requirePermission('event_requests.review'), async (
     const targetId = typeof req.body?.coordinatorId === 'string' ? req.body.coordinatorId.trim() : '';
     if (!targetId || req.body?.version == null) return sendError(res, 422, 'VALIDATION_FAILED', 'Coordinator and version are required.');
     if (!['SUBMITTED', 'RETURNED_FOR_AMENDMENT', 'APPROVED'].includes(record.status)) return sendError(res, 409, 'INVALID_TRANSITION', `Cannot reassign when the status is ${record.status}`);
-    if (record.currentCoordinatorId && record.currentCoordinatorId !== req.actor.id) return sendError(res, 403, 'FORBIDDEN', 'Only the current Coordinator can do this.');
-    if (!record.currentCoordinatorId && targetId !== req.actor.id) return sendError(res, 403, 'FORBIDDEN', 'An unassigned request can only be claimed by you.');
+    if (!record.currentCoordinatorId) return sendError(res, 409, 'INVALID_TRANSITION', 'This request has no Coordinator yet. Assign one first.');
     if (record.currentCoordinatorId === targetId) return sendError(res, 422, 'VALIDATION_FAILED', 'The new Coordinator must be different.');
     const target = await coordinatorById(targetId);
     if (target && (target.isActive === false || !(target.roles || [target.role]).includes('EVENT_COORDINATOR'))) return sendError(res, 422, 'VALIDATION_FAILED', 'The target user must be an active Coordinator.');

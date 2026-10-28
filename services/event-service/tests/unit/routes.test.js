@@ -11,7 +11,7 @@ const http = require('node:http');
 const app = require('../../src/app');
 const authModule = require('../../src/auth');
 const { pickCoordinator, countsAsActive } = require('../../src/domain/assignment');
-const { isOrganiser, isCoordinator, canRead, canEdit, canDecide, allowedActions } = require('../../src/policy');
+const { isOrganiser, isCoordinator, isLead, canRead, canEdit, canDecide, allowedActions } = require('../../src/policy');
 
 async function withServer(run) {
   const server = http.createServer(app);
@@ -193,12 +193,20 @@ test('policy helpers cover owner, organisation, coordinator and disabled action 
   const coordinator = { role: 'EVENT_COORDINATOR', id: 'coord-1' };
   const otherCoordinator = { role: 'EVENT_COORDINATOR', id: 'coord-2' };
   const attendee = { role: 'ATTENDEE', id: 'attendee-1' };
+  const lead = { role: 'EVENT_COORDINATOR_LEAD', id: 'lead-1', permissions: ['assignments.view', 'events.view'] };
   assert.equal(isOrganiser(organiser), true);
+  assert.equal(isLead(lead), true);
+  assert.equal(isLead(coordinator), false);
+  assert.equal(isCoordinator(lead), false);
   assert.equal(isCoordinator(coordinator), true);
   assert.equal(canRead(organiser, draft), true);
   assert.equal(canRead(sameCompany, draft), false);
   assert.equal(canRead(coordinator, submitted), true);
-  assert.equal(canRead(otherCoordinator, unassigned), true);
+  // Week 7: a Coordinator never sees a queued request; only the Lead does, until it is assigned.
+  assert.equal(canRead(otherCoordinator, unassigned), false);
+  assert.equal(canRead(lead, unassigned), true);
+  assert.equal(canRead(lead, submitted), false);
+  assert.equal(canRead(lead, draft), false);
   assert.equal(canRead(attendee, draft), false);
   assert.equal(canEdit(organiser, draft), true);
   assert.equal(canEdit(organiser, returned), true);
@@ -207,14 +215,19 @@ test('policy helpers cover owner, organisation, coordinator and disabled action 
   assert.equal(canDecide(otherCoordinator, submitted), false);
   assert.deepEqual(allowedActions(organiser, draft), ['edit', 'submit']);
   assert.deepEqual(allowedActions(organiser, returned), ['edit', 'resubmit']);
-  assert.deepEqual(allowedActions(coordinator, unassigned), ['claim', 'approve', 'reject', 'amendments']);
-  assert.deepEqual(allowedActions(coordinator, submitted), ['approve', 'reject', 'amendments', 'reassign']);
+  // Nobody can decide an unassigned request, and a Coordinator can no longer claim or reassign.
+  assert.deepEqual(allowedActions(coordinator, unassigned), []);
+  assert.deepEqual(allowedActions(otherCoordinator, submitted), []);
+  assert.deepEqual(allowedActions(coordinator, submitted), ['approve', 'reject', 'amendments']);
+  assert.deepEqual(allowedActions(lead, unassigned), ['assign']);
+  assert.deepEqual(allowedActions(lead, submitted), []);
+  assert.deepEqual(allowedActions(lead, draft), []);
   assert.deepEqual(allowedActions(attendee, draft), []);
   // CS-12: Planning-stage Reject is offered only to the current Coordinator while the Event is still in Planning.
   const planning = { ...submitted, status: 'APPROVED', event: { id: 'e1', status: 'ARRANGEMENT_PENDING' } };
-  assert.deepEqual(allowedActions(coordinator, planning), ['reassign', 'reject']);
+  assert.deepEqual(allowedActions(coordinator, planning), ['reject']);
   assert.deepEqual(allowedActions(otherCoordinator, planning), []);
-  assert.deepEqual(allowedActions(coordinator, { ...planning, event: { id: 'e1', status: 'CONFIRMED' } }), ['reassign']);
+  assert.deepEqual(allowedActions(coordinator, { ...planning, event: { id: 'e1', status: 'CONFIRMED' } }), []);
   assert.deepEqual(allowedActions(organiser, planning), []);
 });
 
@@ -245,10 +258,17 @@ test('draft can be submitted with a version and then approved by its coordinator
     assert.equal(submittedResponse.status, 200);
     const submitted = await submittedResponse.json();
     assert.equal(submitted.status, 'SUBMITTED');
+    // Week 7: the submission stays unassigned, nobody can decide it, and only the Lead assigns.
+    assert.equal(submitted.currentCoordinatorId, null);
+    assert.equal(submitted.awaitingAssignment, true);
     const coordinator = auth('coord-flow-test', 'EVENT_COORDINATOR');
-    const claim = await fetch(`${baseUrl}/event-requests/${draft.id}/reassign`, { method: 'POST', headers: coordinator, body: JSON.stringify({ coordinatorId: 'coord-flow-test', version: submitted.version }) });
+    const lead = auth('lead-flow-test', 'EVENT_COORDINATOR_LEAD');
+    const early = await fetch(`${baseUrl}/event-requests/${draft.id}/decision`, { method: 'POST', headers: coordinator, body: JSON.stringify({ decision: 'approve', version: submitted.version }) });
+    assert.equal(early.status, 403);
+    const claim = await fetch(`${baseUrl}/event-requests/${draft.id}/assign`, { method: 'POST', headers: lead, body: JSON.stringify({ coordinatorId: 'coord-flow-test', version: submitted.version }) });
     assert.equal(claim.status, 200);
     const assigned = await claim.json();
+    assert.equal(assigned.currentCoordinatorId, 'coord-flow-test');
     const approved = await fetch(`${baseUrl}/event-requests/${draft.id}/decision`, { method: 'POST', headers: coordinator, body: JSON.stringify({ decision: 'approve', version: assigned.version, notes: 'Ready' }) });
     assert.equal(approved.status, 200);
     const body = await approved.json();
@@ -261,6 +281,7 @@ test('OpenAPI route lifecycle combines validation, permissions, concurrency, dec
   await withServer(async (baseUrl) => {
     const organiser = auth('organiser-scenario', 'EVENT_ORGANISER');
     const coordinator = auth('coordinator-scenario', 'EVENT_COORDINATOR');
+    const lead = auth('lead-scenario', 'EVENT_COORDINATOR_LEAD');
     const otherOrganiser = auth('other-organiser-scenario', 'EVENT_ORGANISER');
     const request = (method, path, headers, body) => fetch(`${baseUrl}${path}`, {
       method, headers, body: body === undefined ? undefined : JSON.stringify(body),
@@ -289,7 +310,7 @@ test('OpenAPI route lifecycle combines validation, permissions, concurrency, dec
       assert.equal((await response.json()).error.code, 'INVALID_TRANSITION');
     });
 
-    const claimedResponse = await request('POST', `/event-requests/${draft.id}/reassign`, coordinator, { coordinatorId: 'coordinator-scenario', version: submitted.version });
+    const claimedResponse = await request('POST', `/event-requests/${draft.id}/assign`, lead, { coordinatorId: 'coordinator-scenario', version: submitted.version });
     const claimed = await claimedResponse.json();
     await t.test('mandatory reject reason is enforced by the transition guard', async () => {
       const response = await request('POST', `/event-requests/${draft.id}/decision`, coordinator, { decision: 'reject', version: claimed.version });
@@ -322,6 +343,7 @@ test('route cases cover capability checks, assignment, pagination, decisions and
   await withServer(async (baseUrl) => {
     const organiser = auth('route-cases-organiser', 'EVENT_ORGANISER');
     const coordinator = auth('route-cases-coordinator', 'EVENT_COORDINATOR');
+    const lead = auth('route-cases-lead', 'EVENT_COORDINATOR_LEAD');
     const otherCoordinator = auth('route-cases-other-coordinator', 'EVENT_COORDINATOR');
     const attendee = auth('route-cases-attendee', 'ATTENDEE');
     const request = (method, path, headers, body) => fetch(`${baseUrl}${path}`, {
@@ -358,20 +380,44 @@ test('route cases cover capability checks, assignment, pagination, decisions and
     const submittedResponse = await request('POST', `/event-requests/${draft.id}/submit`, organiser, { version: draft.version });
     const submitted = await submittedResponse.json();
 
-    await t.test('review queue exposes unassigned requests and supports claiming', async () => {
-      const queue = await request('GET', '/event-requests/review-queue?page=1&pageSize=1', coordinator);
-      assert.equal(queue.status, 200);
-      const queueBody = await queue.json();
-      assert.equal(queueBody.pageSize, 1);
-      assert.ok(queueBody.items.some((item) => item.id === draft.id) || queueBody.total >= 1);
-      const claim = await request('POST', `/event-requests/${draft.id}/reassign`, coordinator, { coordinatorId: 'route-cases-coordinator', version: submitted.version });
-      assert.equal(claim.status, 200);
+    await t.test('queued requests are only in the Lead queue; only the Lead assigns', async () => {
+      // A Coordinator never sees a queued request and cannot claim it.
+      const coordinatorQueue = await request('GET', '/event-requests/review-queue?page=1&pageSize=100', coordinator);
+      assert.equal(coordinatorQueue.status, 200);
+      assert.ok(!(await coordinatorQueue.json()).items.some((item) => item.id === draft.id));
+      assert.equal((await request('GET', '/event-requests/unassigned', coordinator)).status, 403);
+      assert.equal((await request('GET', '/event-requests/unassigned', organiser)).status, 403);
+      assert.equal((await request('POST', `/event-requests/${draft.id}/assign`, coordinator, { coordinatorId: 'route-cases-coordinator', version: submitted.version })).status, 403);
+      assert.equal((await request('POST', `/event-requests/${draft.id}/reassign`, coordinator, { coordinatorId: 'route-cases-coordinator', version: submitted.version })).status, 403);
+      // The Lead sees it, oldest first, with basic information only.
+      const leadQueue = await request('GET', '/event-requests/unassigned?page=1&pageSize=100', lead);
+      assert.equal(leadQueue.status, 200);
+      const leadBody = await leadQueue.json();
+      const queued = leadBody.items.find((item) => item.id === draft.id);
+      assert.equal(queued.eventName, validRequest.eventName);
+      assert.deepEqual(queued.allowedActions, ['assign']);
+      assert.equal(queued.currentCoordinatorId, null);
+      const times = leadBody.items.map((item) => new Date(item.submittedAt).getTime());
+      assert.deepEqual(times, [...times].sort((a, b) => a - b));
+      // The Lead can open the queued request read-only, but not change it.
+      assert.equal((await request('GET', `/event-requests/${draft.id}`, lead)).status, 200);
+      assert.equal((await request('PUT', `/event-requests/${draft.id}`, lead, { ...validRequest, version: submitted.version })).status, 403);
+      // Assigning removes it from the queue.
+      const assign = await request('POST', `/event-requests/${draft.id}/assign`, lead, { coordinatorId: 'route-cases-coordinator', version: submitted.version });
+      assert.equal(assign.status, 200);
+      assert.equal((await assign.json()).currentCoordinatorId, 'route-cases-coordinator');
+      assert.ok(!(await (await request('GET', '/event-requests/unassigned?page=1&pageSize=100', lead)).json()).items.some((item) => item.id === draft.id));
+      // Assigning again is refused, and the Lead can see it under "assigned by me".
+      assert.equal((await request('POST', `/event-requests/${draft.id}/assign`, lead, { coordinatorId: 'route-cases-other-coordinator', version: submitted.version + 1 })).status, 409);
+      const mine = await (await request('GET', '/event-requests/assigned-by-me?page=1&pageSize=100', lead)).json();
+      assert.deepEqual(mine.items.find((item) => item.id === draft.id)?.allowedActions, ['reassign']);
     });
 
     const assignedResponse = await request('GET', `/event-requests/${draft.id}`, coordinator);
     const assigned = await assignedResponse.json();
     await t.test('former coordinator loses decision access after reassignment', async () => {
-      const reassigned = await request('POST', `/event-requests/${draft.id}/reassign`, coordinator, { coordinatorId: 'route-cases-other-coordinator', version: assigned.version });
+      assert.equal((await request('POST', `/event-requests/${draft.id}/reassign`, coordinator, { coordinatorId: 'route-cases-other-coordinator', version: assigned.version })).status, 403);
+      const reassigned = await request('POST', `/event-requests/${draft.id}/reassign`, lead, { coordinatorId: 'route-cases-other-coordinator', version: assigned.version });
       assert.equal(reassigned.status, 200);
       const record = await reassigned.json();
       const oldCoordinator = await request('POST', `/event-requests/${draft.id}/decision`, coordinator, { decision: 'approve', version: record.version });
@@ -413,7 +459,7 @@ test('route cases cover capability checks, assignment, pagination, decisions and
       const createdRecord = await createdResponse.json();
       const submitted = await request('POST', `/event-requests/${createdRecord.id}/submit`, organiser, { version: createdRecord.version });
       const submittedRecord = await submitted.json();
-      const claimed = await request('POST', `/event-requests/${createdRecord.id}/reassign`, otherCoordinator, { coordinatorId: 'route-cases-other-coordinator', version: submittedRecord.version });
+      const claimed = await request('POST', `/event-requests/${createdRecord.id}/assign`, lead, { coordinatorId: 'route-cases-other-coordinator', version: submittedRecord.version });
       assert.equal(claimed.status, 200);
       const claimedRecord = await claimed.json();
       const rejected = await request('POST', `/event-requests/${createdRecord.id}/decision`, otherCoordinator, { decision: 'reject', reason: 'Route case rejection', version: claimedRecord.version });
@@ -431,6 +477,7 @@ test('CS-41 Technical Support reads minimum event metadata without events.view',
   await withServer(async (baseUrl) => {
     const organiser = auth('technical-metadata-organiser', 'EVENT_ORGANISER');
     const coordinator = auth('technical-metadata-coordinator', 'EVENT_COORDINATOR');
+    const lead = auth('technical-metadata-lead', 'EVENT_COORDINATOR_LEAD');
     const support = auth('technical-metadata-support', 'TECHNICAL_SUPPORT_STAFF');
     const createdResponse = await fetch(`${baseUrl}/event-requests`, {
       method: 'POST', headers: organiser, body: JSON.stringify(validRequest),
@@ -442,8 +489,8 @@ test('CS-41 Technical Support reads minimum event metadata without events.view',
     });
     assert.equal(submittedResponse.status, 200);
     const submitted = await submittedResponse.json();
-    const claimedResponse = await fetch(`${baseUrl}/event-requests/${draft.id}/reassign`, {
-      method: 'POST', headers: coordinator,
+    const claimedResponse = await fetch(`${baseUrl}/event-requests/${draft.id}/assign`, {
+      method: 'POST', headers: lead,
       body: JSON.stringify({ coordinatorId: 'technical-metadata-coordinator', version: submitted.version }),
     });
     assert.equal(claimedResponse.status, 200);

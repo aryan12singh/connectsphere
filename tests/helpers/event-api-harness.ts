@@ -14,7 +14,7 @@ export const valid={eventName:'BFF summit',purpose:'Learning',description:'Synth
 export async function eventHarness(){
  const prefix='bff-'+randomUUID()
  const permissionOverrides=new Map<string,string[]>()
- const users:Record<string,any>={owner:{id:prefix+'-owner',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-bff'},other:{id:prefix+'-other',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-other'},coord:{id:prefix+'-coord',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR']},coord2:{id:prefix+'-coord2',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR']},attendee:{id:prefix+'-attendee',role:'ATTENDEE',roles:['ATTENDEE']}}
+ const users:Record<string,any>={owner:{id:prefix+'-owner',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-bff'},other:{id:prefix+'-other',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-other'},coord:{id:prefix+'-coord',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR']},coord2:{id:prefix+'-coord2',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR']},attendee:{id:prefix+'-attendee',role:'ATTENDEE',roles:['ATTENDEE']},lead:{id:prefix+'-lead',role:'EVENT_COORDINATOR_LEAD',roles:['EVENT_COORDINATOR_LEAD']}}
  for(const [who,u] of Object.entries(users))Object.assign(u,{firstName:who,lastName:'Synthetic',email:who+'@example.test',name:who+' Synthetic',company:'Synthetic Org',isActive:true})
  // Coordinators the directory offers for automatic assignment. Starts with one so
  // existing tests stay deterministic; a test can push users.coord2.id to hand over.
@@ -46,12 +46,16 @@ export async function eventHarness(){
   return data
  }}))
  const app=createApp(),router=createRouter();
- const routes=[['post','/api/events','events.post'],['get','/api/events','events.get'],['get','/api/review-queue','review-queue.get'],['get','/api/events/:id','events/[id].get'],['put','/api/events/:id','events/[id].put'],['post','/api/events/:id/decision','events/[id]/decision.post'],['get','/api/events/:id/activity','events/[id]/activity.get'],['get','/api/events/:id/coordinator','events/[id]/coordinator.get'],['post','/api/events/:id/reassign','events/[id]/reassign.post'],['get','/api/coordinators','coordinators.get']]
+ const routes=[['post','/api/events','events.post'],['get','/api/events','events.get'],['get','/api/review-queue','review-queue.get'],['get','/api/events/:id','events/[id].get'],['put','/api/events/:id','events/[id].put'],['post','/api/events/:id/decision','events/[id]/decision.post'],['get','/api/events/:id/activity','events/[id]/activity.get'],['get','/api/events/:id/coordinator','events/[id]/coordinator.get'],['post','/api/events/:id/reassign','events/[id]/reassign.post'],['get','/api/coordinators','coordinators.get'],['post','/api/events/:id/assign','events/[id]/assign.post'],['get','/api/lead-queue','lead-queue.get']]
  const modules=import.meta.glob('../../frontend/server/api/**/*.ts')
  for(const [method,path,file] of routes){const handler=(await modules[`../../frontend/server/api/${file}.ts`]!() as any).default;(router as any)[method!](path,handler)}
  router.get('/test-session',defineEventHandler(async(event)=>{const who=String(getQuery(event).who);const s=await useSession(event,{password,name:'nuxt-session'});await s.update({user:users[who],secure:{token:who}});return {ok:true}}));app.use(router);const handle=toWebHandler(app)
  const cookies:Record<string,string>={};for(const who of Object.keys(users)){const r=await handle(new Request('http://localhost/test-session?who='+who));cookies[who]=(r.headers.get('set-cookie')||'').split(';')[0]!}
  return {users,directory,permissionOverrides,db:require('../../services/event-service/src/db'),async call(method:string,path:string,body?:any,who:string|null='owner',key=randomUUID(),extra={}){
   const r=await handle(new Request('http://localhost'+path,{method,headers:{'content-type':'application/json',...(who?{cookie:cookies[who]!}:{}),'Idempotency-Key':key,...extra},...(body!==undefined?{body:JSON.stringify(body)}:{})}));return {status:r.status,body:await r.json() as any}
- },async close(){vi.unstubAllGlobals();vi.doUnmock('../../frontend/server/utils/kongBff');await Promise.all([service,identity,gateway].map(s=>new Promise<void>(r=>s.close(()=>r()))));await require('../../services/event-service/src/db').$disconnect()}}
+ },
+ // Week 7: a submission waits unassigned in the Lead's queue. This helper submits and then has the
+ // Lead assign it, for the many tests that are about review, history or access, not assignment.
+ async submitAssigned(body:any=valid,to:string='coord',who:string='owner'){const self=this as any;const r=await self.call('POST','/api/events',body,who);if(r.status!==201||r.body.status!=='SUBMITTED')return r;const a=await self.call('POST',`/api/events/${r.body.id}/assign`,{coordinatorId:self.users[to].id,version:r.body.version},'lead');if(a.status!==200)throw new Error('test setup: Lead assign failed with '+a.status);return {status:201,body:a.body}},
+ async close(){vi.unstubAllGlobals();vi.doUnmock('../../frontend/server/utils/kongBff');await Promise.all([service,identity,gateway].map(s=>new Promise<void>(r=>s.close(()=>r()))));await require('../../services/event-service/src/db').$disconnect()}}
 }

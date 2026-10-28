@@ -112,7 +112,7 @@ services:
   # ── Domain services (no `methods` = all methods, incl. OPTIONS) ───────
   # Sprint 2 contract: services/event-service/docs/openapi.yaml
   #   /event-requests, /event-requests/review-queue, /event-requests/{id}, …/submit,
-  #   …/resubmit, …/decision, …/reassign, …/activity, and /events, /events/{id}.
+  #   …/resubmit, …/decision, …/assign, …/reassign, /unassigned, /assigned-by-me, …/activity, and /events, /events/{id}.
   #   Current Safety-gated confirmation is committed by Event; resource proofs
   #   are prepared before that local transaction.
   - name: event-service

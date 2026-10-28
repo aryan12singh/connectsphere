@@ -29,8 +29,11 @@ async function bookingNotificationSmoke({exerciseExpiry=false,afterBooking,reque
  const staff=await login(realm.users.find(x=>x.email==='ravi.kumar@marinaconvention.sg'));
  const submitted=await call('POST','/event-requests',{eventName:`Notification proof ${randomUUID()}`,purpose:'Actual notification integration acceptance',proposedDate:'2028-11-20',startTime:'09:00',endTime:'17:00',timeZone:'Asia/Singapore',expectedAttendance:80,minimumCapacity:80,venueType:'physical',preferredLayout:'theatre',registrationEnabled:false,saveAs:'submit',...requestOverrides},owner.token);
  assert.equal(submitted.status,201,JSON.stringify(submitted.body));
- const coordinator=await login(realm.users.find(x=>x.id===submitted.body.currentCoordinatorId));
- const approval=await call('POST',`/event-requests/${submitted.body.id}/decision`,{action:'APPROVE',version:submitted.body.version},coordinator.token);
+ const lead=await login(realm.users.find(x=>x.email==='jordan.lim@connectsphere.sg'));const coordinatorUser=realm.users.find(x=>x.email==='aisha.rahman@connectsphere.sg');
+ // Week 7: a submission waits for the Coordinator Lead to assign it.
+ const assigned=await call('POST',`/event-requests/${submitted.body.id}/assign`,{coordinatorId:coordinatorUser.id,version:submitted.body.version},lead.token);assert.equal(assigned.status,200,JSON.stringify(assigned.body));
+ const coordinator=await login(coordinatorUser);
+ const approval=await call('POST',`/event-requests/${submitted.body.id}/decision`,{action:'APPROVE',version:assigned.body.version},coordinator.token);
  assert.equal(approval.status,200,JSON.stringify(approval.body));const eventId=approval.body.eventId;
  const venue=await call('POST','/venues',{name:`Notification hall ${randomUUID()}`,address:'Synthetic integration venue',capacity:100,venueType:'PHYSICAL',supportedLayouts:['THEATRE'],facilities:[],accessibilityTags:[],timeZone:'Asia/Singapore',isActive:true,managedById:staff.user.id,reason:'Integration acceptance',setupMinutes:30,turnaroundMinutes:30,operatingHours:['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].map(weekday=>({weekday,isClosed:false,opensAt:'00:00',closesAt:'23:59'}))},staff.token);
  assert.equal(venue.status,201,JSON.stringify(venue.body));

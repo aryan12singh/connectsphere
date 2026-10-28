@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test'
+import { assignAsLead } from './fixtures/helpers'
 import { test, field, signIn, completeForm, created, mutation, session, emails, eventService, waitForEventService } from './helpers'
 
 test('CS-29 AC01-04: purpose-only private Draft, unsaved Stay, failed submission and same-ID submit', async ({ page, playwright, owner }) => {
@@ -25,6 +26,9 @@ test('CS-29 AC01-04: purpose-only private Draft, unsaved Stay, failed submission
   expect((await (await owner.get(`/api/events/${id}`)).json()).version).toBe(draft.version)
   await completeForm(page)
   await page.getByRole('button', { name: 'Submit request', exact: true }).click()
+  await expect.poll(async () => (await (await owner.get(`/api/events/${id}`)).json()).status).toBe('SUBMITTED')
+  await assignAsLead(id, (await (await owner.get(`/api/events/${id}`)).json()).version)
+  await page.goto(`/requests/${id}`)
   await expect(page.getByTestId('coordinator-banner')).toBeVisible()
   const submitted = await (await owner.get(`/api/events/${id}`)).json()
   expect(submitted.id).toBe(id)

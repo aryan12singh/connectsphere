@@ -96,6 +96,18 @@ async function currentAssignment(requestId) {
   return prisma.coordinatorAssignment.findFirst({ where: { eventRequestId: requestId, revokedAt: null }, orderBy: { assignedAt: 'desc' } });
 }
 
+// Open requests whose CURRENT Coordinator was put there by this Lead
+// (CS-30: "active Events previously assigned by that Lead").
+async function listAssignedBy(leadId) {
+  if (config.dataMode === 'memory') {
+    const ids = new Set(memory.assignments.filter(a => a.assignedById === leadId && !a.revokedAt).map(a => a.requestId));
+    return [...memory.requests.values()].filter(row => ids.has(row.id)).map(clean);
+  }
+  const rows = await prisma.coordinatorAssignment.findMany({ where: { assignedById: leadId, revokedAt: null }, select: { eventRequestId: true } });
+  if (!rows.length) return [];
+  return (await prisma.eventRequest.findMany({ where: { id: { in: rows.map(row => row.eventRequestId) } }, include: { event: true } })).map(clean);
+}
+
 async function activeCounts() {
   const rows = config.dataMode === 'memory' ? [...memory.requests.values()] : await prisma.eventRequest.findMany({ include: { event: true } });
   const counts = {};
@@ -138,4 +150,4 @@ async function listActivity(requestId) {
   return prisma.activityLog.findMany({ where: { eventRequestId: requestId }, orderBy: { createdAt: 'desc' } });
 }
 
-module.exports = { reset, requestHash, findIdempotency, saveIdempotency, createRequest, findRequest, listRequests, updateRequest, assignCoordinator, currentAssignment, activeCounts, createEvent, listEvents, addActivity, addOutbox, listActivity };
+module.exports = { reset, requestHash, findIdempotency, saveIdempotency, createRequest, findRequest, listRequests, updateRequest, assignCoordinator, currentAssignment, listAssignedBy, activeCounts, createEvent, listEvents, addActivity, addOutbox, listActivity };

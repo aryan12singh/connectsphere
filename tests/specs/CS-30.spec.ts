@@ -383,21 +383,12 @@ describe('CS-30 — TC-CS30-11 coordinator decision actions', () => {
     expect(wrapper.text()).toContain('Autumn Product Summit')
   })
 
-  it('shows an enabled Change coordinator action left of Reject when the service allows reassignment', async () => {
+  it('never shows Change coordinator to a Coordinator (Lead-only, Week 7)', async () => {
     showQueue()
     const wrapper = await mountIndexPage()
-    const actions = wrapper.findAll('button').filter(b =>
-      ['Approve', 'Ask for amendments', 'Change coordinator', 'Reject'].includes(b.text()),
-    )
-    expect(actions.map(b => b.text())).toEqual(['Approve', 'Ask for amendments', 'Change coordinator', 'Reject'])
-    expect(actions[2]!.attributes('disabled')).toBe(undefined)
-  })
-
-  it('hides Change coordinator when the service does not offer reassign', async () => {
-    showQueue()
-    detailMocks.queueResponse.value = { requests: [{ ...QUEUE_ITEMS[0]!, allowedActions: ['approve', 'reject', 'amendments'] }] }
-    const wrapper = await mountIndexPage()
-    expect(wrapper.findAll('button').some(b => b.text() === 'Change coordinator')).toBe(false)
+    const labels = wrapper.findAll('button').map(b => b.text())
+    expect(labels).toEqual(expect.arrayContaining(['Approve', 'Ask for amendments', 'Reject']))
+    expect(labels).not.toContain('Change coordinator')
   })
 
   it('sends the request version with a decision so a stale decision is rejected', async () => {
@@ -443,7 +434,7 @@ describe('CS-12 — Planning-stage Reject in the Coordinator queue', () => {
   it('offers Reject (not Approve) on an approved request in Planning and sends the typed reason', async () => {
     showQueue()
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {})
-    detailMocks.queueResponse.value = { requests: [{ ...QUEUE_ITEMS[0]!, status: 'APPROVED', eventStatus: 'ARRANGEMENT_PENDING', allowedActions: ['reassign', 'reject'] }] }
+    detailMocks.queueResponse.value = { requests: [{ ...QUEUE_ITEMS[0]!, status: 'APPROVED', eventStatus: 'ARRANGEMENT_PENDING', allowedActions: ['reject'] }] }
     detailMocks.decisionResponse.value = { id: 'req-1', status: 'REJECTED' }
     const wrapper = await mountIndexPage()
     try {
@@ -464,28 +455,42 @@ describe('CS-12 — Planning-stage Reject in the Coordinator queue', () => {
 
   it('does not offer Reject on an approved request when the server does not allow it', async () => {
     showQueue()
-    detailMocks.queueResponse.value = { requests: [{ ...QUEUE_ITEMS[0]!, status: 'APPROVED', eventStatus: 'CONFIRMED', allowedActions: ['reassign'] }] }
+    detailMocks.queueResponse.value = { requests: [{ ...QUEUE_ITEMS[0]!, status: 'APPROVED', eventStatus: 'CONFIRMED', allowedActions: [] }] }
     const wrapper = await mountIndexPage()
     expect(wrapper.findAll('button').map(b => b.text())).not.toContain('Reject')
   })
 })
-describe('CS-30 — TC-CS30-12 reassignment through the real BFF, service and database', () => {
-  it('hands a request to another Coordinator, who then owns it; the old one is locked out', async () => {
+describe('CS-30 — TC-CS30-12 Lead assignment through the real BFF, service and database', () => {
+  it('only the Lead assigns and reassigns; the old Coordinator is then locked out', async () => {
     api.directory.push(api.users.coord2.id)
     try {
       const r = await api.call('POST', '/api/events', valid)
-      const current = r.body.coordinatorId === api.users.coord.id ? 'coord' : 'coord2'
-      const other = current === 'coord' ? 'coord2' : 'coord'
-      const names = await api.call('GET', '/api/coordinators', undefined, current)
+      expect(r.body.coordinatorId ?? null).toBeNull()
+      expect((await api.call('GET', '/api/coordinators', undefined, 'coord')).status).toBe(403)
+      const names = await api.call('GET', '/api/coordinators', undefined, 'lead')
       expect(names.status).toBe(200)
       expect(names.body.items.map((c: { name: string }) => c.name)).toEqual(expect.arrayContaining(['coord Synthetic', 'coord2 Synthetic']))
-      const moved = await api.call('POST', `/api/events/${r.body.id}/reassign`, { coordinatorId: api.users[other].id, version: r.body.version }, current)
+      // Other spec files share this database, so scan every page for our request.
+      const inQueue = async (view: string, id: string) => {
+        for (let page = 1; ; page++) {
+          const res = await api.call('GET', `/api/lead-queue?view=${view}&pageSize=100&page=${page}`, undefined, 'lead')
+          expect(res.status).toBe(200)
+          if (res.body.items.some((i: { id: string }) => i.id === id)) return true
+          if (page * 100 >= res.body.total) return false
+        }
+      }
+      expect(await inQueue('unassigned', r.body.id)).toBe(true)
+      expect((await api.call('GET', '/api/lead-queue?view=unassigned', undefined, 'coord')).status).toBe(403)
+      expect((await api.call('POST', `/api/events/${r.body.id}/assign`, { coordinatorId: api.users.coord.id, version: r.body.version }, 'coord')).status).toBe(403)
+      const first = await api.call('POST', `/api/events/${r.body.id}/assign`, { coordinatorId: api.users.coord.id, version: r.body.version }, 'lead')
+      expect(first.status).toBe(200)
+      expect(first.body.coordinatorId).toBe(api.users.coord.id)
+      const moved = await api.call('POST', `/api/events/${r.body.id}/reassign`, { coordinatorId: api.users.coord2.id, version: first.body.version }, 'lead')
       expect(moved.status).toBe(200)
-      expect(moved.body.coordinatorId).toBe(api.users[other].id)
-      expect((await api.call('GET', `/api/events/${r.body.id}`, undefined, current)).status).toBe(403)
-      expect((await api.call('GET', `/api/events/${r.body.id}`, undefined, other)).status).toBe(200)
-      expect((await api.call('POST', `/api/events/${r.body.id}/reassign`, { coordinatorId: api.users[current].id, version: r.body.version }, current)).status).toBe(403)
-      expect((await api.call('POST', `/api/events/${r.body.id}/reassign`, { version: 1 }, other)).status).toBe(422)
+      expect((await api.call('GET', `/api/events/${r.body.id}`, undefined, 'coord')).status).toBe(403)
+      expect((await api.call('GET', `/api/events/${r.body.id}`, undefined, 'coord2')).status).toBe(200)
+      expect((await api.call('POST', `/api/events/${r.body.id}/reassign`, { coordinatorId: api.users.coord.id, version: moved.body.version }, 'coord2')).status).toBe(403)
+      expect((await api.call('POST', `/api/events/${r.body.id}/reassign`, { version: 1 }, 'lead')).status).toBe(422)
     }
     finally {
       api.directory.splice(1)
@@ -494,19 +499,19 @@ describe('CS-30 — TC-CS30-12 reassignment through the real BFF, service and da
 })
 // Replaces the mock seed/API harness; retains owner/contact/queue/decision scope.
 describe('CS-30 — TC-CS30-01 persistent coordinator and dashboard integration',()=>{
- it('owner and assigned Coordinator see one saved record, unrelated users are denied',async()=>{const r=await api.call('POST','/api/events',valid);expect(r.status).toBe(201);expect(r.body.coordinatorId).toBe(api.users.coord.id);expect((await api.call('GET','/api/events/'+r.body.id,undefined,'coord')).status).toBe(200);expect((await api.call('GET','/api/events/'+r.body.id,undefined,'other')).status).toBe(403)})
- it('relationship-scoped coordinator contact contains only required profile fields',async()=>{const r=await api.call('POST','/api/events',valid);const c=await api.call('GET',`/api/events/${r.body.id}/coordinator`);expect(c.body).toMatchObject({id:api.users.coord.id,name:'coord Synthetic',email:'coord@example.test'});expect(c.body).not.toHaveProperty('passwordHash');expect((await api.call('GET',`/api/events/${r.body.id}/coordinator`,undefined,'other')).status).toBe(403)})
+ it('owner and assigned Coordinator see one saved record, unrelated users are denied',async()=>{const r=await api.submitAssigned(valid);expect(r.status).toBe(201);expect(r.body.coordinatorId).toBe(api.users.coord.id);expect((await api.call('GET','/api/events/'+r.body.id,undefined,'coord')).status).toBe(200);expect((await api.call('GET','/api/events/'+r.body.id,undefined,'other')).status).toBe(403)})
+ it('relationship-scoped coordinator contact contains only required profile fields',async()=>{const r=await api.submitAssigned(valid);const c=await api.call('GET',`/api/events/${r.body.id}/coordinator`);expect(c.body).toMatchObject({id:api.users.coord.id,name:'coord Synthetic',email:'coord@example.test'});expect(c.body).not.toHaveProperty('passwordHash');expect((await api.call('GET',`/api/events/${r.body.id}/coordinator`,undefined,'other')).status).toBe(403)})
  it('drafts and their edits appear in owner cards with updated title/date',async()=>{const r=await api.call('POST','/api/events',{...valid,saveAs:'draft'});const saved=await api.call('PUT','/api/events/'+r.body.id,{version:r.body.version,eventName:'Renamed',proposedDate:'2028-12-01'});expect(saved.status).toBe(200);const list=await api.call('GET','/api/events');expect(list.body.events.find((x:any)=>x.id===r.body.id)).toMatchObject({title:'Renamed',status:'DRAFT',meta:expect.stringContaining('Dec 1')});expect((await api.call('GET','/api/events',undefined,'other')).body.events).toEqual([])})
  it('unknown persisted IDs fail without synthesising mock records',async()=>{expect((await api.call('GET','/api/events/e2')).status).toBe(404)})
 })
 describe('CS-30 — TC-CS30-06 queue authorisation',()=>{
- it('lists submitted assigned requests with limited organiser contact',async()=>{const r=await api.call('POST','/api/events',valid);const q=await api.call('GET','/api/review-queue',undefined,'coord');expect(q.body.requests.some((x:any)=>x.id===r.body.id&&x.organiser.name==='owner Synthetic')).toBe(true)})
+ it('lists submitted assigned requests with limited organiser contact',async()=>{const r=await api.submitAssigned(valid);const q=await api.call('GET','/api/review-queue',undefined,'coord');expect(q.body.requests.some((x:any)=>x.id===r.body.id&&x.organiser.name==='owner Synthetic')).toBe(true)})
  it('rejects Organisers and missing sessions',async()=>{expect((await api.call('GET','/api/review-queue')).status).toBe(403);expect((await api.call('GET','/api/review-queue',undefined,null)).status).toBe(401)})
 })
 describe('CS-30 — TC-CS30-07 existing decision controls use shared guard',()=>{
- it('approve creates a distinct Planning Event and closes further decisions',async()=>{const r=await api.call('POST','/api/events',valid);const p=`/api/events/${r.body.id}/decision`;const d=await api.call('POST',p,{decision:'approve',version:r.body.version},'coord');expect(d.status).toBe(200);expect(d.body).toMatchObject({status:'APPROVED',eventStatus:'ARRANGEMENT_PENDING',statusLabel:'Planning'});expect(d.body.eventId).not.toBe(r.body.id);expect((await api.call('GET',`/api/events/${r.body.id}`)).body).toMatchObject({eventId:d.body.eventId,eventStatus:'ARRANGEMENT_PENDING'});expect((await api.call('POST',p,{decision:'approve',version:d.body.version},'coord')).status).toBe(409)})
- it('reject and return require comments and return their explanations',async()=>{for(const decision of ['reject','amendments']){const r=await api.call('POST','/api/events',valid);const p=`/api/events/${r.body.id}/decision`;expect((await api.call('POST',p,{decision,version:r.body.version},'coord')).status).toBe(422);const d=await api.call('POST',p,{decision,version:r.body.version,notes:'Explain'},'coord');expect(d.status).toBe(200);expect(d.body.decisionReason).toBe('Explain')}})
- it('owner cannot approve; unknown action and unknown ID keep their error status',async()=>{const r=await api.call('POST','/api/events',valid);expect((await api.call('POST',`/api/events/${r.body.id}/decision`,{decision:'approve',version:r.body.version})).status).toBe(403);expect((await api.call('POST',`/api/events/${r.body.id}/decision`,{decision:'explode',version:r.body.version},'coord')).status).toBe(400);expect((await api.call('POST','/api/events/missing/decision',{decision:'approve',version:1},'coord')).status).toBe(404)})
+ it('approve creates a distinct Planning Event and closes further decisions',async()=>{const r=await api.submitAssigned(valid);const p=`/api/events/${r.body.id}/decision`;const d=await api.call('POST',p,{decision:'approve',version:r.body.version},'coord');expect(d.status).toBe(200);expect(d.body).toMatchObject({status:'APPROVED',eventStatus:'ARRANGEMENT_PENDING',statusLabel:'Planning'});expect(d.body.eventId).not.toBe(r.body.id);expect((await api.call('GET',`/api/events/${r.body.id}`)).body).toMatchObject({eventId:d.body.eventId,eventStatus:'ARRANGEMENT_PENDING'});expect((await api.call('POST',p,{decision:'approve',version:d.body.version},'coord')).status).toBe(409)})
+ it('reject and return require comments and return their explanations',async()=>{for(const decision of ['reject','amendments']){const r=await api.submitAssigned(valid);const p=`/api/events/${r.body.id}/decision`;expect((await api.call('POST',p,{decision,version:r.body.version},'coord')).status).toBe(422);const d=await api.call('POST',p,{decision,version:r.body.version,notes:'Explain'},'coord');expect(d.status).toBe(200);expect(d.body.decisionReason).toBe('Explain')}})
+ it('owner cannot approve; unknown action and unknown ID keep their error status',async()=>{const r=await api.submitAssigned(valid);expect((await api.call('POST',`/api/events/${r.body.id}/decision`,{decision:'approve',version:r.body.version})).status).toBe(403);expect((await api.call('POST',`/api/events/${r.body.id}/decision`,{decision:'explode',version:r.body.version},'coord')).status).toBe(400);expect((await api.call('POST','/api/events/missing/decision',{decision:'approve',version:1},'coord')).status).toBe(404)})
 })
 describe('CS-30 — TC-CS30-08 private draft and role-scoped dashboard',()=>{
  it('Coordinator dashboard stays empty and draft reads stay private',async()=>{const r=await api.call('POST','/api/events',{eventName:'Incomplete',saveAs:'draft'});expect((await api.call('GET','/api/events',undefined,'coord')).body.events).toEqual([]);expect((await api.call('GET','/api/events/'+r.body.id,undefined,'coord')).status).toBe(403)})
