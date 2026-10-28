@@ -9,7 +9,9 @@
 //
 // Privacy rules:
 // - Only people tied to the request get a notice (owner Organiser, current or
-//   previous Coordinator). Nobody else (CS-50 AC6).
+//   previous Coordinator). Nobody else (CS-50 AC6). The one exception is the
+//   Lead intake notice (CS-81 AC6): active Coordinator Leads are told that a
+//   new request is waiting; it carries only the event name and the queue link.
 // - Text uses the event name, statuses and a Coordinator's name only. No
 //   internal notes, no other users' data.
 // - A Coordinator who was reassigned away gets no link: they no longer have
@@ -118,8 +120,18 @@ async function noticesFor(message, lookups) {
       const attendees = uniqueIds(snapshot || (attendeeIds ? await attendeeIds(p.eventId) : []));
       return attendees.map(id => attendeeNotice(id, 'EVENT_CANCELLED', `${name} has been cancelled.`));
     }
-    case 'RequestSubmitted':
-      return [notice(p.organiserId, 'REQUEST_SUBMITTED', `Your event request ${name} was submitted. A Coordinator will be assigned to review it.`)];
+    case 'RequestSubmitted': {
+      const notices = [notice(p.organiserId, 'REQUEST_SUBMITTED', `Your event request ${name} was submitted. A Coordinator Lead will assign a Coordinator to review it.`)];
+      // CS-81 AC6 (Week 7): a first submission enters the unassigned queue, so
+      // every active Lead is told it is waiting. Only while it still has no
+      // current Coordinator; once someone is assigned the notice would be stale.
+      if (!p.coordinatorId && usersWithRole) {
+        for (const id of uniqueIds(await usersWithRole('EVENT_COORDINATOR_LEAD'))) {
+          notices.push(notice(id, 'NEW_REQUEST_UNASSIGNED', `A new event request ${name} is waiting for a Coordinator. Open the unassigned queue to assign one.`, '/queue'));
+        }
+      }
+      return notices;
+    }
     case 'RequestResubmitted':
       return [notice(p.coordinatorId, 'REQUEST_RESUBMITTED', `${name} was amended and resubmitted for your review.`)];
     case 'CoordinatorAssigned': {
