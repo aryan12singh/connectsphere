@@ -17,7 +17,7 @@ import { eventHarness,valid } from '../helpers/event-api-harness'
 describe('CS-27 — TC-CS27-02 return, amend and resubmit through BFF',()=>{
  it('keeps ID/coordinator, return baseline across saves, comments and one concurrent resubmission',async()=>{
   const api=await eventHarness();try{
-   const r=await api.call('POST','/api/events',valid);const p='/api/events/'+r.body.id
+   const r=await api.submitAssigned(valid);const p='/api/events/'+r.body.id
    const returned=await api.call('POST',p+'/decision',{decision:'amendments',notes:'Increase attendance',version:r.body.version},'coord');expect(returned.status).toBe(200)
    expect((await api.call('PUT',p,{version:returned.body.version,action:'resubmit'})).status).toBe(409)
    const saved=await api.call('PUT',p,{version:returned.body.version,expectedAttendance:120});expect(saved.status).toBe(200)
@@ -30,8 +30,8 @@ describe('CS-27 — TC-CS27-02 return, amend and resubmit through BFF',()=>{
 })
 describe('CS-27 — TC-CS27-03 invalid and unauthorised revisions',()=>{
  it('denies wrong owner and invalid resubmission, and locks rejected requests',async()=>{
-  const api=await eventHarness();try{const r=await api.call('POST','/api/events',valid);const p='/api/events/'+r.body.id;const ret=await api.call('POST',p+'/decision',{decision:'amendments',notes:'Please amend',version:r.body.version},'coord');expect((await api.call('PUT',p,{version:ret.body.version,expectedAttendance:120,action:'resubmit'},'other')).status).toBe(403);expect((await api.call('PUT',p,{version:ret.body.version,expectedAttendance:0,action:'resubmit'})).status).toBe(422)
-   const second=await api.call('POST','/api/events',valid);const q='/api/events/'+second.body.id;const reject=await api.call('POST',q+'/decision',{decision:'reject',notes:'Not feasible',version:second.body.version},'coord');expect((await api.call('PUT',q,{version:reject.body.version,eventName:'Override'})).status).toBe(409)
+  const api=await eventHarness();try{const r=await api.submitAssigned(valid);const p='/api/events/'+r.body.id;const ret=await api.call('POST',p+'/decision',{decision:'amendments',notes:'Please amend',version:r.body.version},'coord');expect((await api.call('PUT',p,{version:ret.body.version,expectedAttendance:120,action:'resubmit'},'other')).status).toBe(403);expect((await api.call('PUT',p,{version:ret.body.version,expectedAttendance:0,action:'resubmit'})).status).toBe(422)
+   const second=await api.submitAssigned(valid);const q='/api/events/'+second.body.id;const reject=await api.call('POST',q+'/decision',{decision:'reject',notes:'Not feasible',version:second.body.version},'coord');expect((await api.call('PUT',q,{version:reject.body.version,eventName:'Override'})).status).toBe(409)
   }finally{await api.close()}
  })
 })

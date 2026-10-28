@@ -54,8 +54,9 @@ enum EventStatus {
 }
 
 enum AssignmentReason {
-  AUTO // chosen by the least-loaded rule on submission
-  REASSIGNED // moved by the current Coordinator
+  AUTO // chosen by the least-loaded rule on submission (retired in Week 7; kept for history)
+  ASSIGNED // first assignment of a queued request by a Coordinator Lead
+  REASSIGNED // moved to another Coordinator by a Coordinator Lead
 }
 
 enum ActorType {

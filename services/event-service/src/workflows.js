@@ -2,21 +2,21 @@ const {displayStatus}=require('./domain/statusLabels');
 const {createHash}=require('node:crypto');
 const prisma=require('./db');
 const {decide}=require('./domain/transitions');
-const {pickCoordinator,countsAsActive}=require('./domain/assignment');
 const {normalise,snapshot,changes,fail,LIMITS,parts}=require('./domain/validation');
 const directory=require('./identity');
 const has=(actor,role)=>actor.roles.includes(role);
 function own(actor,r){if(!has(actor,'EVENT_ORGANISER')||r.organiserId!==actor.id)throw fail(403,'FORBIDDEN','Only the owning Organiser may change this request');}
 function assigned(actor,r){if(!has(actor,'EVENT_COORDINATOR')||r.currentCoordinatorId!==actor.id||r.organiserId===actor.id)throw fail(403,'FORBIDDEN','Only the assigned Coordinator may decide');}
-// Only the CURRENT Coordinator may hand a request on. If nobody holds it (the
-// directory was empty at submit time) a Coordinator may claim it for themselves.
-function reassigner(actor,r,body){
- if(!has(actor,'EVENT_COORDINATOR')||r.organiserId===actor.id)throw fail(403,'FORBIDDEN','Only a Coordinator may reassign this request');
- if(r.currentCoordinatorId?r.currentCoordinatorId!==actor.id:body.coordinatorId!==actor.id)throw fail(403,'FORBIDDEN',r.currentCoordinatorId?'Only the current Coordinator may reassign this request':'An unassigned request can only be claimed by yourself');
+// Week 7 (CS-30/CS-81): only a Coordinator Lead assigns or reassigns. A Coordinator
+// cannot hand a request on or claim one, and a Lead cannot act on their own request.
+function leadOnly(actor,r){
+ if(!has(actor,'EVENT_COORDINATOR_LEAD')||r.organiserId===actor.id)throw fail(403,'FORBIDDEN','Only a Coordinator Lead may assign or reassign a request');
 }
 function read(actor,r,eventScope=false){
  if(has(actor,'EVENT_ORGANISER')&&r.organiserId===actor.id)return;
  if(r.status!=='DRAFT'&&has(actor,'EVENT_COORDINATOR')&&r.currentCoordinatorId===actor.id)return;
+ // The Lead may read a queued request (basic information, read-only) until it is assigned.
+ if(has(actor,'EVENT_COORDINATOR_LEAD')&&r.status==='SUBMITTED'&&!r.currentCoordinatorId)return;
  if(eventScope&&r.event&&has(actor,'EVENT_ORGANISER')&&actor.organisationId&&actor.organisationId===r.organisationId)return;
  throw fail(403,'FORBIDDEN','You do not have access to this request');
 }
@@ -57,17 +57,17 @@ async function mutation(req,mode,id){
   // The database lock serialises duplicates BEFORE checking the unique replay row.
   await lock(db,JSON.stringify([actor.id,key,method,path]));
   let r;
-  if(id){await db.$queryRaw`SELECT id FROM event_requests WHERE id=${id} FOR UPDATE`;r=await load(db,id);if(mode==='decision')assigned(actor,r);else if(mode!=='reassign')own(actor,r);}
+  if(id){await db.$queryRaw`SELECT id FROM event_requests WHERE id=${id} FOR UPDATE`;r=await load(db,id);if(mode==='decision')assigned(actor,r);else if(mode!=='reassign'&&mode!=='assign')own(actor,r);}
   const saved=await db.idempotencyRecord.findUnique({where:{userId_key_method_path:{userId:actor.id,key,method,path}}});
   if(saved){
    if(mode==='create')own(actor,await load(db,saved.responseBody.id));
    if(saved.requestHash!==hash)throw fail(409,'IDEMPOTENCY_CONFLICT','This operation key was already used with different data');
    return {status:saved.responseStatus,body:saved.responseBody,replayed:true};
   }
-  // Checked AFTER the replay lookup: once the hand-over succeeds the caller is no
-  // longer the current Coordinator, but a retry of the same key must still get
-  // the original answer rather than a 403.
-  if(mode==='reassign')reassigner(actor,r,body);
+  // Checked AFTER the replay lookup so a retry of the same key still gets the
+  // original answer. The Lead keeps authority after an assignment, but a former
+  // Coordinator never does.
+  if(mode==='reassign'||mode==='assign')leadOnly(actor,r);
   if(r?.event?.status==='CANCELLING')throw fail(409,'EVENT_CANCELLING','Cancellation is awaiting resource receipts; normal Event changes are closed');
   if(id)version(body,r);
   let status=id?200:201;
@@ -90,37 +90,24 @@ async function mutation(req,mode,id){
    r=await db.eventRequest.update({where:{id:r.id},data:{...data,status:decision.to,version:{increment:1},...(resubmit?{revisedAt:new Date()}:{submittedAt:new Date()})},include:{event:true}});
    await activity(db,r,resubmit?'RESUBMITTED':'SUBMITTED',actor,from,r.status,{changes:diff});
    await outbox(db,r,resubmit?'RequestResubmitted':'RequestSubmitted',actor);
-   if(!resubmit){
-    // Protect load selection across concurrent DIFFERENT submissions too.
-    await lock(db,'connectsphere:automatic-assignment');
-    const eligible=(await directory.coordinators()).filter(c=>c.id!==r.organiserId);
-    const open=await db.eventRequest.findMany({where:{currentCoordinatorId:{in:eligible.map(c=>c.id)}},select:{currentCoordinatorId:true,status:true,event:{select:{status:true}}}});
-    const counts={};for(const row of open)if(countsAsActive({requestStatus:row.status,eventStatus:row.event?.status}))counts[row.currentCoordinatorId]=(counts[row.currentCoordinatorId]||0)+1;
-    const previous=await db.coordinatorAssignment.groupBy({by:['coordinatorId'],where:{coordinatorId:{in:eligible.map(c=>c.id)}},_max:{assignedAt:true}});
-    const lastAssigned=Object.fromEntries(previous.map(row=>[row.coordinatorId,row._max.assignedAt]));
-    const selected=pickCoordinator(eligible,counts,lastAssigned);
-    if(selected){
-     await db.coordinatorAssignment.create({data:{eventRequestId:r.id,coordinatorId:selected,reason:'AUTO'}});
-     r=await db.eventRequest.update({where:{id:r.id},data:{currentCoordinatorId:selected},include:{event:true}});
-     await activity(db,r,'COORDINATOR_ASSIGNED',null,r.status,r.status,{changes:{currentCoordinatorId:{old:null,new:selected}}});
-     await outbox(db,r,'CoordinatorAssigned',null,{coordinatorId:selected});
-    }
-   }
+   // Week 7: a first submission stays unassigned and waits in the Lead's queue (CS-81).
+   // Nothing here picks a Coordinator; a resubmitted Returned request keeps its current one.
   }
-  if(mode==='reassign'){
+  if(mode==='reassign'||mode==='assign'){
    const target=typeof body.coordinatorId==='string'?body.coordinatorId.trim():'';
    if(!target)throw fail(422,'VALIDATION_FAILED','Choose a Coordinator',{coordinatorId:['Choose a Coordinator']});
    const open=['SUBMITTED','RETURNED_FOR_AMENDMENT'].includes(r.status)||(r.status==='APPROVED'&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(r.event?.status));
    if(!open)throw fail(409,'INVALID_TRANSITION','This request is closed and can no longer be reassigned');
+   if(mode==='assign'&&(r.status!=='SUBMITTED'||r.currentCoordinatorId))throw fail(409,'INVALID_TRANSITION','Only a queued request without a Coordinator can be assigned');
+   if(mode==='reassign'&&!r.currentCoordinatorId)throw fail(409,'INVALID_TRANSITION','This request has no Coordinator yet. Assign one first');
    if(target===r.currentCoordinatorId)throw fail(422,'VALIDATION_FAILED','Choose a different Coordinator',{coordinatorId:['Choose a different Coordinator']});
    if(target===r.organiserId)throw fail(422,'VALIDATION_FAILED','An Organiser cannot coordinate their own request',{coordinatorId:['An Organiser cannot coordinate their own request']});
-   // Same lock as automatic assignment, so a reassignment and a new submission
-   // never count workloads at the same instant.
+   // One lock for every assignment change, so two Leads cannot race on the same pool.
    await lock(db,'connectsphere:automatic-assignment');
    if(!(await directory.coordinators()).some(c=>c.id===target))throw fail(422,'VALIDATION_FAILED','The new Coordinator must be an active Coordinator',{coordinatorId:['The new Coordinator must be an active Coordinator']});
    const from=r.currentCoordinatorId;
    await db.coordinatorAssignment.updateMany({where:{eventRequestId:r.id,revokedAt:null},data:{revokedAt:new Date(),revokedById:actor.id}});
-   await db.coordinatorAssignment.create({data:{eventRequestId:r.id,coordinatorId:target,assignedById:actor.id,reason:'REASSIGNED'}});
+   await db.coordinatorAssignment.create({data:{eventRequestId:r.id,coordinatorId:target,assignedById:actor.id,reason:mode==='assign'?'ASSIGNED':'REASSIGNED'}});
    if(r.event){
     await db.$queryRaw`SELECT id FROM events WHERE id=${r.event.id} FOR UPDATE`;
     // Handover preserves approvals and reservations. Only an unfinished operation
@@ -128,8 +115,8 @@ async function mutation(req,mode,id){
     await db.event.update({where:{id:r.event.id},data:{safetyRework:require('@prisma/client').Prisma.DbNull,...(r.event.safetyState==='PREPARING'?{safetyOperation:require('@prisma/client').Prisma.DbNull,safetyToken:null,safetyState:r.event.safetyRoundId?'STALE':'NOT_SUBMITTED',safetyGeneration:{increment:1}}:{}),version:{increment:1}}});
    }
    r=await db.eventRequest.update({where:{id:r.id},data:{currentCoordinatorId:target,version:{increment:1}},include:{event:true}});
-   await activity(db,r,'COORDINATOR_REASSIGNED',actor,r.status,r.status,{changes:{currentCoordinatorId:{old:from,new:target}}});
-   await outbox(db,r,'CoordinatorReassigned',actor,{fromCoordinatorId:from,coordinatorId:target});
+   await activity(db,r,mode==='assign'?'COORDINATOR_ASSIGNED':'COORDINATOR_REASSIGNED',actor,r.status,r.status,{changes:{currentCoordinatorId:{old:from,new:target}}});
+   await outbox(db,r,mode==='assign'?'CoordinatorAssigned':'CoordinatorReassigned',actor,{fromCoordinatorId:from,coordinatorId:target});
   }
   if(mode==='decision'){
    const action=body.action;if(!['APPROVE','RETURN','REJECT'].includes(action))throw fail(400,'BAD_REQUEST','Choose approve, return or reject');

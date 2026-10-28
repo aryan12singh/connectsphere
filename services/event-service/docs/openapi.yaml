@@ -336,9 +336,10 @@ paths:
     get:
       summary: Assigned submitted queue
       operationId: get_event_requests_review_queue
-      description: Current Coordinator only; excludes own multi-role requests; contact is limited
-        organiser id/name/email/company. Requires trusted events.view, event_requests.review in
-        addition to the documented role/relationship; caller grants are ignored.
+      description: Current Coordinator only. Holds only requests assigned to the caller (Week 7 rule,
+        a queued, unassigned request is never in a Coordinator's queue); excludes own multi-role
+        requests; contact is limited organiser id/name/email/company. Requires trusted events.view,
+        event_requests.review in addition to the documented role/relationship; caller grants are ignored.
       responses:
         "200":
           description: Successful committed result or authorised replay
@@ -867,15 +868,15 @@ paths:
         - event_requests.review
   /event-requests/{id}/reassign:
     post:
-      summary: Current Coordinator hands the request to another Coordinator
+      summary: Coordinator Lead hands the request to another Coordinator
       operationId: post_event_requests_id_reassign
-      description: Required version and coordinatorId. Only the CURRENT Coordinator may reassign (if nobody
-        holds the request, a Coordinator may claim it by naming themselves). The target must be an
-        active Coordinator other than the Organiser and the current holder. One transaction closes the
-        old assignment, opens the new one (reason REASSIGNED), bumps the version and writes one
-        COORDINATOR_REASSIGNED activity entry and one CoordinatorReassigned outbox row. Allowed while the
-        request is Submitted, Returned, or Approved with a Planning/Confirmed Event. Requires trusted
-        event_requests.review.
+      description: Required version and coordinatorId. Only a Coordinator Lead may reassign (Week 7); a
+        Coordinator cannot hand a request on or claim one. The request must already have a Coordinator
+        (otherwise use assign). The target must be an active Coordinator other than the Organiser and the
+        current holder. One transaction closes the old assignment, opens the new one (reason REASSIGNED,
+        assigned by the Lead), bumps the version and writes one COORDINATOR_REASSIGNED activity entry and
+        one CoordinatorReassigned outbox row. Allowed while the request is Submitted, Returned, or Approved
+        with a Planning/Confirmed Event. Requires trusted assignments.view.
       responses:
         "200":
           description: Reassigned (or authorised replay of the same key)
@@ -896,7 +897,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Not the current Coordinator
+          description: Caller is not a Coordinator Lead
           content:
             application/json:
               schema:
@@ -908,7 +909,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: Stale version, closed request or conflicting key
+          description: Stale version, closed request, no Coordinator yet or conflicting key
           content:
             application/json:
               schema:
@@ -951,13 +952,150 @@ paths:
                   type: integer
                   minimum: 1
       x-required-permissions:
-        - event_requests.review
+        - assignments.view
+  /event-requests/{id}/assign:
+    post:
+      summary: Coordinator Lead assigns a queued request to a Coordinator
+      operationId: post_event_requests_id_assign
+      description: Required version and coordinatorId. Only a Coordinator Lead may assign (Week 7; there is no
+        automatic assignment). The request must be Submitted with no Coordinator. The target must be an
+        active Coordinator other than the Organiser. One transaction opens the assignment (reason ASSIGNED,
+        assigned by the Lead), bumps the version and writes one COORDINATOR_ASSIGNED activity entry and one
+        CoordinatorAssigned outbox row. Same-key retries replay the first answer. Requires trusted
+        assignments.view.
+      responses:
+        "200":
+          description: Assigned (or authorised replay of the same key)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Request"
+        "401":
+          description: Missing/expired/revoked session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not a Coordinator Lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Record does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Stale version, already assigned, not queued or conflicting key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Missing, unknown or ineligible target Coordinator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Directory unavailable; no partial write
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [coordinatorId, version]
+              properties:
+                coordinatorId:
+                  type: string
+                version:
+                  type: integer
+                  minimum: 1
+      x-required-permissions:
+        - assignments.view
+  /event-requests/unassigned:
+    get:
+      summary: Coordinator Lead's unassigned queue
+      operationId: get_event_requests_unassigned
+      description: Submitted requests with no Coordinator, oldest submission first, paged (default 20, max 100).
+        Each item carries basic information only (ID, event name, Organiser, proposed time, expected
+        attendance, submitted time) and allowedActions ["assign"]. Drafts never appear. Other roles get 403
+        and no data. Requires trusted assignments.view.
+      responses:
+        "200":
+          description: One page of the queue (empty items is a valid empty state)
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Missing/expired/revoked session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not a Coordinator Lead; no data returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      x-required-permissions:
+        - assignments.view
+  /event-requests/assigned-by-me:
+    get:
+      summary: Open requests this Lead assigned
+      operationId: get_event_requests_assigned_by_me
+      description: Open requests (Submitted, Returned, or Approved with a Planning/Confirmed/Preparation Event)
+        whose current Coordinator was assigned by the calling Lead, so the Lead can reassign them. Items
+        carry allowedActions ["reassign"]. Other roles get 403. Requires trusted assignments.view.
+      responses:
+        "200":
+          description: One page of requests
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Missing/expired/revoked session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not a Coordinator Lead; no data returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      x-required-permissions:
+        - assignments.view
   /event-requests/coordinators:
     get:
       summary: Active Coordinators a request can be handed to
       operationId: get_event_requests_coordinators
-      description: Names for the "Change coordinator" list, passed through from user-service. Requires trusted
-        events.view and event_requests.review.
+      description: Names for the Lead's assign and reassign list, passed through from user-service. Requires
+        trusted events.view and assignments.view (Coordinator Lead only).
       responses:
         "200":
           description: Active Coordinators
@@ -984,14 +1122,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Caller is not a Coordinator
+          description: Caller is not a Coordinator Lead
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
       x-required-permissions:
         - events.view
-        - event_requests.review
+        - assignments.view
   /event-requests/{id}/activity:
     get:
       summary: Authorised private Request history
