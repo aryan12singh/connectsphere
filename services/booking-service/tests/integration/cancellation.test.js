@@ -7,7 +7,7 @@ requireTestDatabase('booking');
 process.env.INTERNAL_API_KEY='cancellation-test-key';
 const prisma=require('../../src/db'),config=require('../../src/config');
 const permissions=require('../../../utils/role-permissions');
-const actors={owner:{id:'cancellation-owner',role:'EVENT_ORGANISER'},coordinator:{id:'cancellation-coordinator',role:'EVENT_COORDINATOR'},staff:{id:'cancellation-staff',role:'VENUE_STAFF'}};
+const actors={owner:{id:'cancellation-owner',role:'EVENT_ORGANISER'},coordinator:{id:'cancellation-coordinator',role:'EVENT_COORDINATOR'},staff:{id:'cancellation-staff',role:'VENUE_STAFF'},lead:{id:'cancellation-lead',role:'EVENT_COORDINATOR_LEAD'}};
 let api,eventApi,fixture,eventDb,eventConfig,bufferWait=null,bufferEntered=null;
 const venues=new Map(),key={'x-internal-api-key':config.internalApiKey};
 const headers=who=>({authorization:'Bearer '+who});
@@ -48,7 +48,9 @@ before(async()=>{
 after(async()=>{await api?.close();await eventApi?.close();await new Promise(resolve=>fixture.close(resolve));await prisma.$disconnect();await eventDb?.$disconnect();});
 async function source(){
  const created=await eventApi.http('/event-requests',{method:'POST',headers:{...headers('owner'),'idempotency-key':randomUUID()},body:request});assert.equal(created.status,201,JSON.stringify(created.body));
- const approved=await eventApi.http(`/event-requests/${created.body.id}/decision`,{method:'POST',headers:{...headers('coordinator'),'idempotency-key':randomUUID()},body:{version:created.body.version,action:'APPROVE'}});assert.equal(approved.status,200,JSON.stringify(approved.body));
+ // Week 7: a submission waits for a Coordinator Lead to assign it before anyone can decide.
+ const assigned=await eventApi.http(`/event-requests/${created.body.id}/assign`,{method:'POST',headers:{...headers('lead'),'idempotency-key':randomUUID()},body:{coordinatorId:actors.coordinator.id,version:created.body.version}});assert.equal(assigned.status,200,JSON.stringify(assigned.body));
+ const approved=await eventApi.http(`/event-requests/${created.body.id}/decision`,{method:'POST',headers:{...headers('coordinator'),'idempotency-key':randomUUID()},body:{version:assigned.body.version,action:'APPROVE'}});assert.equal(approved.status,200,JSON.stringify(approved.body));
  const event=await eventDb.event.findUnique({where:{id:approved.body.eventId}}),body={eventRequestId:created.body.id,eventVersion:event.version,requestVersion:approved.body.version,cancellationActionId:randomUUID(),reason:'Current Coordinator accepted cancellation before setup'};
  return {event,body};
 }
