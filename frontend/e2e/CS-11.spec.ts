@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
+import { assignAsLead } from './fixtures/helpers'
 import { test, field, signIn, completeForm, mutation, session, emails, validRequest } from './helpers'
 
 test.use({ timezoneId: 'UTC' })
@@ -20,6 +21,7 @@ test('CS-11 AC01-05: validated form, registration, receipt, assignment and submi
   expect(response.status()).toBe(201)
   const record = await response.json()
   await expect(page.getByTestId('submission-receipt')).toContainText(record.id)
+  await assignAsLead(record.id, record.version)
   await page.getByRole('link', { name: 'View your request', exact: true }).click()
   await expect(page.getByTestId('coordinator-banner')).toBeVisible()
   await expect(field(page, 'Purpose')).toBeDisabled()

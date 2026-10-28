@@ -1,4 +1,4 @@
-import { test as baseTest, expect, type APIRequest, type APIRequestContext, type Page } from '@playwright/test'
+import { test as baseTest, expect, request as playwrightRequest, type APIRequest, type APIRequestContext, type Page } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
@@ -12,6 +12,7 @@ export const emails = {
   attendee: 'ethan.goh@gmail.com',
   otherAttendee: 'nur.aisyah@outlook.com',
   coordinator: 'aisha.rahman@connectsphere.sg',
+  lead: 'jordan.lim@connectsphere.sg',
   staff: 'ravi.kumar@marinaconvention.sg',
   support: 'hafiz.ismail@connectsphere.sg',
   officer:'alex.chen@connectsphere.sg',
@@ -115,10 +116,31 @@ export async function completeForm(page: Page, name = `Browser ${randomUUID()}`)
   return name
 }
 
-export async function created(context: APIRequestContext, saveAs: 'draft' | 'submit', values: Record<string, unknown>) {
+let leadSession: Promise<APIRequestContext> | undefined
+let leadChoice: string | undefined
+
+// Week 7: a first submission stays unassigned, so the Lead assigns a Coordinator.
+export async function assignAsLead(id: string, version: number) {
+  leadSession ??= session(playwrightRequest, emails.lead)
+  const lead = await leadSession
+  if (!leadChoice) {
+    const list = await lead.get('/api/coordinators')
+    expect(list.status(), 'Lead can list Coordinators').toBe(200)
+    const items: Array<{ id: string, name: string }> = (await list.json()).items
+    leadChoice = (items.find(item => /aisha/i.test(item.name)) ?? items[0])?.id
+    expect(leadChoice, 'A Coordinator exists to assign').toBeTruthy()
+  }
+  const assigned = await mutation(lead, 'POST', `/api/events/${id}/assign`, { coordinatorId: leadChoice, version })
+  expect(assigned.status(), await assigned.text()).toBe(200)
+  return assigned.json()
+}
+
+export async function created(context: APIRequestContext, saveAs: 'draft' | 'submit', values: Record<string, unknown>, options: { assign?: boolean } = {}) {
   const response = await mutation(context, 'POST', '/api/events', { ...values, saveAs })
   expect(response.status()).toBe(201)
-  return response.json()
+  const record = await response.json()
+  if (saveAs === 'submit' && options.assign !== false && record.status === 'SUBMITTED') return assignAsLead(record.id, record.version)
+  return record
 }
 
 export async function assignedSession(request: APIRequest, owner: APIRequestContext, id: string) {
