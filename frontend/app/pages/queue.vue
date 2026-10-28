@@ -30,16 +30,37 @@ interface LeadItem {
   coordinatorId: string | null
   organiser: { name: string, company: string }
   allowedActions: string[]
+  stage?: string
+  statusLabel?: string
+  outstanding?: string[]
 }
+interface WorkloadRow { coordinatorId: string, name: string, active: number }
+interface StageOption { value: string, label: string }
 interface CoordinatorOption { id: string, name: string }
 
 const requestFetch = useRequestFetch()
 const { user } = useUserSession()
-const view = ref<'unassigned' | 'assigned'>('unassigned')
+const view = ref<'unassigned' | 'assigned' | 'oversight'>('unassigned')
+// CS-83 filters, used by the oversight view only.
+const filterCoordinator = ref('')
+const filterStatus = ref('')
 
 const { data: queue, error: queueError, refresh } = await useFetch('/api/lead-queue', {
   key: 'lead-queue',
-  query: computed(() => ({ view: view.value, pageSize: 100 })),
+  query: computed(() => ({
+    view: view.value,
+    pageSize: 100,
+    ...(view.value === 'oversight' && filterCoordinator.value ? { coordinatorId: filterCoordinator.value } : {}),
+    ...(view.value === 'oversight' && filterStatus.value ? { status: filterStatus.value } : {}),
+  })),
+})
+const workload = computed(() => {
+  const value = queue.value as { workload?: unknown } | null | undefined
+  return Array.isArray(value?.workload) ? (value!.workload as WorkloadRow[]) : []
+})
+const stageOptions = computed(() => {
+  const value = queue.value as { stages?: unknown } | null | undefined
+  return Array.isArray(value?.stages) ? (value!.stages as StageOption[]) : []
 })
 
 const items = computed(() => {
@@ -59,7 +80,10 @@ const chosenCoordinatorId = ref('')
 const assigning = ref(false)
 
 const choices = computed(() => coordinatorOptions.value.filter(option => option.id !== selected.value?.coordinatorId))
-const isAssignedView = computed(() => view.value === 'assigned')
+// Assigned-by-me and oversight both hand work to a different Coordinator.
+const isAssignedView = computed(() => view.value !== 'unassigned')
+const isOversight = computed(() => view.value === 'oversight')
+const coordinatorNameFor = (id: string) => workload.value.find(row => row.coordinatorId === id)?.name ?? coordinatorNames.value[id]
 const actionLabel = computed(() => (isAssignedView.value ? 'Change coordinator' : 'Assign coordinator'))
 
 function select(id: string) {
@@ -69,10 +93,12 @@ function select(id: string) {
   assignOpen.value = false
 }
 
-async function setView(next: 'unassigned' | 'assigned') {
+async function setView(next: 'unassigned' | 'assigned' | 'oversight') {
   if (view.value === next)
     return
   view.value = next
+  filterCoordinator.value = ''
+  filterStatus.value = ''
   selectedId.value = null
   message.value = ''
   errorMessage.value = ''
@@ -97,7 +123,15 @@ function formatWhen(item: LeadItem) {
 function coordinatorLabel(item: LeadItem) {
   if (!item.coordinatorId)
     return 'Unassigned'
-  return coordinatorNames.value[item.coordinatorId] ?? 'Assigned'
+  return coordinatorNameFor(item.coordinatorId) ?? 'Assigned'
+}
+
+async function applyFilters() {
+  selectedId.value = null
+  message.value = ''
+  errorMessage.value = ''
+  assignOpen.value = false
+  await refresh()
 }
 
 async function loadCoordinators(showError = false) {
@@ -171,17 +205,45 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
       <Button size="sm" role="tab" data-testid="tab-assigned" :aria-selected="view === 'assigned'" :variant="view === 'assigned' ? 'default' : 'secondary'" @click="setView('assigned')">
         Assigned by me
       </Button>
+      <Button size="sm" role="tab" data-testid="tab-oversight" :aria-selected="view === 'oversight'" :variant="view === 'oversight' ? 'default' : 'secondary'" @click="setView('oversight')">
+        All active events
+      </Button>
     </div>
+
+    <section v-if="isOversight && !queueFailed" class="mt-5 grid gap-4" aria-label="Coordinator workload and filters">
+      <ul class="flex flex-wrap gap-2" aria-label="Active events per Coordinator" data-testid="workload">
+        <li v-for="row in workload" :key="row.coordinatorId" data-testid="workload-row" class="rounded-full border border-border bg-card px-3 py-1 text-xs">
+          {{ row.name }} · <span class="font-medium">{{ row.active }}</span> active
+        </li>
+        <li v-if="workload.length === 0" class="text-xs text-muted-foreground">No Coordinators are available yet.</li>
+      </ul>
+      <div class="flex flex-wrap items-end gap-3">
+        <Field class="gap-1">
+          <FieldLabel for="filter-coordinator">Coordinator</FieldLabel>
+          <select id="filter-coordinator" v-model="filterCoordinator" data-testid="filter-coordinator" class="h-10 rounded-xl border border-border bg-background px-3 text-sm" @change="applyFilters">
+            <option value="">All Coordinators</option>
+            <option v-for="row in workload" :key="row.coordinatorId" :value="row.coordinatorId">{{ row.name }} ({{ row.active }})</option>
+          </select>
+        </Field>
+        <Field class="gap-1">
+          <FieldLabel for="filter-status">Status</FieldLabel>
+          <select id="filter-status" v-model="filterStatus" data-testid="filter-status" class="h-10 rounded-xl border border-border bg-background px-3 text-sm" @change="applyFilters">
+            <option value="">All statuses</option>
+            <option v-for="option in stageOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </select>
+        </Field>
+      </div>
+    </section>
 
     <p v-if="message" role="status" data-testid="lead-queue-message" class="mt-4 text-sm text-success">{{ message }}</p>
     <p v-if="queueFailed" role="alert" class="mt-6 text-sm text-destructive">
       The queue is unavailable right now. Please try again later.
     </p>
     <p v-else-if="items.length === 0" role="status" data-testid="lead-queue-empty" class="mt-6 text-sm text-muted-foreground">
-      {{ isAssignedView ? 'You have no open assignments right now.' : 'No requests are waiting for a Coordinator. New submissions will appear here.' }}
+      {{ isOversight ? 'No active events match these filters.' : isAssignedView ? 'You have no open assignments right now.' : 'No requests are waiting for a Coordinator. New submissions will appear here.' }}
     </p>
     <div v-else class="mt-6 grid items-start gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-      <ul :aria-label="isAssignedView ? 'Requests you assigned' : 'Unassigned event requests'" class="grid gap-3">
+      <ul :aria-label="isOversight ? 'Active events and requests' : isAssignedView ? 'Requests you assigned' : 'Unassigned event requests'" class="grid gap-3">
         <li v-for="item in items" :key="item.id">
           <button
             type="button"
@@ -199,7 +261,8 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
             <span class="mt-1 block truncate text-xs text-muted-foreground">
               {{ item.organiser.name }}{{ item.organiser.company ? ` · ${item.organiser.company}` : '' }}
             </span>
-            <span class="block text-xs text-muted-foreground">Submitted {{ timeAgo(item.submittedAt) }}</span>
+            <span v-if="isOversight" class="block text-xs text-muted-foreground" data-testid="oversight-status">{{ item.statusLabel }} · {{ formatWhen(item) }}</span>
+            <span v-else class="block text-xs text-muted-foreground">Submitted {{ timeAgo(item.submittedAt) }}</span>
           </button>
         </li>
       </ul>
@@ -231,6 +294,16 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
             <dt class="text-xs text-muted-foreground">Submitted</dt>
             <dd class="text-right text-sm">{{ timeAgo(selected.submittedAt) }}</dd>
           </div>
+          <template v-if="isOversight">
+            <div class="flex items-start justify-between gap-4">
+              <dt class="text-xs text-muted-foreground">Status</dt>
+              <dd class="text-right text-sm" data-testid="oversight-selected-status">{{ selected.statusLabel }}</dd>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <dt class="text-xs text-muted-foreground">Outstanding</dt>
+              <dd class="text-right text-sm" data-testid="oversight-outstanding">{{ selected.outstanding?.length ? selected.outstanding.join(', ') : 'Nothing outstanding' }}</dd>
+            </div>
+          </template>
           <div class="flex items-start justify-between gap-4">
             <dt class="text-xs text-muted-foreground">Coordinator</dt>
             <dd class="text-right text-sm" data-testid="lead-queue-coordinator">{{ coordinatorLabel(selected) }}</dd>

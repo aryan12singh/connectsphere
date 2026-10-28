@@ -1090,6 +1090,47 @@ paths:
                 $ref: "#/components/schemas/Error"
       x-required-permissions:
         - assignments.view
+  /event-requests/oversight:
+    get:
+      summary: Active Events and requests across all Coordinators (CS-83)
+      operationId: get_event_requests_oversight
+      description: Every request that has a current Coordinator and is still open (Submitted, Returned, or
+        Approved with a Planning/Confirmed/Preparation Event). Filter with coordinatorId and status (a stage
+        value from the returned stages list). The response also carries workload (active count per
+        Coordinator) and stages. Items add stage, statusLabel, outstanding and allowedActions ["reassign"]
+        where reassignment is still allowed. Other roles get 403. Requires trusted assignments.view.
+      parameters:
+        - name: coordinatorId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One page of active items plus workload and stages
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Missing/expired/revoked session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not a Coordinator Lead; no data returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      x-required-permissions:
+        - assignments.view
   /event-requests/coordinators:
     get:
       summary: Active Coordinators a request can be handed to
