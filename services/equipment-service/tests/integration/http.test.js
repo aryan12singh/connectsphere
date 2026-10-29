@@ -84,6 +84,55 @@ test('TC-CS40-18 history returns immutable version snapshots only to the current
   });
 });
 
+test('TC-CS46-01/04 internal cancellation release requires proof and returns one stable release on replay', async () => {
+  const operations = require('../../src/operations');
+  const eventContext = require('../../src/eventContext');
+  const eventId = `cancel-release-${Date.now()}`;
+  const actionId = `cancel-action-${eventId}`;
+  const proof = { eventId, eventRequestId: `request-${eventId}`, cancellationActionId: actionId, phase: 'CANCELLED', proofType: 'ACCEPTED_INTENT' };
+  const original = eventContext.cancellationProof;
+  eventContext.cancellationProof = async (id, action) => id === eventId && action === actionId ? proof : null;
+  const reservation = { id: `reservation-${eventId}`, eventRequestId: proof.eventRequestId, eventId, requestVersion: 1, equipmentType: 'projector', quantity: 1, startAt: '2037-01-01T00:00:00.000Z', endAt: '2037-01-01T02:00:00.000Z', active: true, actorId: 'support', sourceVersions: {}, createdAt: new Date().toISOString() };
+  operations._memory.reservations.push(reservation);
+  try {
+    await withServer(async baseUrl => {
+      const path = `${baseUrl}/internal/events/${eventId}/reservations/release`;
+      const unauthenticated = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cancellationActionId: actionId }) });
+      assert.equal(unauthenticated.status, 401);
+      assert.equal(reservation.active, true);
+      const headers = { 'content-type': 'application/json', 'x-internal-api-key': 'change-me-dev-internal-key' };
+      const first = await fetch(path, { method: 'POST', headers, body: JSON.stringify({ cancellationActionId: actionId }) });
+      assert.equal(first.status, 200);
+      assert.equal(reservation.active, false);
+      const released = await first.json();
+      assert.equal(released.actor.type, 'SYSTEM');
+      assert.equal(released.released[0].quantity, 1);
+      const replay = await fetch(path, { method: 'POST', headers, body: JSON.stringify({ cancellationActionId: actionId }) });
+      assert.equal(replay.status, 200);
+      assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+      assert.equal(operations._memory.outbox.filter(row => row.actionKey.endsWith(actionId)).length, 1);
+    });
+  }
+  finally { eventContext.cancellationProof = original; }
+});
+
+test('TC-CS46-06 technical revisions leave existing equipment reservations active without cancellation proof', async () => {
+  await withServer(async baseUrl => {
+    const path = `${baseUrl}/event-requests/cs46-revision-preserves-reservation/technical-request`;
+    const coordinator = actorHeaders('cs46-coordinator', 'EVENT_COORDINATOR');
+    const support = actorHeaders('cs46-support', 'TECHNICAL_SUPPORT_STAFF');
+    const submitted = await fetch(path, { method: 'POST', headers: coordinator, body: JSON.stringify(requestBody) });
+    assert.equal(submitted.status, 201);
+    await fetch(`${path}/decision`, { method: 'POST', headers: support, body: JSON.stringify({ decision: 'APPROVED', version: 1 }) });
+    const reservation = await fetch(`${path}/reservations`, { method: 'POST', headers: { ...support, 'Idempotency-Key': 'cs46-reservation', 'x-test-equipment-period': '2036-01-01T10:00:00.000Z,2036-01-01T12:00:00.000Z' }, body: JSON.stringify({ version: 1 }) });
+    assert.equal(reservation.status, 200);
+    const revised = await fetch(path, { method: 'POST', headers: coordinator, body: JSON.stringify({ ...requestBody, version: 1, placementDetails: 'Revised room setup' }) });
+    assert.equal(revised.status, 200);
+    assert.equal(require('../../src/operations')._memory.reservations.filter(row => row.eventRequestId === 'cs46-revision-preserves-reservation' && row.active).length, 1);
+    assert.equal(require('../../src/operations')._memory.outbox.filter(row => row.eventType === 'EquipmentReleased' && row.payload.eventId === 'cs46-revision-preserves-reservation').length, 0);
+  });
+});
+
 test('TC-CS40-02 rejects invalid equipment with field feedback and no saved request', async () => {
   await withServer(async baseUrl => {
     const response = await fetch(`${baseUrl}/event-requests/event-invalid/technical-request`, {

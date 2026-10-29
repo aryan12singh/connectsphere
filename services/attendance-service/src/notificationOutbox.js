@@ -3,7 +3,7 @@ const utils = process.env.SERVICE_UTILS_PATH || path.resolve(__dirname, '../../u
 const { startOutboxRelay } = require(path.join(utils, 'outbox-relay'));
 
 function project(row) {
-  if (!row?.id || row.kind !== 'RegistrationCreated' || !row.aggregateId || !row.payload) {
+  if (!row?.id || !['RegistrationCreated', 'RegistrationWithdrawn'].includes(row.kind) || !row.aggregateId || !row.payload) {
     throw Error('Invalid Attendance notification outbox row');
   }
   return { id: row.id, type: row.kind, aggregateType: 'Event', aggregateId: row.aggregateId, payload: row.payload };

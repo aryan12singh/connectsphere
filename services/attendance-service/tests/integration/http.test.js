@@ -332,3 +332,80 @@ test('TC-CS48-05 reducing the limit below existing registrations retains them an
     assert.equal(require('../../src/store').listOutboxForTest().filter(row => row.aggregateId === eventId).length, 0);
   });
 });
+
+test('TC-CS49-01 and TC-CS49-05 Attendee withdrawal retains the row, reopens one place, and replays one durable action', async () => {
+  await withServer(async baseUrl => {
+    const eventId = `withdraw-${Date.now()}`;
+    await storeSave({ ...confirmedEvent, id: eventId, eventId, registrationLimit: 1, withdrawalEnabled: true, withdrawalCutoffAt: new Date(Date.now() + 60_000).toISOString() });
+    await storeSaveRegistration({ id: `registration-${eventId}`, eventId, userId: 'attendee-1', status: 'CONFIRMED', registeredAt: new Date().toISOString() });
+    const registration = await require('../../src/store').findRegistration(eventId, 'attendee-1');
+    const path = `${baseUrl}/registrations/${registration.id}/withdraw`;
+    const headers = { ...actorHeaders('attendee-1', 'ATTENDEE'), 'content-type': 'application/json' };
+    const first = await fetch(path, { method: 'POST', headers, body: '{}' });
+    assert.equal(first.status, 200);
+    const result = await first.json();
+    assert.equal(result.registration.status, 'WITHDRAWN');
+    assert.ok(result.registration.withdrawnAt);
+    assert.equal(result.placesRemaining, 1);
+    const replay = await fetch(path, { method: 'POST', headers, body: '{}' });
+    assert.equal(replay.status, 200);
+    assert.deepEqual((await replay.json()).registration, result.registration);
+    const rows = await require('../../src/store').registrationsForEvent(eventId);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, 'WITHDRAWN');
+    const actions = require('../../src/store').listOutboxForTest().filter(row => row.aggregateId === eventId);
+    assert.equal(actions.length, 1);
+    assert.equal(actions[0].type, 'RegistrationWithdrawn');
+    assert.equal(actions[0].payload.registrationId, registration.id);
+  });
+});
+
+test('TC-CS49-04 another Attendee and the Organiser cannot withdraw someone else’s registration', async () => {
+  await withServer(async baseUrl => {
+    const eventId = `withdraw-owner-${Date.now()}`;
+    await storeSave({ ...confirmedEvent, id: eventId, eventId, withdrawalEnabled: true, withdrawalCutoffAt: new Date(Date.now() + 60_000).toISOString() });
+    await storeSaveRegistration({ id: `registration-${eventId}`, eventId, userId: 'attendee-1', status: 'CONFIRMED', registeredAt: new Date().toISOString() });
+    const registration = await require('../../src/store').findRegistration(eventId, 'attendee-1');
+    const path = `${baseUrl}/registrations/${registration.id}/withdraw`;
+    for (const [id, role] of [['attendee-2', 'ATTENDEE'], ['org-1', 'EVENT_ORGANISER']]) {
+      const denied = await fetch(path, { method: 'POST', headers: { ...actorHeaders(id, role), 'content-type': 'application/json' }, body: '{}' });
+      assert.equal(denied.status, 403);
+    }
+    assert.equal((await require('../../src/store').findRegistration(eventId, 'attendee-1')).status, 'CONFIRMED');
+    assert.equal(require('../../src/store').listOutboxForTest().filter(row => row.aggregateId === eventId).length, 0);
+  });
+});
+
+test('TC-CS49-10 Organiser configures withdrawal policy and non-owners cannot change it', async () => {
+  await withServer(async baseUrl => {
+    const eventId = `withdraw-policy-${Date.now()}`;
+    await storeSave({ ...confirmedEvent, id: eventId, eventId, organiserId: 'org-1' });
+    const path = `${baseUrl}/events/${eventId}/withdrawal-policy`;
+    const body = JSON.stringify({ withdrawalEnabled: true, withdrawalCutoffAt: '2026-11-08T15:59:59.000Z', allowReregistration: true });
+    const denied = await fetch(path, { method: 'PUT', headers: { ...actorHeaders('org-2', 'EVENT_ORGANISER'), 'content-type': 'application/json' }, body });
+    assert.equal(denied.status, 403);
+    const saved = await fetch(path, { method: 'PUT', headers: { ...actorHeaders('org-1', 'EVENT_ORGANISER'), 'content-type': 'application/json' }, body });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(await saved.json(), { withdrawalEnabled: true, withdrawalCutoffAt: '2026-11-08T15:59:59.000Z', allowReregistration: true });
+  });
+});
+
+test('TC-CS49-06 re-registration is governed by the Event Organiser setting and keeps the withdrawn audit row', async () => {
+  const store = require('../../src/store');
+  const closedId = `reregister-closed-${Date.now()}`;
+  const openId = `reregister-open-${Date.now()}`;
+  const oldRegistration = id => ({ id: `withdrawn-${id}`, eventId: id, userId: 'attendee-reregister', status: 'WITHDRAWN', registeredAt: new Date(Date.now() - 1000).toISOString(), withdrawnAt: new Date(Date.now() - 500).toISOString() });
+  await storeSave({ ...confirmedEvent, id: closedId, eventId: closedId, allowReregistration: false });
+  await storeSaveRegistration(oldRegistration(closedId));
+  await assert.rejects(() => store.createRegistration(closedId, 'attendee-reregister'), error => error.code === 'ALREADY_EXISTS');
+
+  await storeSave({ ...confirmedEvent, id: openId, eventId: openId, allowReregistration: true });
+  const withdrawn = oldRegistration(openId);
+  await storeSaveRegistration(withdrawn);
+  const result = await store.createRegistration(openId, 'attendee-reregister');
+  const rows = await store.registrationsForEvent(openId);
+  assert.equal(rows.length, 2);
+  assert.equal(rows.find(row => row.status === 'WITHDRAWN')?.withdrawnAt, withdrawn.withdrawnAt);
+  assert.equal(rows.filter(row => row.status === 'CONFIRMED').length, 1);
+  assert.equal(result.registration.status, 'CONFIRMED');
+});

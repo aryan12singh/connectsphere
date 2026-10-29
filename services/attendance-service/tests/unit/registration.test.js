@@ -9,6 +9,7 @@ const {
   canCreateRegistration,
   placesRemaining,
 } = require('../../src/domain/registration');
+const { canWithdraw } = require('../../src/domain/withdrawal');
 
 test('computeRegistrationLimit returns Coordinator-set limit', () => {
   assert.equal(computeRegistrationLimit({ registrationLimit: 200 }), 200);
@@ -80,4 +81,20 @@ test('TC-CS48-08 accepts the inclusive opening and closing instants', () => {
     registrationWindow: { startAt: '2026-11-01T00:00:00Z', endAt: '2026-11-10T00:00:00Z' } };
   assert.equal(canCreateRegistration(event, 0, new Date(event.registrationWindow.startAt)).allowed, true);
   assert.equal(canCreateRegistration(event, 0, new Date(event.registrationWindow.endAt)).allowed, true);
+});
+
+test('TC-CS49-07 allows withdrawal at the inclusive cutoff and rejects it after', () => {
+  const event = { status: 'CONFIRMED', withdrawalEnabled: true, withdrawalCutoffAt: '2026-11-08T15:59:59.000Z' };
+  const registration = { status: 'CONFIRMED' };
+  assert.deepEqual(canWithdraw(event, registration, new Date('2026-11-08T15:59:58.000Z')), { allowed: true });
+  assert.deepEqual(canWithdraw(event, registration, new Date('2026-11-08T15:59:59.000Z')), { allowed: true });
+  assert.deepEqual(canWithdraw(event, registration, new Date('2026-11-08T16:00:00.000Z')), { allowed: false, reason: 'WITHDRAWAL_CLOSED' });
+});
+
+test('CS-49 withdrawal is denied when disabled, cancelled, or registration is not confirmed', () => {
+  const event = { status: 'CONFIRMED', withdrawalEnabled: true, withdrawalCutoffAt: '2026-11-08T15:59:59.000Z' };
+  const now = new Date('2026-11-01T00:00:00.000Z');
+  assert.equal(canWithdraw({ ...event, withdrawalEnabled: false }, { status: 'CONFIRMED' }, now).reason, 'WITHDRAWAL_DISABLED');
+  assert.equal(canWithdraw({ ...event, status: 'CANCELLED' }, { status: 'CONFIRMED' }, now).reason, 'EVENT_NOT_ACTIVE');
+  assert.equal(canWithdraw(event, { status: 'WITHDRAWN' }, now).reason, 'REGISTRATION_NOT_ACTIVE');
 });
