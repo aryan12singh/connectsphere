@@ -34,7 +34,11 @@ test('allowed rows', async (t) => {
     ['Returned → Resubmit (owner) → Submitted', ACTIONS.RESUBMIT, req('RETURNED_FOR_AMENDMENT'), ORG, {}, 'SUBMITTED'],
     ['Submitted → Reject → Rejected', ACTIONS.REJECT, req('SUBMITTED'), COORD, { text: 'No venue fits' }, 'REJECTED'],
     ['Planning → Reject → Rejected', ACTIONS.REJECT, evt('ARRANGEMENT_PENDING'), COORD, { text: 'Cannot be met' }, 'REJECTED'],
-    ['Planning → Confirm → Confirmed', ACTIONS.CONFIRM, evt('ARRANGEMENT_PENDING'), COORD, { outstandingArrangements: [] }, 'CONFIRMED'],
+    ['Planning → Confirm → Confirmed', ACTIONS.CONFIRM, evt('ARRANGEMENT_PENDING'), COORD, { outstandingArrangements: [], safetyApproved: true }, 'CONFIRMED'],
+    ['Confirmed → Begin preparation → Preparation (distinct stage)', ACTIONS.BEGIN_PREPARATION, evt('CONFIRMED'), COORD, { safetyApproved: true }, 'PREPARATION'],
+    ['Preparation → Significant change approved → Planning', ACTIONS.SIGNIFICANT_CHANGE_APPROVED, evt('PREPARATION'), COORD, {}, 'ARRANGEMENT_PENDING'],
+    ['Preparation → Cancel → Cancelling', ACTIONS.CANCEL, evt('PREPARATION'), COORD, {text:'Coordinator cancellation'}, 'CANCELLING'],
+    ['Preparation → End time passes (system) → Completed', ACTIONS.COMPLETE, evt('PREPARATION'), SYSTEM, { now: new Date('2026-11-20T10:00:01Z') }, 'COMPLETED'],
     ['Confirmed → Significant change approved → Planning', ACTIONS.SIGNIFICANT_CHANGE_APPROVED, evt('CONFIRMED'), COORD, {}, 'ARRANGEMENT_PENDING'],
     ['Planning → Cancel → Cancelling', ACTIONS.CANCEL, evt('ARRANGEMENT_PENDING'), COORD, {text:'Coordinator cancellation'}, 'CANCELLING'],
     ['Confirmed → Cancel → Cancelling', ACTIONS.CANCEL, evt('CONFIRMED'), COORD, {text:'Coordinator cancellation'}, 'CANCELLING'],
@@ -81,11 +85,16 @@ test('forbidden action per status is a 409', async (t) => {
     ['Cancelled (closed) cannot be cancelled again', ACTIONS.CANCEL, evt('CANCELLED'), COORD],
     ['Completed (closed) cannot be cancelled', ACTIONS.CANCEL, evt('COMPLETED'), COORD],
     ['Rejected event (closed) cannot be confirmed', ACTIONS.CONFIRM, evt('REJECTED'), COORD],
+    ['Planning cannot skip Confirmed and begin preparation', ACTIONS.BEGIN_PREPARATION, evt('ARRANGEMENT_PENDING'), COORD],
+    ['Preparation cannot be confirmed again', ACTIONS.CONFIRM, evt('PREPARATION'), COORD],
+    ['Preparation cannot begin twice', ACTIONS.BEGIN_PREPARATION, evt('PREPARATION'), COORD],
+    ['Preparation cannot be rejected, only cancelled', ACTIONS.REJECT, evt('PREPARATION'), COORD],
+    ['Planning cannot be completed', ACTIONS.COMPLETE, evt('ARRANGEMENT_PENDING'), SYSTEM],
   ];
   for (const [name, action, entity, actor] of forbidden) {
     await t.test(name, () => {
       assert.throws(
-        () => decide({ action, entity, actor, context: baseCtx({ outstandingArrangements: [] }), text: 'because' }),
+        () => decide({ action, entity, actor, context: baseCtx({ outstandingArrangements: [], safetyApproved: true, now: new Date('2026-11-21T00:00:00Z') }), text: 'because' }),
         (e) => e instanceof InvalidTransitionError && e.status === 409 && e.code === 'INVALID_TRANSITION',
       );
     });
@@ -104,13 +113,16 @@ test('wrong actor is a 403 for every action', async (t) => {
     ['Reject by a different coordinator', ACTIONS.REJECT, req('SUBMITTED'), OTHER_COORD],
     ['Confirm called directly by the organiser', ACTIONS.CONFIRM, evt('ARRANGEMENT_PENDING'), ORG],
     ['Significant change by a different coordinator', ACTIONS.SIGNIFICANT_CHANGE_APPROVED, evt('CONFIRMED'), OTHER_COORD],
+    ['Begin preparation by a different coordinator', ACTIONS.BEGIN_PREPARATION, evt('CONFIRMED'), OTHER_COORD],
+    ['Begin preparation by the organiser', ACTIONS.BEGIN_PREPARATION, evt('CONFIRMED'), ORG],
+    ['Cancel from Preparation by the organiser', ACTIONS.CANCEL, evt('PREPARATION'), ORG],
     ['Cancel by the organiser', ACTIONS.CANCEL, evt('CONFIRMED'), ORG],
     ['Complete by a human coordinator (system only)', ACTIONS.COMPLETE, evt('CONFIRMED'), COORD],
   ];
   for (const [name, action, entity, actor] of cases) {
     await t.test(name, () => {
       assert.throws(
-        () => decide({ action, entity, actor, context: baseCtx({ outstandingArrangements: [], now: new Date('2026-11-21T00:00:00Z') }), text: 'x' }),
+        () => decide({ action, entity, actor, context: baseCtx({ outstandingArrangements: [], safetyApproved: true, now: new Date('2026-11-21T00:00:00Z') }), text: 'x' }),
         (e) => e instanceof ForbiddenError && e.status === 403,
       );
     });
@@ -217,7 +229,7 @@ test('approve: event date yesterday / today / tomorrow (Singapore)', async (t) =
 
 // ── CS-32 confirm preconditions (32-03, 32-06, 32-07) ────────────────────
 test('confirm needs every arrangement complete', async (t) => {
-  const call = (outstanding) => decide({ action: ACTIONS.CONFIRM, entity: evt('ARRANGEMENT_PENDING'), actor: COORD, context: baseCtx({ outstandingArrangements: outstanding }) });
+  const call = (outstanding) => decide({ action: ACTIONS.CONFIRM, entity: evt('ARRANGEMENT_PENDING'), actor: COORD, context: baseCtx({ outstandingArrangements: outstanding, safetyApproved: true }) });
   await t.test('n−1 of n complete: blocked, and the outstanding items are listed', () => {
     assert.throws(() => call(['equipment']), (e) => e.status === 409 && e.code === 'ARRANGEMENTS_INCOMPLETE' && e.details.outstanding[0] === 'equipment');
   });
@@ -226,8 +238,47 @@ test('confirm needs every arrangement complete', async (t) => {
   });
   await t.test('n of n complete: allowed', () => assert.equal(call([]).to, 'CONFIRMED'));
   await t.test('checklist unknown (not supplied): blocked, never confirmed by accident', () => {
-    assert.throws(() => decide({ action: ACTIONS.CONFIRM, entity: evt('ARRANGEMENT_PENDING'), actor: COORD, context: baseCtx() }), (e) => e.code === 'ARRANGEMENTS_INCOMPLETE');
+    assert.throws(() => decide({ action: ACTIONS.CONFIRM, entity: evt('ARRANGEMENT_PENDING'), actor: COORD, context: baseCtx({ safetyApproved: true }) }), (e) => e.code === 'ARRANGEMENTS_INCOMPLETE');
   });
+});
+
+// ── Session 3: Safety before Confirmed, distinct Preparation ─────────────
+test('Confirm and Begin preparation need current Safety approval', async (t) => {
+  const confirm = (extra) => decide({ action: ACTIONS.CONFIRM, entity: evt('ARRANGEMENT_PENDING'), actor: COORD, context: baseCtx({ outstandingArrangements: [], ...extra }) });
+  const prepare = (extra) => decide({ action: ACTIONS.BEGIN_PREPARATION, entity: evt('CONFIRMED'), actor: COORD, context: baseCtx(extra) });
+  await t.test('confirm: every arrangement ready but no Safety approval → blocked', () => {
+    assert.throws(() => confirm({}), (e) => e.status === 409 && e.code === 'CURRENT_SAFETY_REQUIRED');
+  });
+  await t.test('confirm: Safety approval flag must be exactly true', () => {
+    assert.throws(() => confirm({ safetyApproved: 'yes' }), (e) => e.code === 'CURRENT_SAFETY_REQUIRED');
+  });
+  await t.test('confirm: Safety approved but an arrangement outstanding → blocked', () => {
+    assert.throws(() => confirm({ safetyApproved: true, outstandingArrangements: ['equipment'] }), (e) => e.code === 'ARRANGEMENTS_INCOMPLETE');
+  });
+  await t.test('confirm: Safety approved and arrangements ready → Confirmed', () => {
+    assert.equal(confirm({ safetyApproved: true }).to, 'CONFIRMED');
+  });
+  await t.test('begin preparation without Safety approval → blocked (rejected/stale proof)', () => {
+    assert.throws(() => prepare({}), (e) => e.status === 409 && e.code === 'CURRENT_SAFETY_REQUIRED');
+  });
+  await t.test('begin preparation with Safety approval → Preparation, history recorded', () => {
+    const r = prepare({ safetyApproved: true });
+    assert.deepEqual([r.from, r.to, r.activity.actorId], ['CONFIRMED', 'PREPARATION', 'coord-A']);
+  });
+  await t.test('a wrong actor gets 403 before anything about Safety is revealed', () => {
+    assert.throws(() => decide({ action: ACTIONS.BEGIN_PREPARATION, entity: evt('CONFIRMED'), actor: OTHER_COORD, context: baseCtx() }), (e) => e.status === 403);
+  });
+});
+
+test('Cancel from Preparation: until the event starts, not after', async (t) => {
+  const call = (now) => decide({ action: ACTIONS.CANCEL, entity: evt('PREPARATION'), actor: COORD, context: baseCtx({ now }), text: 'Coordinator cancellation' });
+  await t.test('before start', () => assert.equal(call(new Date('2026-11-20T00:59:59Z')).to, 'CANCELLING'));
+  await t.test('at start', () => assert.throws(() => call(new Date('2026-11-20T01:00:00Z')), (e) => e.code === 'EVENT_STARTED'));
+});
+
+test('every action in the table has a row, and every row has a known check', () => {
+  const { TABLE } = require('../../src/domain/transitions');
+  for (const action of Object.values(ACTIONS)) assert.ok(TABLE[action]?.length, `${action} has no row`);
 });
 
 // ── cancellation window and completion timing ────────────────────────────
@@ -260,4 +311,17 @@ test('displayStatus: approval shows Planning to the organiser, never Confirmed',
 test('every status has a label', () => {
   for (const s of ['DRAFT', 'SUBMITTED', 'RETURNED_FOR_AMENDMENT', 'APPROVED', 'REJECTED']) assert.ok(REQUEST_LABELS[s], s);
   for (const s of ['ARRANGEMENT_PENDING', 'CONFIRMED', 'CANCELLING', 'CANCELLED', 'COMPLETED', 'REJECTED']) assert.ok(EVENT_LABELS[s], s);
+});
+
+test('frontend screens use the shared label map, not their own spelling (AC5)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.resolve(__dirname, '../../../../frontend/app');
+  if (!fs.existsSync(root)) return; // service checked out without the frontend
+  const queue = fs.readFileSync(path.join(root, 'components/events/ReviewQueue.vue'), 'utf8');
+  assert.match(queue, /REQUEST_STATUS_LABELS/);
+  assert.doesNotMatch(queue, /'Returned for amendment'/);
+  const dash = fs.readFileSync(path.join(root, 'components/events/EventReadinessDashboard.vue'), 'utf8');
+  assert.match(dash, /EVENT_STATUS_LABELS/);
+  assert.doesNotMatch(dash, /ARRANGEMENT_PENDING: 'Planning'/);
 });
