@@ -7,7 +7,7 @@ const projection=require('../../src/projection');
 async function withSources(work){
  const original={fetch:global.fetch,mode:config.dataMode,findEvent:store.findEvent};
  config.dataMode='prisma';
- store.findEvent=async()=>({id:'historical-fixture-alias',eventId:'actual-event',registrationLimit:90,primaryVenueName:'Retired venue',internalNotes:'Private stored note',safetyReviews:[{privateNotes:'Private assessment'}]});
+ store.findEvent=async()=>({id:'historical-fixture-alias',eventId:'actual-event',registrationLimit:90,withdrawalEnabled:true,withdrawalCutoffAt:'2030-01-01T00:00:00Z',allowReregistration:true,primaryVenueName:'Retired venue',internalNotes:'Private stored note',safetyReviews:[{privateNotes:'Private assessment'}]});
  try{await work();}finally{global.fetch=original.fetch;config.dataMode=original.mode;store.findEvent=original.findEvent;}
 }
 const event={id:'actual-event',eventId:'actual-event',title:'Confirmed conference',status:'CONFIRMED'};
@@ -19,6 +19,7 @@ test('TC-CS92-02 current venue projection uses actual Event identity and preserv
  global.fetch=async url=>{calls.push(String(url));if(String(url).includes('/attendee-events/'))return String(url).endsWith('/actual-event')?answer(event):answer({},404);assert.ok(String(url).endsWith('/internal/events/actual-event/public-venues'));return answer(venues);};
  const result=await projection.find('actual-event');
  assert.equal(result.id,'actual-event');assert.equal(result.registrationLimit,90);assert.equal(result.primaryVenueName,'Current venue');assert.deepEqual(result.venues,venues.venues);assert.equal(result.internalNotes,undefined);assert.equal(result.safetyReviews,undefined);
+ assert.equal(result.withdrawalEnabled,true);assert.equal(result.withdrawalCutoffAt,'2030-01-01T00:00:00Z');assert.equal(result.allowReregistration,true);
  assert.ok(calls.some(url=>url.endsWith('/internal/events/actual-event/public-venues')));
  assert.equal(await projection.find('historical-fixture-alias'),null);
  assert.ok(!calls.some(url=>url.endsWith('/attendee-events')),'Opening one Event must not rebuild the full catalogue');

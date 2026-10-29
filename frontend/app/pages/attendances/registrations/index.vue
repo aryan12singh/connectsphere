@@ -5,11 +5,12 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
+import { withdrawalReason } from '~~/lib/attendance-state'
 
 useHead({ title: 'My registrations | ConnectSphere' })
 const { data, error, refresh } = await useFetch<{ registrations: Array<{
   id: string, eventId: string, status: string, registeredAt: string, withdrawnAt?: string | null,
-  event?: { eventId: string, title: string, startAt: string, endAt: string, timeZone: string, primaryVenueName: string | null }
+  event?: { eventId: string, title: string, startAt: string, endAt: string, timeZone: string, primaryVenueName: string | null, withdrawalEnabled?: boolean, withdrawalCutoffAt?: string | null }
 }> }>('/api/attendances/registrations')
 const registrations = computed(() => data.value?.registrations ?? [])
 const withdrawingId = ref<string | null>(null)
@@ -46,11 +47,16 @@ async function withdrawRegistration(registration: { id: string, eventId: string,
   withdrawingId.value = registration.id
   withdrawErrors.value = { ...withdrawErrors.value, [registration.id]: '' }
   try {
-    await $fetch(`/api/attendances/registrations/${encodeURIComponent(registration.id)}/withdraw`, { method: 'POST' })
+    const result = await $fetch<{ registration: { id: string, status: string, withdrawnAt?: string | null } }>(`/api/attendances/registrations/${encodeURIComponent(registration.id)}/withdraw`, { method: 'POST' })
+    if (data.value) data.value.registrations = data.value.registrations.map(row => row.id === registration.id ? { ...row, ...result.registration } : row)
     await refresh()
   }
   catch (cause: any) {
-    withdrawErrors.value = { ...withdrawErrors.value, [registration.id]: cause?.data?.error?.message || 'Unable to withdraw this registration.' }
+    withdrawErrors.value = { ...withdrawErrors.value, [registration.id]: cause?.data?.data?.error?.message || cause?.data?.statusMessage || 'Unable to withdraw this registration.' }
+    await refresh()
+    const refreshed = data.value?.registrations.find(row => row.id === registration.id)
+    const code = cause?.data?.data?.error?.code
+    if (refreshed && ['WITHDRAWAL_DISABLED', 'WITHDRAWAL_CLOSED'].includes(code) && withdrawalReason(refreshed.event)) withdrawErrors.value = { ...withdrawErrors.value, [registration.id]: '' }
   }
   finally { withdrawingId.value = null }
 }
@@ -109,11 +115,14 @@ async function withdrawRegistration(registration: { id: string, eventId: string,
               <p v-if="registration.status === 'WITHDRAWN'" role="status" class="text-sm text-muted-foreground">
                 Withdrawn<span v-if="registration.withdrawnAt"> · {{ formattedDate(registration.withdrawnAt, registration.event?.timeZone || 'Asia/Singapore') }}</span>
               </p>
-              <div v-else class="flex flex-wrap items-center justify-between gap-3">
+              <div v-else class="flex flex-wrap items-start justify-between gap-3">
                 <p class="text-sm text-muted-foreground">Need to cancel your attendance?</p>
-                <Button variant="outline" size="sm" :disabled="withdrawingId === registration.id" :aria-label="`Withdraw registration for ${registration.event?.title || registration.eventId}`" @click="withdrawRegistration(registration)">
-                  {{ withdrawingId === registration.id ? 'Withdrawing…' : 'Withdraw registration' }}
-                </Button>
+                <div class="grid gap-1">
+                  <Button variant="outline" size="sm" :disabled="withdrawingId === registration.id || Boolean(withdrawalReason(registration.event))" :aria-label="`Withdraw registration for ${registration.event?.title || registration.eventId}`" @click="withdrawRegistration(registration)">
+                    {{ withdrawingId === registration.id ? 'Withdrawing…' : 'Withdraw registration' }}
+                  </Button>
+                  <p v-if="withdrawalReason(registration.event)" class="text-xs text-muted-foreground">{{ withdrawalReason(registration.event) }}</p>
+                </div>
               </div>
               <p v-if="withdrawErrors[registration.id]" role="alert" class="mt-3 text-sm text-destructive">{{ withdrawErrors[registration.id] }}</p>
             </CardContent>

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useUserSession } from '#imports'
+import { canReregister, currentRegistration } from '~~/lib/attendance-state'
 
 const route = useRoute()
 const eventId = String(route.params.id ?? '')
@@ -18,6 +19,7 @@ const { data: event, error, refresh } = await useFetch<{
   primaryVenueId: string | null, primaryVenueName: string | null,
   registrationLimit: number | null, confirmedRegistrationCount: number, placesRemaining: number | null,
   registrationEnabled: boolean,
+  allowReregistration: boolean,
   registrationWindow: { startAt: string, endAt: string } | null,
   organiserId: string | null, createdAt: string, updatedAt: string
 }>(`/api/attendances/events/${encodeURIComponent(eventId)}`)
@@ -34,14 +36,15 @@ const registering = ref(false)
 const hydrated = ref(false)
 const registerError = ref('')
 const registration = ref<{ id: string, status: string } | null>(null)
+const registrationLookupFailed = ref(false)
 onMounted(() => { hydrated.value = true })
 
 if (user.value?.role === 'ATTENDEE') {
   try {
     const result = await $fetch<{ registrations: Array<{ eventId: string, status: string, id: string }> }>('/api/attendances/registrations')
-    registration.value = result.registrations.find(row => row.eventId === eventId) ?? null
+    registration.value = currentRegistration(result.registrations, eventId)
   }
-  catch { /* Registration lookup failures do not hide public Event details. */ }
+  catch { registrationLookupFailed.value = true }
 }
 
 const canRegister = computed(() => {
@@ -49,12 +52,15 @@ const canRegister = computed(() => {
   const now = Date.now()
   return user.value?.role === 'ATTENDEE' && event.value?.status === 'CONFIRMED'
     && event.value.registrationEnabled && event.value.registrationLimit !== null
-    && event.value.placesRemaining !== null && event.value.placesRemaining > 0 && !registration.value
+    && event.value.placesRemaining !== null && event.value.placesRemaining > 0 && !registrationLookupFailed.value
+    && canReregister(registration.value, event.value.allowReregistration === true)
     && Boolean(window?.startAt && window?.endAt && now >= Date.parse(window.startAt) && now <= Date.parse(window.endAt))
 })
 const registrationAvailability = computed(() => {
-  if (registration.value) return 'You are registered for this event.'
+  if (registrationLookupFailed.value) return 'Your registration status is unavailable. Refresh the page and try again.'
+  if (registration.value && registration.value.status !== 'WITHDRAWN') return 'You are registered for this event.'
   if (!event.value) return ''
+  if (registration.value?.status === 'WITHDRAWN' && !event.value.allowReregistration) return 'The organiser has not enabled re-registration.'
   if (event.value.registrationLimit === null) return 'Registration is unavailable until the Coordinator sets a limit.'
   if (event.value.placesRemaining === 0) return 'Registration is closed because the event is full.'
   if (!event.value.registrationEnabled) return 'Registration is not enabled for this event.'
@@ -168,9 +174,10 @@ function formatStatus(status: string) {
             </dl>
 
             <div class="mt-5">
-              <p v-if="user?.role === 'ATTENDEE' && registration" role="status" class="mb-3 text-sm font-medium text-success">You are registered for this event.</p>
+              <p v-if="user?.role === 'ATTENDEE' && registration?.status === 'WITHDRAWN'" role="status" class="mb-3 text-sm text-muted-foreground">Your registration was withdrawn.</p>
+              <p v-else-if="user?.role === 'ATTENDEE' && registration" role="status" class="mb-3 text-sm font-medium text-success">You are registered for this event.</p>
               <Button v-if="canRegister" :disabled="registering || !hydrated" class="w-full" @click="registerForEvent">{{ registering ? 'Registering…' : 'Register' }}</Button>
-              <Button v-else-if="user?.role === 'ATTENDEE' && registration" as-child class="w-full">
+              <Button v-else-if="user?.role === 'ATTENDEE' && registration && registration.status !== 'WITHDRAWN'" as-child class="w-full">
                 <NuxtLink to="/attendances/registrations" data-testid="registration-primary-action">My registrations</NuxtLink>
               </Button>
               <p v-else-if="user?.role === 'ATTENDEE'" role="status" class="text-sm leading-6 text-muted-foreground">{{ registrationAvailability }}</p>

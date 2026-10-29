@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { canOpenRegistrationPage as canOpenRegistrationForUser } from '~~/lib/attendance-state'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import RequestActivityHistory from './RequestActivityHistory.vue'
@@ -55,8 +56,7 @@ const { data: safety, error: safetyError, refresh: refreshSafety } = await useFe
 const event = computed(() => summary.value?.event)
 const currentEventStatus = computed(() => props.statusOverride ?? safety.value?.event?.status ?? event.value?.status)
 const eventStatus = computed(() => statusLabel(currentEventStatus.value))
-const canOpenRegistrationPage = computed(() => (user.value?.role === 'EVENT_COORDINATOR' || user.value?.roles?.includes('EVENT_COORDINATOR'))
-  && ['CONFIRMED', 'PREPARATION'].includes(currentEventStatus.value ?? ''))
+const canOpenRegistrationPage = computed(() => canOpenRegistrationForUser(user.value, currentEventStatus.value))
 const primaryVenue = computed(() => {
   const bookingId = summary.value?.primaryVenue?.bookingId
   if (!bookingId)

@@ -14,7 +14,7 @@ async function effectiveEvent(event){
   if(!venues)return null;
   if(venues.eventId!==event.id||!Array.isArray(venues.venues)||!venues.venues.length)throw Object.assign(Error('Unable to verify the effective Event identity'),{status:503,code:'EVENT_UNAVAILABLE'});
   const saved=await store.findEvent(event.id);
-  return {...event,...venues,registrationLimit:saved?.registrationLimit??null};
+  return {...event,...venues,registrationLimit:saved?.registrationLimit??null,withdrawalEnabled:saved?.withdrawalEnabled??false,withdrawalCutoffAt:saved?.withdrawalCutoffAt??null,allowReregistration:saved?.allowReregistration??false};
 }
 async function list(){
  if(config.dataMode!=='prisma')return store.listEvents();
