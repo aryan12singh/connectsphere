@@ -49,7 +49,7 @@ const draftEvent = {
   status: 'DRAFT',
 };
 
-test('GET /attendances/events lists only confirmed events', async () => {
+test('TC-CS47-05 GET /attendances/events lists only confirmed events', async () => {
   await withServer(async baseUrl => {
     await storeSave(confirmedEvent);
     await storeSave(draftEvent);
@@ -61,7 +61,7 @@ test('GET /attendances/events lists only confirmed events', async () => {
   });
 });
 
-test('GET /attendances/events/:id returns attendee view with private fields removed', async () => {
+test('TC-CS47-01/04 GET /attendances/events/:id returns attendee-safe detail with private fields removed', async () => {
   await withServer(async baseUrl => {
     await storeSave(confirmedEvent);
     const response = await fetch(`${baseUrl}/events/${confirmedEvent.id}`, {
@@ -83,7 +83,7 @@ test('GET /attendances/events/:id returns attendee view with private fields remo
   });
 });
 
-test('GET /attendances/events/:id returns 404 for non-confirmed event', async () => {
+test('TC-CS47-05 GET /attendances/events/:id returns 404 for non-confirmed event', async () => {
   await withServer(async baseUrl => {
     await storeSave(draftEvent);
     const response = await fetch(`${baseUrl}/events/${draftEvent.id}`, {
@@ -153,7 +153,7 @@ async function storeSaveRegistration(registration) {
   await saveRegistration(registration);
 }
 
-test('Attendance public detail is sanitized for every role and Organiser-only detail requires the current Event owner',async()=>{
+test('TC-CS47-04 Attendance public detail is sanitized for every role and Organiser-only detail requires the current Event owner',async()=>{
  await withServer(async baseUrl=>{
   await storeSave({...confirmedEvent,internalNotes:'Private operational detail',safetyReviews:[{privateNotes:'Private Safety assessment'}],venues:[{id:'venue-main',name:'Main Ballroom',internalNotes:'Private room access code'}]});
   for(const actor of [['org-1','EVENT_ORGANISER'],['unrelated-owner','EVENT_ORGANISER'],['attendee-1','ATTENDEE']]){
@@ -162,6 +162,87 @@ test('Attendance public detail is sanitized for every role and Organiser-only de
   assert.equal((await fetch(`${baseUrl}/events/${confirmedEvent.id}/organiser`,{headers:actorHeaders('unrelated-owner','EVENT_ORGANISER')})).status,403);
   const own=await fetch(`${baseUrl}/events/${confirmedEvent.id}/organiser`,{headers:actorHeaders('org-1','EVENT_ORGANISER')});assert.equal(own.status,200);const body=await own.json();assert.equal(body.internalNotes,undefined);assert.equal(body.safetyReviews,undefined);assert.deepEqual(body.venues,[{id:'venue-main',name:'Main Ballroom'}]);
  });
+});
+
+test('TC-CS47-02 attendee and Organiser projections expose four effective venues and honor the designated primary', async () => {
+  const eventId = `four-venue-${Date.now()}`;
+  const venues = ['First room', 'Second room', 'Third room', 'Fourth room'].map((name, index) => ({
+    id: `venue-${index + 1}`, bookingId: `booking-${index + 1}`, name,
+    startAt: `2026-11-15T${String(10 + index).padStart(2, '0')}:00:00Z`,
+    endAt: `2026-11-15T${String(11 + index).padStart(2, '0')}:00:00Z`,
+  }));
+  const event = { ...confirmedEvent, id: eventId, eventId, primaryVenueId: venues[2].id, primaryVenueName: venues[2].name, venues };
+  await withServer(async baseUrl => {
+    await storeSave(event);
+    const attendee = await fetch(`${baseUrl}/events/${eventId}`, { headers: actorHeaders('attendee-1', 'ATTENDEE') });
+    assert.equal(attendee.status, 200);
+    const attendeeBody = await attendee.json();
+    assert.equal(attendeeBody.primaryVenueId, venues[2].id);
+    assert.equal(attendeeBody.primaryVenueName, venues[2].name);
+    assert.deepEqual(attendeeBody.venues.map(venue => [venue.id, venue.startAt, venue.endAt]), venues.map(venue => [venue.id, venue.startAt, venue.endAt]));
+    const organiser = await fetch(`${baseUrl}/events/${eventId}/organiser`, { headers: actorHeaders('org-1', 'EVENT_ORGANISER') });
+    assert.equal(organiser.status, 200);
+    const organiserBody = await organiser.json();
+    assert.equal(organiserBody.venues.length, 4);
+    assert.deepEqual(organiserBody.venues.map(venue => venue.name), venues.map(venue => venue.name));
+  });
+});
+
+test('TC-CS47-06 attendee projection displays only the effective replacement and unaffected confirmed venues', async () => {
+  const eventId = `replacement-projection-${Date.now()}`;
+  const { excludeObsoleteBookings, getEffectiveVenues } = require('../../src/domain/venues');
+  const bookings = [
+    { venueId: 'venue-obsolete', bookingId: 'booking-old', venueName: 'Old Hall', status: 'CONFIRMED', approved: true, replacedBy: 'booking-new', startAt: '2026-11-15T10:00:00Z', endAt: '2026-11-15T12:00:00Z' },
+    { venueId: 'venue-replacement', bookingId: 'booking-new', venueName: 'Replacement Hall', status: 'CONFIRMED', approved: true, startAt: '2026-11-15T10:00:00Z', endAt: '2026-11-15T12:00:00Z' },
+    { venueId: 'venue-sibling', bookingId: 'booking-sibling', venueName: 'Unchanged Studio', status: 'CONFIRMED', approved: true, startAt: '2026-11-15T13:00:00Z', endAt: '2026-11-15T14:00:00Z' },
+    { venueId: 'venue-pending', bookingId: 'booking-pending', venueName: 'Pending Room', status: 'PENDING', approved: true },
+  ];
+  const effective = getEffectiveVenues(excludeObsoleteBookings(bookings)).map((venue, index) => ({ ...venue, bookingId: index ? 'booking-sibling' : 'booking-new' }));
+  await withServer(async baseUrl => {
+    await storeSave({ ...confirmedEvent, id: eventId, eventId, venues: effective, primaryVenueId: 'venue-replacement', primaryVenueName: 'Replacement Hall' });
+    await storeSaveRegistration({ eventId, userId: 'attendee-1', status: 'CONFIRMED', registeredAt: '2026-10-15T00:00:00Z' });
+    const response = await fetch(`${baseUrl}/events/${eventId}`, { headers: actorHeaders('attendee-1', 'ATTENDEE') });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.venues.map(venue => venue.id), ['venue-replacement', 'venue-sibling']);
+    assert.equal(body.venues.some(venue => venue.id === 'venue-obsolete'), false);
+    assert.equal(body.primaryVenueName, 'Replacement Hall');
+    assert.equal((await require('../../src/store').findRegistration(eventId, 'attendee-1')).status, 'CONFIRMED');
+  });
+});
+
+test('TC-CS47-07 attendee list/detail visibility changes only after the same Event becomes confirmed', async () => {
+  const eventId = `confirmation-boundary-${Date.now()}`;
+  const draft = { ...draftEvent, id: eventId, eventId, eventVersion: 1 };
+  await withServer(async baseUrl => {
+    await storeSave(draft);
+    const headers = { headers: actorHeaders('attendee-1', 'ATTENDEE') };
+    const beforeList = await (await fetch(`${baseUrl}/events`, headers)).json();
+    assert.equal(beforeList.events.some(event => event.eventId === eventId), false);
+    assert.equal((await fetch(`${baseUrl}/events/${eventId}`, headers)).status, 404);
+    await require('../../src/store').upsertConfirmedEvent({ ...draft, eventVersion: 2, title: 'Confirmed after safety review' });
+    const afterList = await (await fetch(`${baseUrl}/events`, headers)).json();
+    assert.equal(afterList.events.some(event => event.eventId === eventId), true);
+    const afterDetail = await fetch(`${baseUrl}/events/${eventId}`, headers);
+    assert.equal(afterDetail.status, 200);
+    assert.equal((await afterDetail.json()).title, 'Confirmed after safety review');
+  });
+});
+
+test('TC-CS47-08 cancelled Event remains in the own-registration view but not the current confirmed list', async () => {
+  const eventId = `cancelled-personal-${Date.now()}`;
+  await withServer(async baseUrl => {
+    await storeSave({ ...confirmedEvent, id: eventId, eventId, status: 'CANCELLED' });
+    await storeSaveRegistration({ eventId, userId: 'attendee-1', status: 'CONFIRMED', registeredAt: '2026-10-15T00:00:00Z' });
+    const headers = actorHeaders('attendee-1', 'ATTENDEE');
+    const list = await (await fetch(`${baseUrl}/events`, { headers })).json();
+    assert.equal(list.events.some(event => event.eventId === eventId), false);
+    const own = await fetch(`${baseUrl}/registrations/${eventId}`, { headers });
+    assert.equal(own.status, 200);
+    assert.equal((await own.json()).status, 'CONFIRMED');
+    assert.equal((await fetch(`${baseUrl}/events/${eventId}`, { headers })).status, 404);
+    assert.equal((await fetch(`${baseUrl}/registrations/${eventId}`, { headers: actorHeaders('attendee-2', 'ATTENDEE') })).status, 404);
+  });
 });
 
 test('Attendance public Event writes cannot alter an actual Event or its saved registration policy',async()=>{
