@@ -473,6 +473,106 @@ test('route cases cover capability checks, assignment, pagination, decisions and
   });
 });
 
+test('CS-83 the Lead oversees active assignments with filters and workload; other roles are refused', async (t) => {
+  await withServer(async (baseUrl) => {
+    const organiser = auth('oversight-organiser', 'EVENT_ORGANISER');
+    const lead = auth('oversight-lead', 'EVENT_COORDINATOR_LEAD');
+    const coordinatorOne = auth('oversight-coordinator-one', 'EVENT_COORDINATOR');
+    const coordinatorTwo = auth('oversight-coordinator-two', 'EVENT_COORDINATOR');
+    const attendee = auth('oversight-attendee', 'ATTENDEE');
+    const request = (method, path, headers, body) => fetch(`${baseUrl}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    const json = async response => response.json();
+    async function submitted(eventName, startAt) {
+      const created = await json(await request('POST', '/event-requests', organiser, { ...validRequest, eventName, ...(startAt ? { startAt, endAt: startAt.replace('09:00', '17:00') } : {}) }));
+      const result = await request('POST', `/event-requests/${created.id}/submit`, organiser, { version: created.version });
+      assert.equal(result.status, 200);
+      return json(result);
+    }
+    async function assign(record, coordinatorId) {
+      const result = await request('POST', `/event-requests/${record.id}/assign`, lead, { coordinatorId, version: record.version });
+      assert.equal(result.status, 200);
+      return json(result);
+    }
+    const decide = async (record, headers, body) => json(await request('POST', `/event-requests/${record.id}/decision`, headers, { ...body, version: record.version }));
+
+    const draftOnly = await json(await request('POST', '/event-requests', organiser, { ...validRequest, eventName: 'Oversight private draft' }));
+    const queued = await submitted('Oversight still queued');
+    const underReview = await assign(await submitted('Oversight under review', '2026-12-02T09:00:00+08:00'), 'oversight-coordinator-one');
+    const planningAssigned = await assign(await submitted('Oversight planning', '2026-12-01T09:00:00+08:00'), 'oversight-coordinator-two');
+    const planning = await decide(planningAssigned, coordinatorTwo, { decision: 'approve', notes: 'Go' });
+    const returnedAssigned = await assign(await submitted('Oversight returned', '2026-12-03T09:00:00+08:00'), 'oversight-coordinator-one');
+    const returned = await decide(returnedAssigned, coordinatorOne, { decision: 'amendments', comments: 'Add detail' });
+    const rejectedAssigned = await assign(await submitted('Oversight rejected'), 'oversight-coordinator-one');
+    const rejected = await decide(rejectedAssigned, coordinatorOne, { decision: 'reject', reason: 'Not viable' });
+    assert.equal(rejected.status, 'REJECTED');
+    assert.equal(returned.status, 'RETURNED_FOR_AMENDMENT');
+    assert.equal(planning.status, 'APPROVED');
+
+    const list = async (query = '') => {
+      const response = await request('GET', `/event-requests/oversight?page=1&pageSize=100${query}`, lead);
+      assert.equal(response.status, 200);
+      return json(response);
+    };
+
+    await t.test('only Leads may read the oversight list', async () => {
+      for (const headers of [coordinatorOne, organiser, attendee]) assert.equal((await request('GET', '/event-requests/oversight', headers)).status, 403);
+    });
+
+    await t.test('lists only active assigned records, soonest first, with stage, Coordinator and outstanding items', async () => {
+      const body = await list();
+      const ids = body.items.map(item => item.id);
+      assert.ok(!ids.includes(draftOnly.id), 'private Draft excluded');
+      assert.ok(!ids.includes(queued.id), 'unassigned queue items belong to the Lead queue');
+      assert.ok(!ids.includes(rejected.id), 'Rejected excluded');
+      assert.deepEqual(ids.filter(id => [underReview.id, planning.id, returned.id].includes(id)), [planning.id, underReview.id, returned.id]);
+      const byId = Object.fromEntries(body.items.map(item => [item.id, item]));
+      assert.equal(byId[planning.id].stage, 'ARRANGEMENT_PENDING');
+      assert.equal(byId[planning.id].statusLabel, 'Planning');
+      assert.equal(byId[planning.id].currentCoordinatorId, 'oversight-coordinator-two');
+      assert.ok(byId[planning.id].eventId);
+      assert.deepEqual(byId[planning.id].outstanding, ['Venue and technical arrangements', 'Safety review']);
+      assert.equal(byId[underReview.id].stage, 'SUBMITTED');
+      assert.deepEqual(byId[underReview.id].outstanding, ['Coordinator decision']);
+      assert.deepEqual(byId[returned.id].outstanding, ['Organiser amendments']);
+      for (const id of [underReview.id, planning.id, returned.id]) assert.deepEqual(byId[id].allowedActions, ['reassign']);
+    });
+
+    await t.test('filters by Coordinator and by status, and workload ignores the filters', async () => {
+      const one = await list('&coordinatorId=oversight-coordinator-one');
+      const oneIds = one.items.map(item => item.id);
+      assert.ok(oneIds.includes(underReview.id) && oneIds.includes(returned.id) && !oneIds.includes(planning.id));
+      assert.ok(one.items.every(item => item.currentCoordinatorId === 'oversight-coordinator-one'));
+      const planningOnly = await list('&status=ARRANGEMENT_PENDING');
+      assert.ok(planningOnly.items.every(item => item.stage === 'ARRANGEMENT_PENDING'));
+      assert.ok(planningOnly.items.some(item => item.id === planning.id));
+      const both = await list('&coordinatorId=oversight-coordinator-one&status=ARRANGEMENT_PENDING');
+      assert.ok(!both.items.some(item => item.id === planning.id));
+      const workload = Object.fromEntries(both.workload.map(row => [row.coordinatorId, row.active]));
+      assert.equal(workload['oversight-coordinator-one'], 2);
+      assert.equal(workload['oversight-coordinator-two'], 1);
+      assert.equal((await request('GET', '/event-requests/oversight?status=NOT_A_STAGE', lead)).status, 422);
+      assert.ok(both.stages.some(stage => stage.value === 'ARRANGEMENT_PENDING' && stage.label === 'Planning'));
+    });
+
+    await t.test('the Lead can reassign from this view and the counts follow', async () => {
+      const result = await request('POST', `/event-requests/${underReview.id}/reassign`, lead, { coordinatorId: 'oversight-coordinator-two', version: underReview.version });
+      assert.equal(result.status, 200);
+      const body = await list();
+      const workload = Object.fromEntries(body.workload.map(row => [row.coordinatorId, row.active]));
+      assert.equal(workload['oversight-coordinator-one'], 1);
+      assert.equal(workload['oversight-coordinator-two'], 2);
+      assert.equal(body.items.find(item => item.id === underReview.id).currentCoordinatorId, 'oversight-coordinator-two');
+    });
+
+    await t.test('oversight is read-only: no write route accepts the Lead as a decider', async () => {
+      const current = await json(await request('GET', '/event-requests/oversight?page=1&pageSize=100', lead));
+      const target = current.items.find(item => item.id === planning.id);
+      const decision = await request('POST', `/event-requests/${planning.id}/decision`, lead, { decision: 'approve', version: target.version });
+      assert.equal(decision.status, 403);
+    });
+  });
+});
+
 test('CS-41 Technical Support reads minimum event metadata without events.view', async () => {
   await withServer(async (baseUrl) => {
     const organiser = auth('technical-metadata-organiser', 'EVENT_ORGANISER');
