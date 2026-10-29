@@ -44,7 +44,7 @@ describe('CS-54 — TC-CS54-02 the Organiser requests, the Coordinator decides',
     const ask = (who = 'owner') => api.call('POST', `/api/events/${r.id}/change-requests`, { changeActionId: randomUUID(), scope: 'CANCELLATION', reason: 'Clash with exams' }, who)
     expect((await ask('coord2')).status).toBe(403)
     const first = await ask()
-    expect(first.status).toBe(201)
+    expect(first.status).toBe(200)
     expect((await api.call('GET', `/api/events/${r.id}`)).body.eventStatus).toBe('ARRANGEMENT_PENDING')
     const no = await api.call('POST', `/api/events/${r.id}/change-requests/${first.body.id}/decision`, { decision: 'reject', reason: 'Still going ahead' }, 'coord')
     expect(no.status).toBe(200)

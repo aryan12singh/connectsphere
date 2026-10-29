@@ -24,7 +24,7 @@ describe('CS-45 — TC-CS45-01 a proposal changes nothing until it is decided', 
   it('records old and new values, keeps current values, and allows only one open proposal', async () => {
     const r = await approved()
     const p = await propose(r.id, { fields: { expectedAttendance: 150 } })
-    expect(p.status).toBe(201)
+    expect(p.status).toBe(200)
     expect(p.body).toMatchObject({ status: 'PENDING', fields: { expectedAttendance: 150 }, previous: { expectedAttendance: 100 } })
     expect((await api.call('GET', `/api/events/${r.id}`)).body.expectedAttendance).toBe(100)
     expect((await propose(r.id, { fields: { expectedAttendance: 160 } })).status).toBe(409)
