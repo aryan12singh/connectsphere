@@ -5,7 +5,8 @@ const repository = require('../store');
 const { toRequest } = require('../serializers');
 const config = require('../config');
 const { normaliseInput, validate } = require('../validation');
-const { isOrganiser, isCoordinator, canRead } = require('../policy');
+const { isOrganiser, isCoordinator, canRead, countsAsActive } = require('../policy');
+const { displayStatus } = require('../domain/statusLabels');
 const { mutation: transactionalMutation } = require('../workflows');
 const { history: workflowHistory, load: loadWorkflowRequest, read: workflowRead, dto: workflowDto } = require('../workflows');
 const prisma = require('../db');
@@ -198,6 +199,71 @@ router.get('/assigned-by-me', requirePermission('assignments.view'), async (req,
       .sort((a, b) => submittedTime(a) - submittedTime(b) || (a.id < b.id ? -1 : 1));
     const items = await Promise.all(mine.map(async record => leadItem(record, await organiserSummary(record.organiserId), ['reassign'])));
     return res.json(page(items, req));
+  } catch (error) { return next(error); }
+});
+
+// ── CS-83: the Lead's oversight of active Events ─────────────────────────────
+// Read-only. Lists Events and requests that currently have a Coordinator and are
+// still open (Under Review, Returned for Amendment, Planning, Confirmed,
+// Preparation, Cancelling). Private Drafts, Rejected, Cancelled and Completed
+// records never appear. Supervisory scopes are not recorded yet, so every Lead
+// sees every active assignment; that gap is listed in the CS-83 follow-ups.
+const OVERSIGHT_STAGES = ['SUBMITTED', 'RETURNED_FOR_AMENDMENT', 'ARRANGEMENT_PENDING', 'CONFIRMED', 'PREPARATION', 'CANCELLING'];
+const REASSIGNABLE_EVENT_STATUSES = ['ARRANGEMENT_PENDING', 'CONFIRMED', 'PREPARATION'];
+// One stage per record: the Event's status once the request is approved.
+function stageOf(record) { return record.status === 'APPROVED' ? (record.event?.status || 'APPROVED') : record.status; }
+function canReassignRecord(record) {
+  return record.status === 'SUBMITTED' || record.status === 'RETURNED_FOR_AMENDMENT'
+    || (record.status === 'APPROVED' && REASSIGNABLE_EVENT_STATUSES.includes(record.event?.status));
+}
+// What is still open, from what Event Service itself knows. Venue and equipment
+// proofs live in other services and join this list with the CS-32 checklist.
+function outstandingFor(record) {
+  const stage = stageOf(record);
+  if (stage === 'SUBMITTED') return ['Coordinator decision'];
+  if (stage === 'RETURNED_FOR_AMENDMENT') return ['Organiser amendments'];
+  if (stage === 'CANCELLING') return ['Cancellation releases in progress'];
+  if (stage !== 'ARRANGEMENT_PENDING') return [];
+  const safety = record.event?.safetyState || 'NOT_SUBMITTED';
+  if (safety === 'APPROVED') return ['Event confirmation'];
+  if (safety === 'PENDING') return ['Safety review in progress'];
+  if (safety === 'CHANGES_REQUIRED') return ['Safety changes requested'];
+  if (safety === 'STALE') return ['Safety re-review needed'];
+  return ['Venue and technical arrangements', 'Safety review'];
+}
+function oversightSort(a, b) {
+  const left = a.startAt ? new Date(a.startAt).getTime() : Infinity;
+  const right = b.startAt ? new Date(b.startAt).getTime() : Infinity;
+  return left - right || (a.id < b.id ? -1 : 1);
+}
+
+router.get('/oversight', requirePermission('assignments.view'), async (req, res, next) => {
+  try {
+    const coordinatorFilter = typeof req.query.coordinatorId === 'string' ? req.query.coordinatorId.trim() : '';
+    const stageFilter = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+    if (stageFilter && !OVERSIGHT_STAGES.includes(stageFilter)) return sendError(res, 422, 'VALIDATION_FAILED', 'Unknown status filter.', { status: `Use one of ${OVERSIGHT_STAGES.join(', ')}.` });
+    const active = (await repository.listRequests())
+      .filter(record => record.currentCoordinatorId && countsAsActive({ requestStatus: record.status, eventStatus: record.event?.status }));
+    // Workload counts the whole active set, so filtering never changes a Coordinator's total.
+    const counts = {};
+    for (const record of active) counts[record.currentCoordinatorId] = (counts[record.currentCoordinatorId] || 0) + 1;
+    const known = new Map((await coordinatorCandidates()).map(user => [user.id, [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || user.id]));
+    const workload = [...new Set([...known.keys(), ...Object.keys(counts)])]
+      .map(id => ({ coordinatorId: id, name: known.get(id) || 'Unavailable Coordinator', active: counts[id] || 0 }))
+      .sort((a, b) => b.active - a.active || a.name.localeCompare(b.name) || (a.coordinatorId < b.coordinatorId ? -1 : 1));
+    const matching = active
+      .filter(record => !coordinatorFilter || record.currentCoordinatorId === coordinatorFilter)
+      .filter(record => !stageFilter || stageOf(record) === stageFilter)
+      .sort(oversightSort);
+    const paged = page(matching, req);
+    paged.items = await Promise.all(paged.items.map(async record => ({
+      ...leadItem(record, await organiserSummary(record.organiserId), canReassignRecord(record) ? ['reassign'] : []),
+      stage: stageOf(record),
+      statusLabel: displayStatus({ requestStatus: record.status, eventStatus: record.event?.status }),
+      eventId: record.event?.id || null,
+      outstanding: outstandingFor(record),
+    })));
+    return res.json({ ...paged, workload, stages: OVERSIGHT_STAGES.map(value => ({ value, label: displayStatus(value === 'SUBMITTED' || value === 'RETURNED_FOR_AMENDMENT' ? { requestStatus: value } : { requestStatus: 'APPROVED', eventStatus: value }) })) });
   } catch (error) { return next(error); }
 });
 
