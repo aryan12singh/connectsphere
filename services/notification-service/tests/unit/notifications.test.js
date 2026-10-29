@@ -112,3 +112,36 @@ test('TC-CS50-12 unknown message types are recorded and ignored; malformed messa
   assert.equal((await deliver(message('SomethingElse', {}), { names })).result, 'ignored');
   await assert.rejects(() => deliver({ id: 'x' }), /Invalid message/);
 });
+
+test('TC-CS81-06 a new unassigned request notifies every active Lead with a queue link and tells the Organiser a Lead will assign', async () => {
+  const usersWithRole = async role => (role === 'EVENT_COORDINATOR_LEAD' ? ['lead1', 'lead2', 'lead1'] : ['wrong-role']);
+  const notices = await noticesFor(message('RequestSubmitted', {}), { names, usersWithRole });
+  const organiser = notices.find(n => n.recipientId === 'o1');
+  assert.equal(organiser.type, 'REQUEST_SUBMITTED');
+  assert.match(organiser.text, /Lead will assign/);
+  const leads = notices.filter(n => n.type === 'NEW_REQUEST_UNASSIGNED');
+  assert.deepEqual(leads.map(n => n.recipientId), ['lead1', 'lead2']);
+  assert.equal(leads[0].link, '/queue');
+  assert.match(leads[0].text, /Tech Summit/);
+  assert.equal(notices.some(n => n.recipientId === 'wrong-role'), false);
+  assert.equal(JSON.stringify(leads).includes('o1'), false, 'the Lead notice names no Organiser');
+});
+
+test('TC-CS81-06b a request that already has a Coordinator sends no Lead notice, and a Lead lookup outage is retried then recorded as FAILED', async () => {
+  const lookup = async () => ['lead1'];
+  const assigned = await noticesFor(message('RequestSubmitted', { coordinatorId: 'c1' }), { names, usersWithRole: lookup });
+  assert.deepEqual(assigned.map(n => n.type), ['REQUEST_SUBMITTED']);
+  const down = async () => { throw new Error('user-service down'); };
+  await assert.rejects(noticesFor(message('RequestSubmitted', {}), { names, usersWithRole: down }), /user-service down/);
+});
+
+test('TC-CS81-06c delivery stores one Lead notice per Lead and a replay creates no duplicate', async () => {
+  const usersWithRole = async () => ['lead1'];
+  const msg = message('RequestSubmitted', {}, 'm-lead-intake');
+  assert.equal((await deliver(msg, { names, usersWithRole })).result, 'processed');
+  assert.equal((await deliver(msg, { names, usersWithRole })).result, 'duplicate');
+  const items = await inbox('lead1');
+  assert.equal(items.length, 1);
+  assert.equal(items[0].type, 'NEW_REQUEST_UNASSIGNED');
+  assert.equal(items[0].link, '/queue');
+});
