@@ -19,6 +19,5 @@ test('live review CI installs host-run service dependencies and generates Prisma
     assert.match(liveJob, new RegExp(`npm ci --prefix services/${service}(?:\\s|$)`), `${service} dependencies are installed on the host`);
     assert.ok(liveJob.includes(`services/${service}/package-lock.json`), `${service} lockfile participates in dependency caching`);
   }
-  assert.match(liveJob, /cd services\/attendance-service && npx prisma generate/, 'Attendance Prisma client is generated for the host-run PostgreSQL suite');
-  assert.match(liveJob, /cd services\/equipment-service && npx prisma generate/, 'Equipment Prisma client is generated for the host-run PostgreSQL suite');
+  assert.match(liveJob, /for service in equipment-service attendance-service; do\s+\(cd "services\/\$service" && npx prisma generate\)\s+done/, 'Host-run PostgreSQL suites generate their Prisma clients');
 });
