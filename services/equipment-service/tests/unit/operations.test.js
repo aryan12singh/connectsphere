@@ -13,7 +13,7 @@ beforeEach(async () => {
   await inventory.update('projector', { total: 5, version: item.version });
 });
 
-test('reservation retries preserve identity and replacements exclude only their own old stock', async () => {
+test('TC-CS42-08 reservation retries preserve identity and replacements exclude only their own old stock', async () => {
   const input = { request, window, actor, key: 'reserve', hash: 'first' };
   const first = await operations.reserve(input);
   assert.equal((await operations.reserve(input)).reservations[0].id, first.reservations[0].id);
@@ -21,6 +21,15 @@ test('reservation retries preserve identity and replacements exclude only their 
   const replacement = await operations.reserve({ ...input, key: 'replace', hash: 'second', request: { ...request, version: 2, requirements: { equipment: [{ equipmentType: 'projector', quantity: 4 }] } } });
   assert.equal(replacement.reservations[0].quantity, 4);
   assert.equal(operations._memory.reservations.filter(row => row.active).length, 1);
+});
+
+test('TC-CS42-02 any short line rejects the complete request without partial reservations', async () => {
+  const competitor = { ...request, eventRequestId: 'unit-competitor', requirements: { equipment: [{ equipmentType: 'projector', quantity: 5 }] } };
+  await operations.reserve({ request: competitor, window, actor, key: 'competitor', hash: 'competitor' });
+  const multiLine = { ...request, eventRequestId: 'unit-atomic-shortage', requirements: { equipment: [{ equipmentType: 'speaker', quantity: 1 }, { equipmentType: 'projector', quantity: 1 }] } };
+  await assert.rejects(() => operations.reserve({ request: multiLine, window, actor, key: 'atomic-shortage', hash: 'short' }), error => error.code === 'EQUIPMENT_SHORTFALL' && error.lines.some(line => line.equipmentType === 'projector' && line.shortfall === 1));
+  assert.deepEqual(operations._memory.reservations.filter(row => row.eventRequestId === multiLine.eventRequestId), []);
+  assert.deepEqual(operations._memory.reservations.filter(row => row.eventRequestId === competitor.eventRequestId).map(row => row.quantity), [5]);
 });
 
 test('reserving an already-reserved request version with a new action key returns the existing reservation', async () => {
