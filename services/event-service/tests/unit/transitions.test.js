@@ -42,6 +42,7 @@ test('allowed rows', async (t) => {
     ['Confirmed → Significant change approved → Planning', ACTIONS.SIGNIFICANT_CHANGE_APPROVED, evt('CONFIRMED'), COORD, {}, 'ARRANGEMENT_PENDING'],
     ['Planning → Cancel → Cancelling', ACTIONS.CANCEL, evt('ARRANGEMENT_PENDING'), COORD, {text:'Coordinator cancellation'}, 'CANCELLING'],
     ['Confirmed → Cancel → Cancelling', ACTIONS.CANCEL, evt('CONFIRMED'), COORD, {text:'Coordinator cancellation'}, 'CANCELLING'],
+    ['Cancelling → Finalize (system, releases done) → Cancelled', ACTIONS.FINALIZE_CANCELLATION, evt('CANCELLING'), SYSTEM, {}, 'CANCELLED'],
     ['Confirmed → End time passes (system) → Completed', ACTIONS.COMPLETE, evt('CONFIRMED'), SYSTEM, { now: new Date('2026-11-20T10:00:01Z') }, 'COMPLETED'],
   ];
   for (const [name, action, entity, actor, extra, expectedTo] of rows) {
@@ -90,6 +91,8 @@ test('forbidden action per status is a 409', async (t) => {
     ['Preparation cannot begin twice', ACTIONS.BEGIN_PREPARATION, evt('PREPARATION'), COORD],
     ['Preparation cannot be rejected, only cancelled', ACTIONS.REJECT, evt('PREPARATION'), COORD],
     ['Planning cannot be completed', ACTIONS.COMPLETE, evt('ARRANGEMENT_PENDING'), SYSTEM],
+    ['Confirmed cannot be finalized as cancelled', ACTIONS.FINALIZE_CANCELLATION, evt('CONFIRMED'), SYSTEM],
+    ['Cancelled cannot be finalized again', ACTIONS.FINALIZE_CANCELLATION, evt('CANCELLED'), SYSTEM],
   ];
   for (const [name, action, entity, actor] of forbidden) {
     await t.test(name, () => {
@@ -118,6 +121,7 @@ test('wrong actor is a 403 for every action', async (t) => {
     ['Cancel from Preparation by the organiser', ACTIONS.CANCEL, evt('PREPARATION'), ORG],
     ['Cancel by the organiser', ACTIONS.CANCEL, evt('CONFIRMED'), ORG],
     ['Complete by a human coordinator (system only)', ACTIONS.COMPLETE, evt('CONFIRMED'), COORD],
+    ['Finalize cancellation by a human coordinator (system only)', ACTIONS.FINALIZE_CANCELLATION, evt('CANCELLING'), COORD],
   ];
   for (const [name, action, entity, actor] of cases) {
     await t.test(name, () => {

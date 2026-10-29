@@ -24,6 +24,8 @@ const ACTIONS = Object.freeze({
   SIGNIFICANT_CHANGE_APPROVED: 'SIGNIFICANT_CHANGE_APPROVED',
   CANCEL: 'CANCEL',
   COMPLETE: 'COMPLETE',
+  // CS-54: the orchestrator finalizes a Cancelling Event once every release succeeded.
+  FINALIZE_CANCELLATION: 'FINALIZE_CANCELLATION',
 });
 
 const MAX_NOTE_LENGTH = 500; // placeholder max from CS-28, change here only
@@ -96,6 +98,9 @@ const TABLE = {
   ],
   [ACTIONS.COMPLETE]: [
     { scope: 'EVENT', from: ['CONFIRMED', 'PREPARATION'], who: 'SYSTEM', to: 'COMPLETED', check: 'afterEnd' },
+  ],
+  [ACTIONS.FINALIZE_CANCELLATION]: [
+    { scope: 'EVENT', from: ['CANCELLING'], who: 'SYSTEM', to: 'CANCELLED' },
   ],
 };
 

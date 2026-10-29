@@ -1558,6 +1558,187 @@ paths:
         "200": { description: Scoped event metadata items }
         "403": { description: Scoped technical metadata permission required }
 
+  /event-requests/{id}/coordinator-edit:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+    post:
+      summary: Assigned Coordinator edits the description (CS-43)
+      description: Body description and version. Only the assigned Coordinator, while the request is Submitted or Approved with an open Event. Other fields are refused (use a change proposal). Writes a COORDINATOR_EDITED history entry with old and new values.
+      responses:
+        "200":
+          description: Updated request
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: Caller may not do this
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Not allowed in the current state, stale or conflicting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /event-requests/{id}/change-requests:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+    get:
+      summary: List change proposals for a request (CS-45)
+      description: Organiser or assigned Coordinator.
+      responses:
+        "200":
+          description: Proposals, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: Caller may not do this
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Not allowed in the current state, stale or conflicting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      summary: Propose a significant change or request cancellation (CS-45, CS-54)
+      description: Body changeActionId, scope (EVENT, BOOKING, TECHNICAL or CANCELLATION), affected, reason and, except for CANCELLATION, fields. Current values stay in force until the assigned Coordinator approves. One open proposal per request. A CANCELLATION request is made by the owning Organiser only.
+      responses:
+        "200":
+          description: Proposal recorded (201 on first call, 200 on replay)
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: Caller may not do this
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Not allowed in the current state, stale or conflicting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /event-requests/{id}/change-requests/{changeId}/decision:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}, {name: changeId, in: path, required: true, schema: {type: string}}]
+    post:
+      summary: Assigned Coordinator approves or rejects a proposal (CS-45, CS-54)
+      description: Body decision (approve or reject) and reason (required to reject). Approval applies the values, returns a Confirmed or Preparation Event to Planning, makes Safety evidence stale and writes one EventChangeApproved outbox row. Approving a CANCELLATION request starts cancellation. A proposal made against older values is refused with STALE_PROPOSAL.
+      responses:
+        "200":
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: Caller may not do this
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Not allowed in the current state, stale or conflicting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /event-requests/{id}/cancel:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+    post:
+      summary: Assigned Coordinator cancels the Event (CS-54)
+      description: Body cancellationActionId and reason. Moves the Event to Cancelling until every release has succeeded. Allowed until the Event starts.
+      responses:
+        "200":
+          description: Cancellation accepted (replay returns the same acceptance)
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: Caller may not do this
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Not allowed in the current state, stale or conflicting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /internal/events/{eventId}/cancellation-finalize:
+    parameters: [{name: eventId, in: path, required: true, schema: {type: string}}]
+    post:
+      summary: Finalize a Cancelling Event once every release succeeded (CS-54, orchestrator only)
+      security:
+      - internalApiKey: []
+      description: Body cancellationActionId and receipts. Requires a receipt for each of VENUE, EQUIPMENT and REGISTRATION carrying the same action id and accepted event version, otherwise 409 RELEASES_INCOMPLETE. Writes Cancelled and one EventCancelled outbox row; a replay returns the same result. No public routing.
+      responses:
+        "200":
+          description: Event is Cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: Caller may not do this
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Not allowed in the current state, stale or conflicting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     internalApiKey:

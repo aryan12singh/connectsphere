@@ -6,6 +6,7 @@
 const prisma=require('./db');
 const {lockEvent}=require('./eventLock');
 const {acceptIn,view}=require('./cancellationIntent');
+const {decide,ACTIONS}=require('./domain/transitions');
 const fail=(status,code,message,fields)=>Object.assign(new Error(message),{status,code,...(fields?{fields}:{})});
 const ID=/^[-\w.:]{1,200}$/;
 // Resources that must confirm their release before the Event is Cancelled.
@@ -59,10 +60,11 @@ async function finalize(eventId,body){
    if(!sent)throw fail(409,'CANCELLATION_NOT_COMMITTED','The exact committed Event cancellation action is required');
    return {eventId,eventVersion:event.version,cancellationActionId:intent.id,status:'CANCELLED',cancelledAt:event.cancelledAt.toISOString(),replayed:true};
   }
-  if(event.status!=='CANCELLING')throw fail(409,'INVALID_TRANSITION','Only a Cancelling Event can be finalized');
+  // The one transition guard decides that only a Cancelling Event can become Cancelled, and only by the system.
+  const transition=decide({action:ACTIONS.FINALIZE_CANCELLATION,entity:{scope:'EVENT',status:event.status},actor:{system:true},context:{}});
   const receiptIds=checkReceipts(intent,body);
   const at=new Date(),version=event.version+1;
-  await tx.event.update({where:{id:eventId},data:{status:'CANCELLED',cancelledById:intent.actorId,cancelledAt:at,cancelReason:intent.reason,safetyToken:null,version:{increment:1}}});
+  await tx.event.update({where:{id:eventId},data:{status:transition.to,cancelledById:intent.actorId,cancelledAt:at,cancelReason:intent.reason,safetyToken:null,version:{increment:1}}});
   await tx.activityLog.create({data:{eventRequestId:request.id,action:'CANCELLED',actorType:'USER',actorId:intent.actorId,fromStatus:'CANCELLING',toStatus:'CANCELLED',
    details:{eventId,eventVersion:version,cancellationActionId:intent.id,reason:intent.reason,actorName:intent.actorName}}});
   await tx.outbox.create({data:{id:intent.id,aggregateType:'Event',aggregateId:eventId,eventType:'EventCancelled',
