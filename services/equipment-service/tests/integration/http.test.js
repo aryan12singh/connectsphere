@@ -221,7 +221,7 @@ test('TC-CS40-08 and TC-CS40-09 deny old Coordinator edits while allowing permit
   });
 });
 
-test('TC-CS40-05 and TC-CS40-16 expose equipment catalog, accept support-only and explicit no-requirements requests', async () => {
+test('CS-40 support-only and explicit no-requirements request API contract; TC-CS40-16 venue row persists', async () => {
   await withServer(async baseUrl => {
     const catalog = await fetch(`${baseUrl}/equipment-types`, { headers: actorHeaders('coordinator-1', 'EVENT_COORDINATOR') });
     assert.equal(catalog.status, 200);
@@ -253,6 +253,34 @@ test('TC-CS40-05 and TC-CS40-16 expose equipment catalog, accept support-only an
     assert.ok(!requests.some(item => item.eventRequestId === 'event-no-requirements'));
   });
 });
+
+test('TC-CS40-10 one Event request retains equipment allocations for multiple venues', async () => {
+  await withServer(async baseUrl => {
+    const path = `${baseUrl}/event-requests/multi-venue-event/technical-request`;
+    const submitted = await fetch(path, {
+      method: 'POST',
+      headers: actorHeaders('multi-venue-coordinator', 'EVENT_COORDINATOR'),
+      body: JSON.stringify({ ...requestBody, equipment: [
+        { equipmentType: 'projector', quantity: 1, venueId: 'room-a' },
+        { equipmentType: 'projector', quantity: 2, venueId: 'room-b' },
+      ] }),
+    });
+    assert.equal(submitted.status, 201);
+    const body = await submitted.json();
+    assert.equal(body.eventRequestId, 'multi-venue-event');
+    assert.deepEqual(body.equipment, [
+      { equipmentType: 'projector', quantity: 1, venueId: 'room-a' },
+      { equipmentType: 'projector', quantity: 2, venueId: 'room-b' },
+    ]);
+    const saved = await fetch(path, { headers: actorHeaders('multi-venue-coordinator', 'EVENT_COORDINATOR') });
+    assert.equal(saved.status, 200);
+    assert.equal((await saved.json()).version, 1);
+    const history = await fetch(`${path}/history`, { headers: actorHeaders('multi-venue-coordinator', 'EVENT_COORDINATOR') });
+    assert.equal((await history.json()).items.length, 1);
+  });
+});
+
+test.todo('TC-CS40-10 / TC-CS41-07 / TC-CS42-06 integration: aggregate same-type venue allocations before dated availability and reservation; the pooling helper currently has no service call site');
 
 test('CS-41 technical request list returns a backend-derived equipment period only when equipment is requested', async () => {
   await withServer(async baseUrl => {
@@ -306,6 +334,23 @@ test('TC-CS42 queue identifies active reservations for the current request versi
     require('../../src/operations')._memory.reservations
       .filter(row => row.eventRequestId === 'reserved-queue')
       .forEach(row => { row.active = false; });
+  });
+});
+
+test('TC-CS42-04 only Technical Support can reserve an approved request', async () => {
+  await withServer(async baseUrl => {
+    const path = `${baseUrl}/event-requests/role-boundary-reserve/technical-request`;
+    const coordinator = actorHeaders('reserve-coordinator', 'EVENT_COORDINATOR');
+    const support = actorHeaders('reserve-support', 'TECHNICAL_SUPPORT_STAFF');
+    assert.equal((await fetch(path, { method: 'POST', headers: coordinator, body: JSON.stringify(requestBody) })).status, 201);
+    assert.equal((await fetch(`${path}/decision`, { method: 'POST', headers: support, body: JSON.stringify({ decision: 'APPROVED', version: 1 }) })).status, 200);
+    const period = { 'x-test-equipment-period': '2036-11-20T01:00:00.000Z,2036-11-20T03:00:00.000Z' };
+    const denied = await fetch(`${path}/reservations`, { method: 'POST', headers: { ...coordinator, ...period }, body: JSON.stringify({ version: 1 }) });
+    assert.equal(denied.status, 403);
+    assert.equal(require('../../src/operations')._memory.reservations.some(row => row.eventRequestId === 'role-boundary-reserve'), false);
+    const allowed = await fetch(`${path}/reservations`, { method: 'POST', headers: { ...support, ...period, 'Idempotency-Key': 'role-boundary-reserve' }, body: JSON.stringify({ version: 1 }) });
+    assert.equal(allowed.status, 200);
+    assert.equal((await allowed.json()).reservations.length, 1);
   });
 });
 
@@ -380,7 +425,7 @@ test('TC-CS41-03 exposes versioned equipment stock to Technical Support and deni
   });
 });
 
-test('TC-CS41-01 records a read-only availability check and TC-CS42-02 refuses a partial reservation', async () => {
+test('TC-CS41-01/11 records a read-only dated availability result; TC-CS42-02 refuses a partial reservation', async () => {
   await withServer(async baseUrl => {
     const coordinator = actorHeaders('coordinator-availability', 'EVENT_COORDINATOR');
     const catalog = await fetch(`${baseUrl}/equipment-types`, { headers: coordinator });
