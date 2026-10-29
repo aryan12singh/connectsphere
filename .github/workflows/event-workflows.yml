@@ -297,7 +297,10 @@ jobs:
           npm ci --prefix services/venue-service
           npm ci --prefix services/booking-service
           npm ci --prefix services/notification-service
-
+          npm ci --prefix services/equipment-service
+          (cd services/equipment-service && npx prisma generate)
+          npm ci --prefix services/attendance-service
+          (cd services/attendance-service && npx prisma generate)
           npm ci --prefix frontend
           cd frontend
           npx playwright install --with-deps chromium
