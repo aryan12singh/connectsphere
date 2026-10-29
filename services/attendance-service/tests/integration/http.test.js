@@ -213,7 +213,9 @@ test('TC-CS48-05 full capacity and duplicate registrations do not create extra r
       method: 'POST', headers: { ...actorHeaders(userId, 'ATTENDEE'), 'content-type': 'application/json' }, body: '{}',
     });
     assert.equal((await register('first-attendee')).status, 201);
-    assert.equal((await register('first-attendee')).status, 409);
+    const duplicate = await register('first-attendee');
+    assert.equal(duplicate.status, 409);
+    assert.equal((await duplicate.json()).error.code, 'ALREADY_EXISTS');
     const full = await register('second-attendee');
     assert.equal(full.status, 409);
     assert.equal((await full.json()).error.code, 'EVENT_FULL');
@@ -236,7 +238,8 @@ test('TC-CS48-04 registration POST fails closed for disabled, unconfirmed, missi
     assert.equal((await missing.json()).error.code, 'NOT_FOUND');
     const cases = [
       [{ ...confirmedEvent, registrationEnabled: false }, 'REGISTRATION_DISABLED'],
-      [{ ...confirmedEvent, status: 'CANCELLED' }, 'EVENT_NOT_CONFIRMED'],
+      [{ ...confirmedEvent, status: 'APPROVED' }, 'EVENT_NOT_CONFIRMED'],
+      [{ ...confirmedEvent, status: 'CANCELLED' }, 'EVENT_CANCELLED'],
       [{ ...confirmedEvent, registrationLimit: null }, 'REGISTRATION_LIMIT_UNSET'],
       [{ ...confirmedEvent, registrationWindow: { startAt: '2026-12-01T00:00:00Z', endAt: '2026-12-02T00:00:00Z' } }, 'REGISTRATION_NOT_OPEN'],
     ];
@@ -272,13 +275,23 @@ test('TC-CS48-06 attendee can list only their own persisted registrations', asyn
 test('TC-CS48-07 management list is restricted to the Event Organiser and current Coordinator', async () => {
   await withServer(async baseUrl => {
     const eventId = `managed-reg-${Date.now()}`;
-    await storeSave({ ...confirmedEvent, id: eventId, eventId, currentCoordinatorId: 'coord-1' });
+    await storeSave({ ...confirmedEvent, id: eventId, eventId, currentCoordinatorId: 'coord-1', organiserId: 'org-1' });
     await storeSaveRegistration({ eventId, userId: 'attendee-1', status: 'CONFIRMED', registeredAt: new Date().toISOString() });
     const endpoint = `${baseUrl}/events/${eventId}/registrations`;
-    assert.equal((await fetch(endpoint, { headers: actorHeaders('org-1', 'EVENT_ORGANISER') })).status, 200);
-    assert.equal((await fetch(endpoint, { headers: actorHeaders('coord-1', 'EVENT_COORDINATOR') })).status, 200);
-    assert.equal((await fetch(endpoint, { headers: actorHeaders('coord-old', 'EVENT_COORDINATOR') })).status, 403);
-    assert.equal((await fetch(endpoint, { headers: actorHeaders('attendee-1', 'ATTENDEE') })).status, 403);
+    const callers = [
+      ['org-1', 'EVENT_ORGANISER', 200],
+      ['coord-1', 'EVENT_COORDINATOR', 200],
+      ['lead-1', 'EVENT_COORDINATOR', 403],
+      ['safety-1', 'SAFETY_OFFICER', 403],
+      ['coord-old', 'EVENT_COORDINATOR', 403],
+      ['attendee-2', 'ATTENDEE', 403],
+    ];
+    for (const [id, role, status] of callers) {
+      const response = await fetch(endpoint, { headers: actorHeaders(id, role) });
+      assert.equal(response.status, status, `${role} ${id} access`);
+      if (status === 200) assert.equal((await response.json()).registrations.length, 1);
+      else assert.equal((await response.json()).error.code, 'FORBIDDEN');
+    }
     assert.equal((await fetch(`${baseUrl}/events/missing-event/registrations`, { headers: actorHeaders('coord-1', 'EVENT_COORDINATOR') })).status, 404);
   });
 });
@@ -340,7 +353,7 @@ test('TC-CS49-01 and TC-CS49-05 Attendee withdrawal retains the row, reopens one
     await storeSaveRegistration({ id: `registration-${eventId}`, eventId, userId: 'attendee-1', status: 'CONFIRMED', registeredAt: new Date().toISOString() });
     const registration = await require('../../src/store').findRegistration(eventId, 'attendee-1');
     const path = `${baseUrl}/registrations/${registration.id}/withdraw`;
-    const headers = { ...actorHeaders('attendee-1', 'ATTENDEE'), 'content-type': 'application/json' };
+    const headers = { ...actorHeaders('attendee-1', 'ATTENDEE'), 'content-type': 'application/json', 'idempotency-key': 'cs49-withdraw-retry' };
     const first = await fetch(path, { method: 'POST', headers, body: '{}' });
     assert.equal(first.status, 200);
     const result = await first.json();
@@ -349,6 +362,7 @@ test('TC-CS49-01 and TC-CS49-05 Attendee withdrawal retains the row, reopens one
     assert.equal(result.placesRemaining, 1);
     const replay = await fetch(path, { method: 'POST', headers, body: '{}' });
     assert.equal(replay.status, 200);
+    assert.equal(replay.headers.get('Idempotency-Replayed'), 'true');
     assert.deepEqual((await replay.json()).registration, result.registration);
     const rows = await require('../../src/store').registrationsForEvent(eventId);
     assert.equal(rows.length, 1);
@@ -357,6 +371,7 @@ test('TC-CS49-01 and TC-CS49-05 Attendee withdrawal retains the row, reopens one
     assert.equal(actions.length, 1);
     assert.equal(actions[0].type, 'RegistrationWithdrawn');
     assert.equal(actions[0].payload.registrationId, registration.id);
+    assert.equal(actions.some(action => action.type === 'WaitlistOfferMade'), false);
   });
 });
 
