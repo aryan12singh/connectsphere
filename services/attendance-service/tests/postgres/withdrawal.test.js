@@ -8,12 +8,12 @@ const db = store.prismaClient();
 const app = require('../../src/app');
 let api;
 
-async function seedEvent(eventId = `pg-cs49-${randomUUID()}`) {
+async function seedEvent(eventId = `pg-cs49-${randomUUID()}`, registrationLimit = 1) {
   const now = Date.now();
   await store.saveEvent({
     id: eventId, eventId, title: 'CS-49 withdrawal integration', description: '', status: 'CONFIRMED', eventVersion: 1,
     startAt: new Date(now + 24 * 60 * 60_000), endAt: new Date(now + 26 * 60 * 60_000), timeZone: 'Asia/Singapore',
-    registrationLimit: 1, registrationEnabled: true,
+    registrationLimit, registrationEnabled: true,
     registrationWindow: { startAt: new Date(now - 60_000).toISOString(), endAt: new Date(now + 24 * 60 * 60_000).toISOString() },
     withdrawalEnabled: true, withdrawalCutoffAt: new Date(now + 60 * 60_000), allowReregistration: true,
     organiserId: 'organiser-1', createdAt: new Date(now), updatedAt: new Date(now),
@@ -27,6 +27,21 @@ before(async () => { api = await start(app); });
 beforeEach(async () => { await db.attendanceOutbox.deleteMany(); await db.registration.deleteMany(); await db.event.deleteMany(); });
 after(async () => { await api?.close(); await db.$disconnect(); });
 
+test('TC-CS48-05 nine distinct Attendees racing for the last place admit exactly one', async t => {
+  const eventId = await seedEvent(undefined, 150);
+  for (let index = 0; index < 149; index++) {
+    await store.saveRegistration({ eventId, userId: `already-registered-${index}`, status: 'CONFIRMED', registeredAt: new Date() });
+  }
+  t.mock.method(require('../../src/projection'), 'find', async id => id === eventId ? store.findEvent(eventId) : null);
+  const replies = await Promise.all(Array.from({ length: 9 }, (_, index) => api.http(
+    `/events/${eventId}/registrations`, { method: 'POST', headers: headers(`last-place-attendee-${index}`), body: {} },
+  )));
+  assert.equal(replies.filter(reply => reply.status === 201).length, 1);
+  assert.equal(replies.filter(reply => reply.status === 409 && reply.body.error.code === 'EVENT_FULL').length, 8);
+  assert.equal(await db.registration.count({ where: { eventId, status: 'CONFIRMED' } }), 150);
+  assert.equal(await db.attendanceOutbox.count({ where: { aggregateId: eventId, kind: 'RegistrationCreated' } }), 1);
+});
+
 test('TC-CS49-01/05 concurrent withdrawal commits one status change, one open place and one outbox action', async () => {
   const eventId = await seedEvent();
   const registration = await store.saveRegistration({ eventId, userId: 'attendee-1', status: 'CONFIRMED', registeredAt: new Date() });
@@ -34,9 +49,17 @@ test('TC-CS49-01/05 concurrent withdrawal commits one status change, one open pl
   const replies = await Promise.all(Array.from({ length: 8 }, () => api.http(path, { method: 'POST', headers: headers('attendee-1'), body: {} })));
   assert.ok(replies.every(reply => reply.status === 200));
   assert.equal(replies.filter(reply => reply.body.replayed).length, 7);
+  assert.ok(replies.every(reply => reply.body.placesRemaining === 1));
+  assert.ok(replies.every(reply => reply.body.registration.id === registration.id));
+  assert.ok(replies.every(reply => reply.body.registration.withdrawnAt === replies[0].body.registration.withdrawnAt));
   assert.equal(await db.registration.count({ where: { eventId, status: 'WITHDRAWN' } }), 1);
   assert.equal(await db.registration.count({ where: { eventId, status: 'CONFIRMED' } }), 0);
-  assert.equal(await db.attendanceOutbox.count({ where: { aggregateId: eventId, kind: 'RegistrationWithdrawn' } }), 1);
+  const actions = await db.attendanceOutbox.findMany({ where: { aggregateId: eventId } });
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].kind, 'RegistrationWithdrawn');
+  assert.ok(actions[0].id);
+  assert.equal(actions[0].payload.registrationId, registration.id);
+  assert.equal(await db.attendanceOutbox.count({ where: { aggregateId: eventId, kind: 'WaitlistOfferMade' } }), 0);
 });
 
 test('TC-CS49-01 failed outbox insert rolls withdrawal back and the same registration can retry', async () => {

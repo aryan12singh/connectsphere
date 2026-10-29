@@ -14,7 +14,7 @@ async function openRegistration(eventId: string, requestId: string) {
   ))
 }
 
-test('TC-CS48-01 Attendee registers from the Event page and sees their saved status and remaining capacity', async ({ attendance, page }) => {
+test('TC-CS48-01 / TC-CS48-03 Attendee registers, signs back in, and sees their saved status and remaining capacity', async ({ attendance, page }, info) => {
   const event = await attendance.event({ date: '2026-10-30', registrationLimit: 1 })
   await openRegistration(event.eventId, event.id)
   const attendeeId = await attendance.actorId(emails.attendee)
@@ -49,6 +49,7 @@ test('TC-CS48-01 Attendee registers from the Event page and sees their saved sta
   const signedInRegistrationCard = page.getByRole('link', { name: new RegExp(event.eventName) })
   await expect(signedInRegistrationCard).toBeVisible()
   await expect(signedInRegistrationCard).toContainText('Registered')
+  await page.screenshot({ path: info.outputPath('TC-CS48-03-registered-after-sign-in.png'), fullPage: true })
   const state = await reviewDatabase('attendance', async db => ({
     registrations: (await db.query('SELECT id,status FROM registrations WHERE "eventId"=$1 AND "userId"=$2', [event.eventId, attendeeId])).rows,
     actions: (await db.query('SELECT id,kind,"deliveredAt",payload FROM attendance_outbox WHERE "aggregateId"=$1', [event.eventId])).rows,

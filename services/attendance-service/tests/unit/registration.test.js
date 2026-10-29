@@ -62,7 +62,7 @@ test('TC-CS48-04 rejects registration when the event is disabled, ineligible, ou
     registrationWindow: { startAt: '2026-11-01T00:00:00Z', endAt: '2026-11-10T00:00:00Z' },
   };
   assert.equal(canCreateRegistration({ ...event, registrationEnabled: false }, 0, new Date('2026-11-05T00:00:00Z')).reason, 'REGISTRATION_DISABLED');
-  assert.equal(canCreateRegistration({ ...event, status: 'CANCELLED' }, 0, new Date('2026-11-05T00:00:00Z')).reason, 'EVENT_NOT_CONFIRMED');
+  assert.equal(canCreateRegistration({ ...event, status: 'CANCELLED' }, 0, new Date('2026-11-05T00:00:00Z')).reason, 'EVENT_CANCELLED');
   assert.equal(canCreateRegistration(event, 0, new Date('2026-10-31T23:59:59Z')).reason, 'REGISTRATION_NOT_OPEN');
   assert.equal(canCreateRegistration({ ...event, registrationLimit: null }, 0, new Date('2026-11-05T00:00:00Z')).reason, 'REGISTRATION_LIMIT_UNSET');
 });

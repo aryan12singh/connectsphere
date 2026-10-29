@@ -127,15 +127,23 @@ test('TC-CS46-05 PostgreSQL outbox failure rolls back release and a retry comple
   await db.$executeRawUnsafe(`CREATE FUNCTION equipment_test_reject_release() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."eventType"='EquipmentReleased' THEN RAISE EXCEPTION 'isolated release rollback'; END IF; RETURN NEW; END $$`);
   await db.$executeRawUnsafe('CREATE TRIGGER equipment_test_reject_release BEFORE INSERT ON outbox_events FOR EACH ROW EXECUTE FUNCTION equipment_test_reject_release()');
   try {
-    await assert.rejects(() => operations.releaseCanceledEvent({ eventId: request.eventRequestId, cancellationActionId: proof.cancellationActionId, proof }));
+  const failed = await api.http(`/internal/events/${request.eventRequestId}/reservations/release`, {
+    method: 'POST', headers: { 'x-internal-api-key': require('../../src/config').internalApiKey },
+    body: { cancellationActionId: proof.cancellationActionId },
+  });
+  assert.equal(failed.status, 500, 'the caller receives a failure rather than a false completion');
     assert.equal(await db.equipmentReservation.count({ where: { eventId: request.eventRequestId, active: true } }), 2);
     assert.equal(await db.technicalRequestHistory.count({ where: { requestId: request.id, action: 'EquipmentReleased' } }), 0);
   } finally {
     await db.$executeRawUnsafe('DROP TRIGGER equipment_test_reject_release ON outbox_events');
     await db.$executeRawUnsafe('DROP FUNCTION equipment_test_reject_release()');
   }
-  const result = await operations.releaseCanceledEvent({ eventId: request.eventRequestId, cancellationActionId: proof.cancellationActionId, proof });
-  assert.equal(result.released.length, 2);
+  const result = await api.http(`/internal/events/${request.eventRequestId}/reservations/release`, {
+    method: 'POST', headers: { 'x-internal-api-key': require('../../src/config').internalApiKey },
+    body: { cancellationActionId: proof.cancellationActionId },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.released.length, 2);
   assert.equal(await db.equipmentReservation.count({ where: { eventId: request.eventRequestId, active: true } }), 0);
   assert.equal(await db.outboxEvent.count({ where: { actionKey: `EquipmentReleased:${request.eventRequestId}:${proof.cancellationActionId}` } }), 1);
 });

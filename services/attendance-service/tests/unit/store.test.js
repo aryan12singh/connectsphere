@@ -159,4 +159,6 @@ test('TC-CS49-11 newer Event detail projections preserve confirmed and withdrawn
     [withdrawn.id, 'WITHDRAWN', '2026-10-03T00:00:00.000Z'],
   ].sort());
   assert.equal((await store.findEvent(eventId)).title, 'Rescheduled event');
+  assert.equal(store.listOutboxForTest().filter(action => action.aggregateId === eventId && action.type === 'RegistrationWithdrawn').length, 0);
+  assert.equal(store.listOutboxForTest().filter(action => action.aggregateId === eventId && action.type === 'WaitlistOfferMade').length, 0);
 });

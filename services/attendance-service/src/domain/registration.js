@@ -26,6 +26,7 @@ function isEventVisible(status) {
 }
 
 function canCreateRegistration(event, confirmedRegistrationCount, now = new Date()) {
+  if (event?.status === 'CANCELLED') return { allowed: false, reason: 'EVENT_CANCELLED' };
   if (event?.status !== 'CONFIRMED') return { allowed: false, reason: 'EVENT_NOT_CONFIRMED' };
   if (event.registrationEnabled !== true) return { allowed: false, reason: 'REGISTRATION_DISABLED' };
   if (event.registrationLimit == null) return { allowed: false, reason: 'REGISTRATION_LIMIT_UNSET' };

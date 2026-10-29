@@ -295,6 +295,7 @@ function withdrawalMessage(code) {
 
 function registrationMessage(code) {
   return ({
+    EVENT_CANCELLED: 'This Event has been cancelled and cannot accept registrations.',
     EVENT_NOT_CONFIRMED: 'This Event is not currently confirmed and cannot accept registrations.',
     REGISTRATION_DISABLED: 'Registration is disabled for this Event.',
     REGISTRATION_LIMIT_UNSET: 'The Coordinator has not set a registration limit yet.',

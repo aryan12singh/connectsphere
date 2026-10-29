@@ -100,6 +100,11 @@ test('TC-CS46-01/04 internal cancellation release requires proof and returns one
       const unauthenticated = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cancellationActionId: actionId }) });
       assert.equal(unauthenticated.status, 401);
       assert.equal(reservation.active, true);
+      for (const [id, role] of [['cs46-coordinator', 'EVENT_COORDINATOR'], ['cs46-support', 'TECHNICAL_SUPPORT_STAFF']]) {
+        const direct = await fetch(path, { method: 'POST', headers: { ...actorHeaders(id, role), 'content-type': 'application/json' }, body: JSON.stringify({ cancellationActionId: actionId }) });
+        assert.equal(direct.status, 401, `${role} cannot invoke the internal release endpoint`);
+        assert.equal(reservation.active, true);
+      }
       const headers = { 'content-type': 'application/json', 'x-internal-api-key': 'change-me-dev-internal-key' };
       const first = await fetch(path, { method: 'POST', headers, body: JSON.stringify({ cancellationActionId: actionId }) });
       assert.equal(first.status, 200);

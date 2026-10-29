@@ -34,7 +34,7 @@ export async function snapshot(event: TechnicalEvent) {
   return reviewDatabase('equipment', async pool => ({
     requests: (await pool.query('SELECT * FROM technical_requests WHERE "eventRequestId"=$1', [event.id])).rows,
     history: (await pool.query('SELECT h.* FROM technical_request_history h JOIN technical_requests r ON r.id=h."requestId" WHERE r."eventRequestId"=$1 ORDER BY h.id', [event.id])).rows,
-    outbox: (await pool.query('SELECT id,"actionKey","eventType",payload FROM outbox_events WHERE "actionKey" LIKE $1 OR ("eventType"=\'EquipmentReleased\' AND payload->>\'eventId\'=$2) ORDER BY id', [`%:${event.id}:%`, event.eventId])).rows,
+    outbox: (await pool.query('SELECT id,"actionKey","eventType",payload,"publishedAt" FROM outbox_events WHERE "actionKey" LIKE $1 OR ("eventType"=\'EquipmentReleased\' AND payload->>\'eventId\'=$2) ORDER BY id', [`%:${event.id}:%`, event.eventId])).rows,
     reservations: (await pool.query('SELECT * FROM equipment_reservations WHERE "eventRequestId"=$1 ORDER BY id', [event.id])).rows,
   }))
 }

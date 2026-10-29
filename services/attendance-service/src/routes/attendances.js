@@ -102,7 +102,13 @@ router.post('/events/:id/registrations', async (req, res, next) => {
     const current = await projection.find(req.params.id);
     if (!current) {
       const local = await store.findEvent(req.params.id);
-      if (local) return sendError(res, 409, 'EVENT_NOT_CONFIRMED', 'This Event is not currently confirmed and cannot accept registrations.');
+      if (local) {
+        const code = local.status === 'CANCELLED' ? 'EVENT_CANCELLED' : 'EVENT_NOT_CONFIRMED';
+        const message = local.status === 'CANCELLED'
+          ? 'This Event has been cancelled and cannot accept registrations.'
+          : 'This Event is not currently confirmed and cannot accept registrations.';
+        return sendError(res, 409, code, message);
+      }
       return sendError(res, 404, 'NOT_FOUND', 'Event not found.');
     }
     const result = await store.createRegistration(req.params.id, req.actor.id, new Date());
