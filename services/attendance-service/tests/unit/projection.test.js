@@ -25,6 +25,18 @@ test('TC-CS92-02 current venue projection uses actual Event identity and preserv
  assert.ok(!calls.some(url=>url.endsWith('/attendee-events')),'Opening one Event must not rebuild the full catalogue');
 }));
 
+test('missing Attendance policy fails closed and explicit disabled settings remain disabled',async()=>withSources(async()=>{
+ global.fetch=async url=>answer(String(url).includes('/attendee-events/')?event:venues);
+ for(const saved of [null,{registrationLimit:90,withdrawalEnabled:false,withdrawalCutoffAt:null,allowReregistration:false}]){
+  store.findEvent=async()=>saved;
+  const result=await projection.find('actual-event');
+  assert.equal(result.registrationLimit,saved?.registrationLimit??null);
+  assert.equal(result.withdrawalEnabled,false);
+  assert.equal(result.withdrawalCutoffAt,null);
+  assert.equal(result.allowReregistration,false);
+ }
+}));
+
 test('TC-CS92-09 unready or missing effective venue proof hides the Event and never falls back to historical local locations',async()=>withSources(async()=>{
  for(const status of [404,409]){
   global.fetch=async url=>answer(String(url).endsWith('/attendee-events')?{items:[event]}:{},String(url).endsWith('/attendee-events')?200:status);
