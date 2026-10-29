@@ -9,6 +9,7 @@ import { Field, FieldLabel } from '@/components/ui/field'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { EQUIPMENT_OPTIONS } from './request-form-state'
 import { formatDateTime, LAYOUT_LABELS, timeAgo } from './review-queue-helpers'
+import { REQUEST_STATUS_LABELS } from './status-labels'
 
 export interface QueueOrganiser {
   name: string
@@ -83,12 +84,7 @@ function select(id: string) {
 }
 
 function statusLabel(status: QueueItem['status']) {
-  return {
-    SUBMITTED: 'Submitted',
-    RETURNED_FOR_AMENDMENT: 'Returned for amendment',
-    APPROVED: 'Approved',
-    REJECTED: 'Rejected',
-  }[status]
+  return REQUEST_STATUS_LABELS[status] ?? status
 }
 
 function statusClass(status: QueueItem['status']) {
