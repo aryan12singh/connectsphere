@@ -287,7 +287,10 @@ jobs:
           cache-dependency-path: |
             services/event-service/package-lock.json
             services/equipment-service/package-lock.json
+            services/attendance-service/package-lock.json
             frontend/package-lock.json
+      - name: Guard host-run review dependencies
+        run: node --test tests/scripts/live-runner-dependencies.test.cjs
       - name: Install locked browser and smoke dependencies
         run: |
           npm ci --prefix services/event-service
@@ -295,6 +298,8 @@ jobs:
           npm ci --prefix services/booking-service
           npm ci --prefix services/notification-service
           npm ci --prefix services/equipment-service
+          npm ci --prefix services/attendance-service
+          (cd services/attendance-service && npx prisma generate)
           npm ci --prefix frontend
           cd frontend
           npx playwright install --with-deps chromium
