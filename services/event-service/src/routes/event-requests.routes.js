@@ -414,6 +414,14 @@ for (const method of ['put', 'patch']) router[method]('/:id', requirePermission(
   } catch (error) { return next(error); }
 });
 
+// CS-43: the assigned Coordinator corrects routine wording (description only for now).
+router.post('/:id/coordinator-edit', requirePermission('event_requests.review'), async (req, res, next) => {
+  try {
+    if (await runTransactionalMutation(req, res, next, 'coordinatorEdit', req.params.id)) return;
+    return sendError(res, 501, 'NOT_IMPLEMENTED', 'Coordinator edit needs the database mode');
+  } catch (error) { return next(error); }
+});
+
 router.post('/:id/decision', requirePermission('event_requests.review'), async (req, res, next) => {
   try {
     const decisionActions = { approve: 'APPROVE', reject: 'REJECT', amendments: 'RETURN' };
