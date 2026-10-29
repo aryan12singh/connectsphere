@@ -170,6 +170,6 @@ services:
     url: http://equipment-service:3000
     routes:
       - name: technical-requests
-        paths: ["/equipment-types", "/equipment-inventory", "/equipment-operational-unavailability", "/technical-requests", "~/event-requests/[^/]+/technical-request(?:/decision|/availability|/reservations|/history)?$"]
+        paths: ["/equipment-types", "/equipment-inventory", "/equipment-operational-unavailability", "/technical-requests", "~/event-requests/[^/]+/(?:technical-request(?:/decision|/availability|/reservations|/history)?|equipment-reservations)$"]
         strip_path: false
         regex_priority: 200

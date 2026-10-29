@@ -5,6 +5,8 @@ import { useUserSession } from '#imports'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 
 const eventId = String(useRoute().params.eventId ?? '')
 const { user } = useUserSession()
@@ -12,14 +14,22 @@ useHead({ title: 'Event registrations | ConnectSphere' })
 const { data: event } = await useFetch<{ title: string, registrationLimit: number | null }>(`/api/attendances/events/${encodeURIComponent(eventId)}`)
 const { data: roster, error, refresh } = await useFetch<{
   registrations: Array<{ id: string, userId: string, status: string, registeredAt: string }>,
-  confirmedRegistrationCount: number, registrationLimit: number | null, placesRemaining: number | null, overCapacity: boolean
+  confirmedRegistrationCount: number, registrationLimit: number | null, placesRemaining: number | null, overCapacity: boolean,
+  withdrawalEnabled: boolean, withdrawalCutoffAt: string | null, allowReregistration: boolean
 }>(`/api/attendances/events/${encodeURIComponent(eventId)}/registrations`)
 const isCoordinator = computed(() => user.value?.role === 'EVENT_COORDINATOR')
+const isOrganiser = computed(() => user.value?.role === 'EVENT_ORGANISER')
 const limitInput = ref('')
 const saving = ref(false)
 const hydrated = ref(false)
 const notice = ref('')
 const formError = ref('')
+const withdrawalEnabled = ref(roster.value?.withdrawalEnabled ?? false)
+const withdrawalCutoffAt = ref(roster.value?.withdrawalCutoffAt ? toLocalDateTimeInput(roster.value.withdrawalCutoffAt) : '')
+const allowReregistration = ref(roster.value?.allowReregistration ?? false)
+const savingWithdrawalPolicy = ref(false)
+const policyNotice = ref('')
+const policyError = ref('')
 if (roster.value?.registrationLimit != null) limitInput.value = String(roster.value.registrationLimit)
 onMounted(() => { hydrated.value = true })
 
@@ -29,6 +39,12 @@ function formatStatus(status: string) {
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+function toLocalDateTimeInput(value: string) {
+  const date = new Date(value)
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+  return local.toISOString().slice(0, 16)
 }
 
 async function saveLimit() {
@@ -47,6 +63,27 @@ async function saveLimit() {
   }
   catch (cause: any) { formError.value = cause?.data?.error?.message || 'Unable to save the registration limit.' }
   finally { saving.value = false }
+}
+
+async function saveWithdrawalPolicy() {
+  if (!withdrawalCutoffAt.value) {
+    policyError.value = 'Set a withdrawal cutoff date and time.'
+    return
+  }
+  savingWithdrawalPolicy.value = true
+  policyNotice.value = ''
+  policyError.value = ''
+  try {
+    const withdrawalCutoff = new Date(withdrawalCutoffAt.value)
+    await $fetch(`/api/attendances/events/${encodeURIComponent(eventId)}/withdrawal-policy`, {
+      method: 'PUT',
+      body: { withdrawalEnabled: withdrawalEnabled.value, withdrawalCutoffAt: withdrawalCutoff.toISOString(), allowReregistration: allowReregistration.value },
+    })
+    policyNotice.value = 'Withdrawal rules saved.'
+    await refresh()
+  }
+  catch (cause: any) { policyError.value = cause?.data?.error?.message || 'Unable to save withdrawal rules.' }
+  finally { savingWithdrawalPolicy.value = false }
 }
 </script>
 
@@ -112,6 +149,31 @@ async function saveLimit() {
                 </div>
                 <p v-if="notice" role="status" class="mt-3 text-sm text-success">{{ notice }}</p>
                 <p v-if="formError" role="alert" class="mt-3 text-sm text-destructive">{{ formError }}</p>
+              </form>
+            </CardContent>
+
+            <CardContent v-if="isOrganiser" class="border-t border-border px-5 py-5 md:px-6 md:py-6">
+              <form class="space-y-4" @submit.prevent="saveWithdrawalPolicy">
+                <div>
+                  <h2 class="text-base font-medium">Withdrawal rules</h2>
+                  <p class="mt-1 text-sm leading-6 text-muted-foreground">Choose whether Attendees can withdraw and whether they may register again.</p>
+                </div>
+                <div class="flex items-start gap-3 text-sm">
+                  <Checkbox id="withdrawal-enabled" v-model="withdrawalEnabled" class="mt-0.5" />
+                  <label for="withdrawal-enabled"><span class="font-medium">Allow registration withdrawal</span><span class="mt-1 block text-muted-foreground">Attendees can withdraw before the cutoff.</span></label>
+                </div>
+                <div class="space-y-1.5">
+                  <label for="withdrawal-cutoff" class="text-sm font-medium">Withdrawal cutoff</label>
+                  <Input id="withdrawal-cutoff" :model-value="withdrawalCutoffAt" type="datetime-local" required @update:model-value="withdrawalCutoffAt = String($event)" />
+                  <p class="text-sm text-muted-foreground">Withdrawal is allowed through this time, inclusive.</p>
+                </div>
+                <div class="flex items-start gap-3 text-sm">
+                  <Checkbox id="allow-reregistration" v-model="allowReregistration" class="mt-0.5" />
+                  <label for="allow-reregistration"><span class="font-medium">Allow re-registration</span><span class="mt-1 block text-muted-foreground">An Attendee may register again after withdrawing.</span></label>
+                </div>
+                <Button type="submit" :disabled="savingWithdrawalPolicy || !hydrated">{{ savingWithdrawalPolicy ? 'Saving…' : 'Save withdrawal rules' }}</Button>
+                <p v-if="policyNotice" role="status" class="text-sm text-success">{{ policyNotice }}</p>
+                <p v-if="policyError" role="alert" class="text-sm text-destructive">{{ policyError }}</p>
               </form>
             </CardContent>
           </Card>

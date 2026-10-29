@@ -3,13 +3,13 @@ function retryDelaySeconds(attempts){return Math.min(60,2**Math.min((attempts||0
 // Each worker locks only rows in its service-owned database. A crash after the
 // broker confirms but before commit replays the SAME ID; the inbox deduplicates it.
 function startOutboxRelay({prisma,connect,config,source,project,log=console.error}){
- const schema={booking:{table:'booking_outbox',sent:'deliveredAt'},event:{table:'outbox',sent:'publishedAt'},attendance:{table:'attendance_outbox',sent:'deliveredAt'}}[source];
+ const schema={booking:{table:'booking_outbox',sent:'deliveredAt'},event:{table:'outbox',sent:'publishedAt'},attendance:{table:'attendance_outbox',sent:'deliveredAt'},equipment:{table:'outbox_events',sent:'publishedAt',filter:`AND "eventType" = 'EquipmentReleased'`}}[source];
  if(!schema)throw Error('Unknown outbox source');
  const bus=createTransport({connect,config,log});let stopped=false,timer,running;
  async function batch(){
   for(let n=0;n<20&&!stopped;n++){
    const found=await prisma.$transaction(async tx=>{
-    const [row]=await tx.$queryRawUnsafe(`SELECT * FROM "${schema.table}" WHERE "${schema.sent}" IS NULL AND "suppressedAt" IS NULL AND "nextAttemptAt" <= now() ORDER BY "nextAttemptAt", "createdAt", id LIMIT 1 FOR UPDATE SKIP LOCKED`);
+    const [row]=await tx.$queryRawUnsafe(`SELECT * FROM "${schema.table}" WHERE "${schema.sent}" IS NULL AND "suppressedAt" IS NULL AND "nextAttemptAt" <= now() ${schema.filter||''} ORDER BY "nextAttemptAt", "createdAt", id LIMIT 1 FOR UPDATE SKIP LOCKED`);
     if(!row)return false;
     try{
      const message=await project(row,tx);

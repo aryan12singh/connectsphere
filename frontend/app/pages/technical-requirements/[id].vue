@@ -6,6 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
 
 type EquipmentAllocation = { venueId: string, quantity: number }
 type EquipmentLine = { equipmentType: string, quantity: number, venueAllocations: EquipmentAllocation[] }
@@ -27,6 +28,16 @@ const eventRequestId = computed(() => String(route.params.id ?? ''))
 const snapshotVersion = computed(() => route.query.version ? Number(route.query.version) : null)
 const { user } = useUserSession()
 const canEdit = computed(() => user.value?.role === 'EVENT_COORDINATOR')
+const canReadReservations = computed(() => user.value?.role === 'TECHNICAL_SUPPORT_STAFF')
+type EquipmentReservationRecord = { id: string, eventId: string, equipmentType: string, quantity: number, active: boolean, releasedAt: string | null, releaseReason: string | null }
+const equipmentReservations = ref<EquipmentReservationRecord[]>([])
+if (canReadReservations.value) {
+  const { data: reservationData } = await useFetch<{ reservations: EquipmentReservationRecord[] }>(
+    () => `/api/events/${encodeURIComponent(String(route.params.id ?? ''))}/equipment-reservations`,
+    { default: () => ({ reservations: [] }) },
+  )
+  equipmentReservations.value = reservationData.value?.reservations ?? []
+}
 const { data: typesData, error: typesError } = await useFetch<{ equipmentTypes: { id: string, name: string, total?: number, version?: number }[] }>('/api/technical-equipment-types')
 const { data: existing, error: requestError, refresh } = await useFetch<TechnicalRequest | null>(
   () => `/api/events/${encodeURIComponent(eventRequestId.value)}/technical-request`,
@@ -228,6 +239,25 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
         <p role="status" data-testid="technical-status" class="rounded-lg border p-3">Status: {{ statusLabel }}</p>
         <p v-if="displayed.status === 'NOT_REQUIRED'" class="text-sm text-muted-foreground">No Technical Support review or equipment reservation is required.</p>
         <p v-if="displayed.status === 'REJECTED' && displayed.decisionReason" class="rounded-lg bg-muted p-3">Technical Support feedback: {{ displayed.decisionReason }}</p>
+      </CardContent>
+    </Card>
+
+    <Card v-if="canReadReservations && equipmentReservations.length" role="region" aria-label="Equipment reservation history">
+      <CardHeader>
+        <CardTitle>Equipment reservation history</CardTitle>
+        <p class="text-sm text-muted-foreground">Current and released equipment commitments for this request.</p>
+      </CardHeader>
+      <CardContent>
+        <ol class="grid gap-3">
+          <li v-for="reservation in equipmentReservations" :key="reservation.id" class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border px-4 py-3">
+            <div>
+              <p class="font-medium">{{ reservation.equipmentType }} · {{ reservation.quantity }}</p>
+              <p v-if="reservation.releasedAt" class="mt-1 text-sm text-muted-foreground">{{ reservation.releaseReason || 'Released' }} · {{ new Date(reservation.releasedAt).toLocaleString() }}</p>
+            </div>
+            <Badge v-if="reservation.active" class="bg-success-soft text-success">Reserved</Badge>
+            <Badge v-else class="bg-muted text-muted-foreground">Released<span v-if="reservation.releaseReason"> — {{ reservation.releaseReason }}</span></Badge>
+          </li>
+        </ol>
       </CardContent>
     </Card>
 

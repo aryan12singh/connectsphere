@@ -83,6 +83,19 @@ router.get('/registrations/:eventId', async (req, res, next) => {
   catch (error) { return next(error); }
 });
 
+router.post('/registrations/:registrationId/withdraw', async (req, res, next) => {
+  try {
+    if (!hasRole(req.actor, 'ATTENDEE')) return sendError(res, 403, 'FORBIDDEN', 'Only Attendees can withdraw a registration.');
+    const result = await store.withdrawRegistration(req.params.registrationId, req.actor.id, new Date());
+    if (result.replayed) res.set('Idempotency-Replayed', 'true');
+    return res.json(result);
+  }
+  catch (error) {
+    if (error.status) return sendError(res, error.status, error.code, error.message);
+    return next(error);
+  }
+});
+
 router.post('/events/:id/registrations', async (req, res, next) => {
   try {
     if (!hasRole(req.actor, 'ATTENDEE')) return sendError(res, 403, 'FORBIDDEN', 'Only Attendees can register for an Event.');
@@ -107,7 +120,8 @@ router.get('/registrations', async (req, res, next) => {
     const registrations = await store.registrationsForUser(req.actor.id);
     return res.json({ registrations: registrations.map(row => ({
       id: row.id, eventId: row.eventId, userId: row.userId, status: row.status,
-      registeredAt: row.registeredAt, event: row.event ? store.eventView(row.event) : undefined,
+      registeredAt: row.registeredAt, withdrawnAt: row.withdrawnAt ?? null,
+      event: row.event ? store.eventView(row.event) : undefined,
     })) });
   }
   catch (error) { return next(error); }
@@ -122,6 +136,9 @@ router.get('/events/:id/registrations', async (req, res, next) => {
     const registrations = await store.registrationsForEvent(event.eventId);
     const count = registrations.filter(row => row.status === 'CONFIRMED').length;
     return res.json({ registrations, confirmedRegistrationCount: count, registrationLimit: event.registrationLimit,
+      withdrawalEnabled: event.withdrawalEnabled ?? false,
+      withdrawalCutoffAt: event.withdrawalCutoffAt ?? null,
+      allowReregistration: event.allowReregistration ?? false,
       placesRemaining: placesRemaining(event, count), overCapacity: event.registrationLimit != null && count > event.registrationLimit });
   }
   catch (error) { if (error.status) return sendError(res, error.status, error.code, error.message); return next(error); }
@@ -141,6 +158,34 @@ router.put('/events/:id/registration-limit', async (req, res, next) => {
       placesRemaining: placesRemaining(updated, count), overCapacity: count > limit });
   }
   catch (error) { if (error.status) return sendError(res, error.status, error.code, error.message); return next(error); }
+});
+
+router.put('/events/:id/withdrawal-policy', async (req, res, next) => {
+  try {
+    const event = await store.findEvent(req.params.id);
+    if (!event) return sendError(res, 404, 'NOT_FOUND', 'Event not found.');
+    if (!hasRole(req.actor, 'EVENT_ORGANISER') || event.organiserId !== req.actor.id) {
+      return sendError(res, 403, 'FORBIDDEN', 'Only this Event’s Organiser may configure withdrawal rules.');
+    }
+    const { withdrawalEnabled, withdrawalCutoffAt, allowReregistration } = req.body || {};
+    const cutoff = typeof withdrawalCutoffAt === 'string' ? new Date(withdrawalCutoffAt) : null;
+    if (typeof withdrawalEnabled !== 'boolean' || typeof allowReregistration !== 'boolean'
+      || !cutoff || !Number.isFinite(cutoff.getTime())) {
+      return sendError(res, 422, 'VALIDATION_FAILED', 'Provide withdrawal permission, a valid cutoff time, and re-registration permission.');
+    }
+    const updated = await store.setWithdrawalPolicy(event.eventId, {
+      withdrawalEnabled, withdrawalCutoffAt: cutoff, allowReregistration,
+    });
+    return res.json({
+      withdrawalEnabled: updated.withdrawalEnabled,
+      withdrawalCutoffAt: updated.withdrawalCutoffAt instanceof Date ? updated.withdrawalCutoffAt.toISOString() : new Date(updated.withdrawalCutoffAt).toISOString(),
+      allowReregistration: updated.allowReregistration,
+    });
+  }
+  catch (error) {
+    if (error.status) return sendError(res, error.status, error.code, error.message);
+    return next(error);
+  }
 });
 
 module.exports = router;

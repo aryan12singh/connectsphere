@@ -34,7 +34,7 @@ export async function snapshot(event: TechnicalEvent) {
   return reviewDatabase('equipment', async pool => ({
     requests: (await pool.query('SELECT * FROM technical_requests WHERE "eventRequestId"=$1', [event.id])).rows,
     history: (await pool.query('SELECT h.* FROM technical_request_history h JOIN technical_requests r ON r.id=h."requestId" WHERE r."eventRequestId"=$1 ORDER BY h.id', [event.id])).rows,
-    outbox: (await pool.query('SELECT id,"actionKey","eventType",payload FROM outbox_events WHERE "actionKey" LIKE $1 ORDER BY id', [`%:${event.id}:%`])).rows,
+    outbox: (await pool.query('SELECT id,"actionKey","eventType",payload FROM outbox_events WHERE "actionKey" LIKE $1 OR ("eventType"=\'EquipmentReleased\' AND payload->>\'eventId\'=$2) ORDER BY id', [`%:${event.id}:%`, event.eventId])).rows,
     reservations: (await pool.query('SELECT * FROM equipment_reservations WHERE "eventRequestId"=$1 ORDER BY id', [event.id])).rows,
   }))
 }
@@ -52,6 +52,7 @@ export async function fault(event: TechnicalEvent, kind: 'TechRequestSubmitted' 
 class EquipmentFixtures {
   private sessions = new Map<string, APIRequestContext>()
   private eventRequestIds = new Set<string>()
+  private eventIds = new Set<string>()
   private operationStartAt = new Set<string>()
   private stockBefore = new Map<string, number>()
   private sequence = 0
@@ -98,6 +99,7 @@ class EquipmentFixtures {
       rooms.push(await decision.json())
     }
     this.eventRequestIds.add(submitted.id)
+    this.eventIds.add(approved.eventId)
     return { id: submitted.id, eventId: approved.eventId, coordinator, email: contact.email, date, rooms, venueId, period: { startAt: new Date(Date.parse(options.startAt ?? `${date}T02:00:00.000Z`) - 30 * 60_000).toISOString(), endAt: new Date(Date.parse(options.endAt ?? `${date}T04:00:00.000Z`) + 45 * 60_000).toISOString() } }
   }
   async submit(event: TechnicalEvent, lines: Line[] = [{ equipmentType: 'projector', quantity: 2 }], extra: Record<string, unknown> = {}) {
@@ -132,7 +134,7 @@ class EquipmentFixtures {
       if (eventRequestIds.length) {
         await pool.query('DELETE FROM equipment_reservations WHERE "eventRequestId" = ANY($1::text[])', [eventRequestIds])
         await pool.query('DELETE FROM technical_readiness_fences WHERE "eventRequestId" = ANY($1::text[])', [eventRequestIds])
-        await pool.query('DELETE FROM outbox_events WHERE "actionKey" LIKE ANY($1::text[])', [eventRequestIds.map(id => `%:${id}:%`)])
+        await pool.query('DELETE FROM outbox_events WHERE "actionKey" LIKE ANY($1::text[]) OR payload->>\'eventId\'=ANY($2::text[])', [eventRequestIds.map(id => `%:${id}:%`), [...this.eventIds]])
         await pool.query('DELETE FROM technical_requests WHERE "eventRequestId" = ANY($1::text[])', [eventRequestIds])
       }
       const operationStartAt = [...this.operationStartAt]
@@ -149,6 +151,7 @@ class EquipmentFixtures {
       }
     }
     this.eventRequestIds.clear()
+    this.eventIds.clear()
     this.operationStartAt.clear()
     this.stockBefore.clear()
   }

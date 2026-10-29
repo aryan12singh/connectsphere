@@ -98,6 +98,48 @@ test('TC-CS42 PostgreSQL repeat reserve with a fresh action key reuses the curre
   assert.equal(await db.outboxEvent.count({ where: { actionKey: `EquipmentReserved:${request.eventRequestId}:v1` } }), 1);
 });
 
+test('TC-CS46-01/03/04 PostgreSQL cancellation release is event-scoped, auditable, durable, and replay-safe', async t => {
+  const request = await submit([{ equipmentType: 'projector', quantity: 1 }, { equipmentType: 'microphone', quantity: 2 }]);
+  const proof = { eventId: request.eventRequestId, eventRequestId: request.eventRequestId, cancellationActionId: randomUUID(), phase: 'CANCELLING', proofType: 'ACCEPTED_INTENT' };
+  t.mock.method(require('../../src/eventContext'), 'cancellationProof', async () => proof);
+  const other = await submit([{ equipmentType: 'projector', quantity: 2 }]);
+  await operations.reserve({ request, window, actor: support, key: randomUUID(), hash: 'release-lines' });
+  await operations.reserve({ request: other, window, actor: support, key: randomUUID(), hash: 'other-event' });
+  await operations.createOperation({ body: { equipmentType: 'projector', quantity: 1, reason: 'Scheduled maintenance', ...window }, actor: support });
+
+  const first = await operations.releaseCanceledEvent({ eventId: request.eventRequestId, cancellationActionId: proof.cancellationActionId, proof });
+  assert.deepEqual(first.released.map(row => [row.equipmentType, row.quantity]), [['microphone', 2], ['projector', 1]]);
+  assert.equal(await db.equipmentReservation.count({ where: { eventId: request.eventRequestId, active: true } }), 0);
+  assert.equal(await db.equipmentReservation.count({ where: { eventId: other.eventRequestId, active: true } }), 1);
+  const available = await operations.availability({ request: { version: 1, requirements: requirements([{ equipmentType: 'projector', quantity: 5 }]) }, window });
+  assert.equal(available.lines.find(row => row.equipmentType === 'projector').available, 2);
+  assert.equal(await db.technicalRequestHistory.count({ where: { requestId: request.id, action: 'EquipmentReleased' } }), 1);
+  assert.equal(await db.outboxEvent.count({ where: { actionKey: `EquipmentReleased:${request.eventRequestId}:${proof.cancellationActionId}` } }), 1);
+  assert.equal((await operations.releaseCanceledEvent({ eventId: request.eventRequestId, cancellationActionId: proof.cancellationActionId, proof })).replayed, true);
+  assert.equal(await db.technicalRequestHistory.count({ where: { requestId: request.id, action: 'EquipmentReleased' } }), 1);
+});
+
+test('TC-CS46-05 PostgreSQL outbox failure rolls back release and a retry completes it once', async t => {
+  const request = await submit([{ equipmentType: 'projector', quantity: 1 }, { equipmentType: 'microphone', quantity: 1 }]);
+  const proof = { eventId: request.eventRequestId, eventRequestId: request.eventRequestId, cancellationActionId: randomUUID(), phase: 'CANCELLING', proofType: 'ACCEPTED_INTENT' };
+  t.mock.method(require('../../src/eventContext'), 'cancellationProof', async () => proof);
+  await operations.reserve({ request, window, actor: support, key: randomUUID(), hash: 'release-rollback' });
+  await db.$executeRawUnsafe(`CREATE FUNCTION equipment_test_reject_release() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."eventType"='EquipmentReleased' THEN RAISE EXCEPTION 'isolated release rollback'; END IF; RETURN NEW; END $$`);
+  await db.$executeRawUnsafe('CREATE TRIGGER equipment_test_reject_release BEFORE INSERT ON outbox_events FOR EACH ROW EXECUTE FUNCTION equipment_test_reject_release()');
+  try {
+    await assert.rejects(() => operations.releaseCanceledEvent({ eventId: request.eventRequestId, cancellationActionId: proof.cancellationActionId, proof }));
+    assert.equal(await db.equipmentReservation.count({ where: { eventId: request.eventRequestId, active: true } }), 2);
+    assert.equal(await db.technicalRequestHistory.count({ where: { requestId: request.id, action: 'EquipmentReleased' } }), 0);
+  } finally {
+    await db.$executeRawUnsafe('DROP TRIGGER equipment_test_reject_release ON outbox_events');
+    await db.$executeRawUnsafe('DROP FUNCTION equipment_test_reject_release()');
+  }
+  const result = await operations.releaseCanceledEvent({ eventId: request.eventRequestId, cancellationActionId: proof.cancellationActionId, proof });
+  assert.equal(result.released.length, 2);
+  assert.equal(await db.equipmentReservation.count({ where: { eventId: request.eventRequestId, active: true } }), 0);
+  assert.equal(await db.outboxEvent.count({ where: { actionKey: `EquipmentReleased:${request.eventRequestId}:${proof.cancellationActionId}` } }), 1);
+});
+
 test('TC-CS41-04/05 live dated checks include reservations and operational unavailability without persisting snapshots or creating commitments', async () => {
   const competing = await submit([{ equipmentType: 'projector', quantity: 2 }]);
   await operations.reserve({ request: competing, window, actor: support, key: randomUUID(), hash: 'availability-fixture' });

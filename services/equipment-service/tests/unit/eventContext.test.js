@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { requestContext, eventContext, equipmentAllocationContext } = require('../../src/eventContext');
+const { requestContext, eventContext, equipmentAllocationContext, cancellationProof } = require('../../src/eventContext');
 
 test('event context readers encode IDs and return validated request, planning, and buffered allocation data', async t => {
   const originalFetch = global.fetch;
@@ -30,4 +30,18 @@ test('event context fails closed for upstream errors, incomplete payloads, and n
   await assert.rejects(requestContext('missing'), error => error.status === 404);
   global.fetch = async () => { throw new Error('offline'); };
   await assert.rejects(equipmentAllocationContext('event-1'), error => error.status === 503 && error.code === 'EVENT_UNAVAILABLE');
+});
+
+test('TC-CS46 cancellation context requires matching accepted action proof from Event service', async t => {
+  const originalFetch = global.fetch;
+  t.after(() => { global.fetch = originalFetch; });
+  let requested = '';
+  global.fetch = async url => {
+    requested = String(url);
+    return Response.json({ eventId: 'event-1', eventRequestId: 'request-1', cancellationActionId: 'cancel-1', proofType: 'ACCEPTED_INTENT', phase: 'CANCELLING' });
+  };
+  assert.equal((await cancellationProof('event-1', 'cancel-1')).eventRequestId, 'request-1');
+  assert.ok(requested.includes('actionId=cancel-1'));
+  await assert.rejects(cancellationProof('event-1', 'other'), error => error.code === 'CANCELLATION_NOT_COMMITTED');
+  await assert.rejects(cancellationProof('event-1', ''), error => error.code === 'CANCELLATION_ACTION_REQUIRED');
 });

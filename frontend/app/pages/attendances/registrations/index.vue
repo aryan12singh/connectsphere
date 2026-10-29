@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { CalendarDaysIcon, MapPinIcon } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
 
 useHead({ title: 'My registrations | ConnectSphere' })
-const { data, error } = await useFetch<{ registrations: Array<{
-  id: string, eventId: string, status: string, registeredAt: string,
+const { data, error, refresh } = await useFetch<{ registrations: Array<{
+  id: string, eventId: string, status: string, registeredAt: string, withdrawnAt?: string | null,
   event?: { eventId: string, title: string, startAt: string, endAt: string, timeZone: string, primaryVenueName: string | null }
 }> }>('/api/attendances/registrations')
 const registrations = computed(() => data.value?.registrations ?? [])
+const withdrawingId = ref<string | null>(null)
+const withdrawErrors = ref<Record<string, string>>({})
 function formattedDate(value: string, timeZone: string) {
   return new Intl.DateTimeFormat('en-SG', { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(value))
 }
@@ -35,6 +38,21 @@ function formatStatus(status: string) {
 
 function changeAttendanceView(value: string | number) {
   if (value === 'events') void navigateTo('/attendances')
+}
+
+async function withdrawRegistration(registration: { id: string, eventId: string, event?: { title: string } }) {
+  const eventName = registration.event?.title || registration.eventId
+  if (!window.confirm(`Withdraw your registration for ${eventName}?`)) return
+  withdrawingId.value = registration.id
+  withdrawErrors.value = { ...withdrawErrors.value, [registration.id]: '' }
+  try {
+    await $fetch(`/api/attendances/registrations/${encodeURIComponent(registration.id)}/withdraw`, { method: 'POST' })
+    await refresh()
+  }
+  catch (cause: any) {
+    withdrawErrors.value = { ...withdrawErrors.value, [registration.id]: cause?.data?.error?.message || 'Unable to withdraw this registration.' }
+  }
+  finally { withdrawingId.value = null }
 }
 </script>
 
@@ -62,8 +80,8 @@ function changeAttendanceView(value: string | number) {
       </Card>
       <ol v-else class="grid gap-3">
         <li v-for="registration in registrations" :key="registration.id">
-          <NuxtLink :to="`/attendances/events/${registration.eventId}`" class="group block rounded-[18px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-            <Card class="gap-0 rounded-[18px] border border-border !bg-transparent p-0 !shadow-none !ring-0 transition-colors duration-150 group-hover:!bg-muted/20 group-focus-visible:!bg-muted/20 group-active:!bg-muted/35">
+          <Card class="gap-0 rounded-[18px] border border-border !bg-transparent p-0 !shadow-none !ring-0">
+            <NuxtLink :to="`/attendances/events/${registration.eventId}`" class="group block rounded-t-[18px] text-foreground outline-none transition-colors duration-150 hover:bg-muted/20 focus-visible:bg-muted/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:bg-muted/35">
               <CardHeader class="flex min-w-0 flex-row items-start justify-between gap-4 px-5 pb-0 pt-5 md:px-6 md:pt-6">
                 <div class="min-w-0">
                   <h3 class="truncate text-lg font-medium leading-6 tracking-tight">{{ registration.event?.title || registration.eventId }}</h3>
@@ -86,8 +104,20 @@ function changeAttendanceView(value: string | number) {
                   </div>
                 </dl>
               </CardContent>
-            </Card>
-          </NuxtLink>
+            </NuxtLink>
+            <CardContent v-if="registration.status === 'CONFIRMED' || registration.status === 'WITHDRAWN'" class="border-t border-border px-5 py-4 md:px-6">
+              <p v-if="registration.status === 'WITHDRAWN'" role="status" class="text-sm text-muted-foreground">
+                Withdrawn<span v-if="registration.withdrawnAt"> · {{ formattedDate(registration.withdrawnAt, registration.event?.timeZone || 'Asia/Singapore') }}</span>
+              </p>
+              <div v-else class="flex flex-wrap items-center justify-between gap-3">
+                <p class="text-sm text-muted-foreground">Need to cancel your attendance?</p>
+                <Button variant="outline" size="sm" :disabled="withdrawingId === registration.id" :aria-label="`Withdraw registration for ${registration.event?.title || registration.eventId}`" @click="withdrawRegistration(registration)">
+                  {{ withdrawingId === registration.id ? 'Withdrawing…' : 'Withdraw registration' }}
+                </Button>
+              </div>
+              <p v-if="withdrawErrors[registration.id]" role="alert" class="mt-3 text-sm text-destructive">{{ withdrawErrors[registration.id] }}</p>
+            </CardContent>
+          </Card>
         </li>
       </ol>
     </section>
