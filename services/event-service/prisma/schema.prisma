@@ -339,3 +339,28 @@ model VenueChangeReview {
   @@index([eventId,bookingId])
   @@map("venue_change_reviews")
 }
+
+// CS-45: a proposed significant change after approval. Current values stay in
+// force until the assigned Coordinator approves; the old and new values and the
+// versions they were proposed against are kept for the history and for staleness.
+model ChangeRequest {
+  id String @id
+  eventRequestId String
+  eventId String
+  proposedById String
+  proposedByRole String
+  scope String // EVENT, BOOKING or TECHNICAL
+  affected Json // booking / technical request ids named by the proposer
+  fields Json // proposed values, only the changed fields
+  previous Json // current values of those fields when proposed
+  reason String
+  baseRequestVersion Int
+  baseEventVersion Int
+  status String @default("PENDING") // PENDING, APPROVED, REJECTED
+  decidedById String?
+  decidedAt DateTime? @db.Timestamptz(3)
+  decisionReason String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([eventRequestId, status])
+  @@map("change_requests")
+}

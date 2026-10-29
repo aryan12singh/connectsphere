@@ -414,6 +414,36 @@ for (const method of ['put', 'patch']) router[method]('/:id', requirePermission(
   } catch (error) { return next(error); }
 });
 
+// CS-43: the assigned Coordinator corrects routine wording (description only for now).
+router.post('/:id/coordinator-edit', requirePermission('event_requests.review'), async (req, res, next) => {
+  try {
+    if (await runTransactionalMutation(req, res, next, 'coordinatorEdit', req.params.id)) return;
+    return sendError(res, 501, 'NOT_IMPLEMENTED', 'Coordinator edit needs the database mode');
+  } catch (error) { return next(error); }
+});
+
+// CS-45: significant changes after approval (propose, list, decide).
+const changeRequests = require('../changeRequests');
+const changeError = (res, error, next) => {
+  if (!error?.status) return next(error);
+  const fields = error.fields || error.details?.fields;
+  return res.status(error.status).json({ error: { code: error.code || 'REQUEST_FAILED', message: error.message, ...(fields ? { fields } : {}) } });
+};
+router.post('/:id/change-requests', requireAnyPermission('event_requests.create', 'event_requests.review'), async (req, res, next) => {
+  try { const out = await changeRequests.propose(workflowActor(req.actor), req.params.id, req.body); return res.status(out.status).json(out.body); } catch (error) { return changeError(res, error, next); }
+});
+router.get('/:id/change-requests', requireAnyPermission('event_requests.create', 'event_requests.review'), async (req, res, next) => {
+  try { return res.json(await changeRequests.list(workflowActor(req.actor), req.params.id)); } catch (error) { return changeError(res, error, next); }
+});
+router.post('/:id/change-requests/:changeId/decision', requirePermission('event_requests.review'), async (req, res, next) => {
+  try { return res.json(await changeRequests.decide(workflowActor(req.actor), req.params.id, req.params.changeId, req.body)); } catch (error) { return changeError(res, error, next); }
+});
+
+// CS-54: the assigned Coordinator cancels the Event directly (it becomes Cancelling).
+router.post('/:id/cancel', requirePermission('event_requests.review'), async (req, res, next) => {
+  try { return res.json(await require('../cancellation').cancelNow(workflowActor(req.actor), req.params.id, req.body)); } catch (error) { return changeError(res, error, next); }
+});
+
 router.post('/:id/decision', requirePermission('event_requests.review'), async (req, res, next) => {
   try {
     const decisionActions = { approve: 'APPROVE', reject: 'REJECT', amendments: 'RETURN' };
