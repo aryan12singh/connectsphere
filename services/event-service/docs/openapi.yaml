@@ -1712,7 +1712,7 @@ paths:
       summary: Finalize a Cancelling Event once every release succeeded (CS-54, orchestrator only)
       security:
       - internalApiKey: []
-      description: Body cancellationActionId and receipts. Requires a receipt for each of VENUE, EQUIPMENT and REGISTRATION carrying the same action id and accepted event version, otherwise 409 RELEASES_INCOMPLETE. Writes Cancelled and one EventCancelled outbox row; a replay returns the same result. No public routing.
+      description: Body cancellationActionId and receipts. Requires a receipt for each of VENUE and EQUIPMENT (registration closes by reading the Event status) carrying the same action id and accepted event version, otherwise 409 RELEASES_INCOMPLETE. Writes Cancelled and one EventCancelled outbox row; a replay returns the same result. No public routing.
       responses:
         "200":
           description: Event is Cancelled
