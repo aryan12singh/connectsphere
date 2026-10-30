@@ -15,7 +15,7 @@ async function openRegistration(eventId: string, requestId: string) {
 }
 
 test('TC-CS48-01 / TC-CS48-03 Attendee registers, signs back in, and sees their saved status and remaining capacity', async ({ attendance, page }, info) => {
-  const event = await attendance.event({ date: '2026-10-30', registrationLimit: 1 })
+  const event = await attendance.event({ registrationLimit: 1 })
   await openRegistration(event.eventId, event.id)
   const attendeeId = await attendance.actorId(emails.attendee)
   await signIn(page, emails.attendee)
@@ -64,7 +64,7 @@ test('TC-CS48-01 / TC-CS48-03 Attendee registers, signs back in, and sees their 
 })
 
 test('TC-CS48-05 simultaneous last-place registrations admit only one Attendee', async ({ attendance }) => {
-  const event = await attendance.event({ date: '2026-10-30', registrationLimit: 1 })
+  const event = await attendance.event({ registrationLimit: 1 })
   await openRegistration(event.eventId, event.id)
   const [first, second] = await Promise.all([attendance.actor(emails.attendee), attendance.actor(emails.otherAttendee)])
   const path = `/api/attendances/events/${event.eventId}/registrations`
@@ -82,7 +82,7 @@ test('TC-CS48-05 simultaneous last-place registrations admit only one Attendee',
 })
 
 test('TC-CS48-02 current Coordinator sets the registration limit and the Attendee sees the limit and places left', async ({ attendance, page }) => {
-  const event = await attendance.event({ date: '2026-10-30', registrationLimit: null })
+  const event = await attendance.event({ registrationLimit: null })
   await signIn(page, event.email)
   await page.goto(`/events/${event.eventId}`)
   const registrationPageButton = page.getByRole('link', { name: 'Go to registration page', exact: true })
@@ -115,7 +115,7 @@ test('TC-CS48-02 current Coordinator sets the registration limit and the Attende
 })
 
 test('TC-CS48-12 registration commits during broker outage and its durable action is delivered after recovery', async ({ attendance }) => {
-  const event = await attendance.event({ date: '2026-10-30', registrationLimit: 1 })
+  const event = await attendance.event({ registrationLimit: 1 })
   await openRegistration(event.eventId, event.id)
   const attendee = await attendance.actor(emails.attendee)
   serviceAction('rabbitmq', 'stop')
