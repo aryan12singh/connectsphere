@@ -1,9 +1,10 @@
-import { test, created, validRequest, assignedSession, session, emails, mutation, signIn, venueService } from './helpers'
+import { test, created, validRequest, assignedSession, session, emails, mutation, signIn, withVenueStopped } from './helpers'
 import {createVenue,planningEvent,hold,reviewDatabase,databaseEvidence} from './fixtures/venue-fixtures'
 import { expect } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
 
 test('TC-CS86-30 LIVE startup automatically rechecks legacy buffers and retains its completed receipt after restart',async({page,playwright,owner},info)=>{
+  test.setTimeout(300_000) // Allow diagnostics and restoration to finish if the restart fails.
   const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner)
   try {
     const venue=await createVenue(staff,{setupMinutes:0,turnaroundMinutes:0}),rooms=[]
@@ -14,8 +15,7 @@ test('TC-CS86-30 LIVE startup automatically rechecks legacy buffers and retains 
     }
     // Fixture setup models a legacy catalogue at its first buffer rollout.
     // Only this unique venue is changed, while its service is stopped.
-    venueService('stop')
-    try {
+    await withVenueStopped(async () => {
       await reviewDatabase('venue',async db=>{
         await db.query('BEGIN')
         try {
@@ -24,7 +24,7 @@ test('TC-CS86-30 LIVE startup automatically rechecks legacy buffers and retains 
           await db.query('COMMIT')
         }catch(error){await db.query('ROLLBACK');throw error}
       })
-    }finally{venueService('start')}
+    })
     await expect.poll(async()=> (await staff.get(`/api/venues/${venue.id}`)).status(),{timeout:45_000}).toBe(200)
     const query='SELECT id,status,version,flags,"occupiedStart","occupiedEnd" FROM venue_booking_requests WHERE "venueId"=$1 ORDER BY id'
     await expect.poll(async()=>{
@@ -37,7 +37,7 @@ test('TC-CS86-30 LIVE startup automatically rechecks legacy buffers and retains 
     expect(before.rows.map((row:any)=>row.status)).toEqual(['CONFIRMED','CONFIRMED'])
     const receipt=await reviewDatabase('venue',async db=>db.query(rolloutQuery,[venue.id]))
     expect(receipt.rows).toHaveLength(1);expect(receipt.rows[0].payload.actor).toEqual({id:'venue-buffer-rollout',role:'SYSTEM'})
-    venueService('stop');venueService('start')
+    await withVenueStopped(async () => {})
     await expect.poll(async()=> (await staff.get(`/api/venues/${venue.id}`)).status(),{timeout:45_000}).toBe(200)
     const after=await reviewDatabase('booking',async db=>db.query(query,[venue.id]))
     expect(after.rows).toEqual(before.rows)
@@ -51,6 +51,7 @@ test('TC-CS86-30 LIVE startup automatically rechecks legacy buffers and retains 
 })
 
 test('TC-CS86-03 LIVE Staff compare retained approvals and recheck inherited buffer conflicts', async ({ page, playwright, owner }, testInfo) => {
+  test.setTimeout(300_000) // Allow diagnostics and restoration to finish if the restart fails.
   const staff = await session(playwright.request, emails.staff)
   const coordinators = []
   try {
@@ -75,8 +76,7 @@ test('TC-CS86-03 LIVE Staff compare retained approvals and recheck inherited buf
     }
     // Session 3 disallows this as a user edit. Model the inherited rollout
     // explicitly in this isolated fixture, retaining both confirmed bookings.
-    venueService('stop')
-    try {
+    await withVenueStopped(async () => {
       await reviewDatabase('venue',async db=>{
         await db.query('BEGIN')
         try {
@@ -85,7 +85,7 @@ test('TC-CS86-03 LIVE Staff compare retained approvals and recheck inherited buf
           await db.query('COMMIT')
         }catch(error){await db.query('ROLLBACK');throw error}
       })
-    }finally{venueService('start')}
+    })
     await expect.poll(async()=> (await staff.get(`/api/venues/${venue.id}`)).status(),{timeout:45_000}).toBe(200)
     await expect.poll(async()=>{
       const r=await reviewDatabase('booking',async db=>db.query('SELECT flags FROM venue_booking_requests WHERE "venueId"=$1',[venue.id]))

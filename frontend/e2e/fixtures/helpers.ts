@@ -2,6 +2,7 @@ import { test as baseTest, expect, request as playwrightRequest, type APIRequest
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 
 export const baseURL = process.env.FRONTEND_BASE || 'http://127.0.0.1:33000'
 const realm = JSON.parse(readFileSync(new URL('../../../infra/keycloak/connectsphere-realm.json', import.meta.url), 'utf8'))
@@ -164,9 +165,44 @@ export function eventService(action: 'stop' | 'start') {
   const file = reviewCompose()
   execFileSync('docker', ['compose', '-f', file, action, 'event-service'], { stdio: 'pipe' })
 }
-export function venueService(action:'stop'|'start') {
-  const file=reviewCompose()
-  execFileSync('docker',['compose','-f',file,action,'venue-service'],{stdio:'pipe'})
+export async function withVenueStopped<T>(work: () => Promise<T>): Promise<T> {
+  const file = reviewCompose()
+  const config = JSON.parse(readFileSync(file, 'utf8'))
+  const port = (name: string) => Number(config.services[name].ports[0].published)
+  const compose = (...args: string[]) => execFileSync('docker', ['compose', '-f', file, ...args], { encoding: 'utf8', stdio: 'pipe', timeout: 30_000 })
+  const commandOutput = (args: string[]) => {
+    try { return compose(...args).trim() }
+    catch (error: any) { return `${error.message}: ${String(error.stderr ?? '').trim()}` }
+  }
+  const probe = async () => {
+    const status = async (url: string) => {
+      try { return (await fetch(url, { signal: AbortSignal.timeout(1000) })).status }
+      catch { return 0 }
+    }
+    const [direct, gateway] = await Promise.all([
+      status(`http://127.0.0.1:${port('venue-service')}/health`),
+      status(`http://127.0.0.1:${port('kong')}/venues`),
+    ])
+    return { direct, gateway }
+  }
+  const diagnose = () => {
+    const id = commandOutput(['ps', '-aq', 'venue-service'])
+    let state: string
+    try { state = execFileSync('docker', ['inspect', '--format', '{{.State.Status}} running={{.State.Running}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}} {{range .NetworkSettings.Networks}}aliases={{json .Aliases}}{{end}}', id], { encoding: 'utf8', stdio: 'pipe', timeout: 10_000 }).trim() }
+    catch (error: any) { state = `inspect failed: ${error.message}` }
+    return `Container: ${state}\nKong DNS: ${commandOutput(['exec', '-T', 'kong', 'getent', 'hosts', 'venue-service'])}\nVenue logs:\n${commandOutput(['logs', '--tail', '30', '--no-color', 'venue-service'])}`
+  }
+  const { restoreVenue, withStoppedVenue } = createRequire(import.meta.url)('./venue-recovery.cjs')
+  return withStoppedVenue({
+    stop: () => compose('stop', 'venue-service'),
+    work,
+    restore: () => restoreVenue({
+      start: () => compose('start', 'venue-service'),
+      probe,
+      diagnose,
+      recreate: () => compose('up', '-d', '--no-deps', '--force-recreate', 'venue-service'),
+    }),
+  })
 }
 
 export function recreateBookingService() {

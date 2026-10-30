@@ -290,7 +290,7 @@ jobs:
             services/attendance-service/package-lock.json
             frontend/package-lock.json
       - name: Guard host-run review dependencies
-        run: node --test tests/scripts/live-runner-dependencies.test.cjs
+        run: node --test tests/scripts/live-runner-dependencies.test.cjs tests/scripts/venue-recovery.test.cjs
       - name: Install locked browser and smoke dependencies
         run: |
           npm ci --prefix services/event-service
