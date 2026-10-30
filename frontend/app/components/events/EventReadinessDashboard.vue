@@ -7,6 +7,7 @@ import { canOpenRegistrationPage as canOpenRegistrationForUser } from '~~/lib/at
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import RequestActivityHistory from './RequestActivityHistory.vue'
+import { EVENT_STATUS_LABELS } from './status-labels'
 
 interface Booking {
   id: string
@@ -94,8 +95,9 @@ const stages = ['Planning', 'Safety review', 'Safety approved', 'Confirmed', 'Pr
 function statusLabel(value?: string) {
   if (!value)
     return 'Unavailable'
+  if (EVENT_STATUS_LABELS[value])
+    return EVENT_STATUS_LABELS[value]
   return {
-    ARRANGEMENT_PENDING: 'Planning',
     NOT_REQUIRED: 'Not required',
     CHANGES_REQUIRED: 'Changes required',
   }[value] || value.replaceAll('_', ' ').toLowerCase().replace(/(^|\s)\S/g, match => match.toUpperCase())

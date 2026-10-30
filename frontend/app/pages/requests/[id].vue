@@ -6,6 +6,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import RequestActivityHistory from '@/components/events/RequestActivityHistory.vue'
+import CancellationPanel from '@/components/events/CancellationPanel.vue'
+import ChangeProposalPanel from '@/components/events/ChangeProposalPanel.vue'
+import CoordinatorEditPanel from '@/components/events/CoordinatorEditPanel.vue'
 import RequestFormPage from '@/components/events/RequestFormPage.vue'
 import { emptyRequestForm,formToPayload,recordToForm } from '@/components/events/request-form-state'
 import { operationIntent,fieldErrors as extractFields } from '@/components/events/request-errors'
@@ -18,6 +21,11 @@ const {data:coordinator}=await useFetch(`/api/events/${id}/coordinator`,{key:`ev
 const {user}=useUserSession(),editMode=ref(false),isSubmitting=ref(false),submitError=ref(''),savedMessage=ref(''),fieldErrors=ref<Record<string,string[]>>({})
 const canEdit=computed(()=>loaded.value?.organiserId===user.value?.id && ['DRAFT','RETURNED_FOR_AMENDMENT'].includes(loaded.value?.status))
 const canManageTechnicalRequirements=computed(()=>user.value?.role==='EVENT_COORDINATOR'&&loaded.value?.currentCoordinatorId===user.value?.id)
+const canCoordinatorEdit=computed(()=>canManageTechnicalRequirements.value&&(loaded.value?.status==='SUBMITTED'||(loaded.value?.status==='APPROVED'&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(loaded.value?.eventStatus))))
+const canProposeChange=computed(()=>loaded.value?.status==='APPROVED'&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(loaded.value?.eventStatus)&&(canManageTechnicalRequirements.value||loaded.value?.organiserId===user.value?.id))
+async function afterChangeDecided(){await refreshNuxtData(`event-request-${id}`);historyRevision.value++}
+const canCancel=computed(()=>loaded.value?.status==='APPROVED'&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION','CANCELLING','CANCELLED'].includes(loaded.value?.eventStatus)&&(canManageTechnicalRequirements.value||loaded.value?.organiserId===user.value?.id))
+async function afterCoordinatorEdit(result:Record<string,any>){record.value=result as typeof record.value;form.value=recordToForm(result);clean.value=JSON.stringify(form.value);historyRevision.value++}
 const mode=computed(()=>canEdit.value&&loaded.value?.status==='DRAFT'?'draft':canEdit.value&&editMode.value?'edit':'readonly')
 const form=ref(loaded.value?recordToForm(loaded.value):emptyRequestForm()),clean=ref(JSON.stringify(form.value))
 const dirty=computed(()=>JSON.stringify(form.value)!==clean.value);useUnsavedRequest(dirty)
@@ -59,6 +67,12 @@ useHead({title:'Event request | ConnectSphere'})
    </header>
 
    <p v-if="savedMessage" role="status" class="mt-5 rounded-xl border border-success/30 bg-success-soft px-4 py-3 text-sm text-success">{{ savedMessage }}</p>
+
+   <CoordinatorEditPanel v-if="canCoordinatorEdit" class="mt-6" :key="loaded.version" :request-id="id" :description="loaded.description ?? ''" :version="loaded.version" @saved="afterCoordinatorEdit" />
+
+   <ChangeProposalPanel v-if="canProposeChange" class="mt-6" :request-id="id" :version="loaded.version" :is-coordinator="canManageTechnicalRequirements" :is-organiser="loaded.organiserId===user?.id" @decided="afterChangeDecided" />
+
+   <CancellationPanel v-if="canCancel" class="mt-6" :request-id="id" :event-status="loaded.eventStatus" :is-coordinator="canManageTechnicalRequirements" :is-organiser="loaded.organiserId===user?.id" :pending-request="false" @done="afterChangeDecided" />
 
    <Tabs v-model="tab" class="mt-8">
     <TabsList variant="line" aria-label="Request details and history" class="h-auto w-fit gap-1 rounded-none border-b bg-transparent p-0">

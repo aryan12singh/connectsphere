@@ -10,6 +10,8 @@ router.use(internalOnly);
 // This is an authenticated source command for the cancellation orchestrator,
 // not a public cancellation workflow or a resource-completion/finalize route.
 router.post('/events/:id/cancellation-intents',requireAuth(),async(req,res,next)=>{try{res.json(await require('../cancellationIntent').accept(req.actor,req.params.id,req.body));}catch(error){next(error);}});
+// CS-54: the orchestrator calls this only after every required release has a receipt.
+router.post('/events/:id/cancellation-finalize',async(req,res,next)=>{try{res.json(await require('../cancellation').finalize(req.params.id,req.body));}catch(error){next(error);}});
 router.get('/events/:id/cancellation-context',async(req,res,next)=>{try{res.json(await require('../cancellationContext').cancellationContext(req.params.id,req.query.actionId));}catch(error){next(error);}});
 router.get('/events/:id/venue-change-reviews/:reviewId',async(req,res,next)=>{try{res.json(await require('../safety').venueChangeContext(req.params.id,req.params.reviewId));}catch(error){next(error);}});
 router.post('/events/:id/venue-activity',async(req,res,next)=>{try{res.json(await require('../safety').recordVenueActivity(req.params.id,req.body));}catch(error){next(error);}});

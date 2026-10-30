@@ -5,6 +5,7 @@ const config=require('./config');
 const prisma=require('./db');
 const {getEvent,lockEvent}=require('./eventLock');
 const {toEvent}=require('./serializers');
+const {decide:guard,ACTIONS}=require('./domain/transitions');
 const path=require('node:path');
 const {hasPermission,rolesForUser}=require(path.join(process.env.SERVICE_UTILS_PATH||path.resolve(__dirname,'../../utils'),'role-policy'));
 const factors=['attendance','layout','emergencyAccess','accessibility','equipmentPlacement','crowdMovement','restrictions'];
@@ -219,6 +220,10 @@ async function advance(req,id,stage){
   const cached=await replay(tx,req.actor,key,url,requestHash);if(cached)return cached.responseBody;checkVersion(event,req.body);
   const round=await latestRound(event,tx);
   if(!sourceCurrent(event,round)||event.status!==(stage==='CONFIRMED'?'ARRANGEMENT_PENDING':'CONFIRMED')||event.safetyState!=='APPROVED'||!round||round.status!=='APPROVE'||event.safetyToken!==round.token||event.safetyGeneration!==round.generation)throw fail(409,'CURRENT_SAFETY_REQUIRED','Current Safety approval and all required arrangements are required');
+  // CS-32: the one transition guard has the final say on who, from which
+  // status and under which rule. The checks above proved the current Safety round.
+  guard({action:stage==='CONFIRMED'?ACTIONS.CONFIRM:ACTIONS.BEGIN_PREPARATION,entity:{scope:'EVENT',status:event.status},actor:{id:req.actor.id,roles:rolesForUser(req.actor)},
+   context:{organiserId:event.organiserId,currentCoordinatorId:event.eventRequest.currentCoordinatorId,startAt:event.startAt,endAt:event.endAt,timeZone:event.timeZone,now:new Date(),safetyApproved:true,outstandingArrangements:[]}});
   const next=await tx.event.update({where:{id},data:{status:stage,version:{increment:1},...(stage==='CONFIRMED'?{confirmedAt:new Date(),confirmedById:req.actor.id}:{})}});
   await activity(tx,event,req.actor,stage==='CONFIRMED'?'CONFIRMED':'PREPARATION_STARTED',stage==='CONFIRMED'?'Current approved Safety review verified':'Separate Preparation stage started',stage);
   // A Safety approval may never have been published as the effective Event.

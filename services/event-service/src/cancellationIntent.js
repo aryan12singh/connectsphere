@@ -24,42 +24,43 @@ function matches(intent,body,actor){
   intent.sourceEventVersion===body.eventVersion&&intent.requestVersion===body.requestVersion&&
   intent.reason===body.reason&&intent.actorId===actor.id;
 }
+async function acceptIn(tx,actor,id,body){
+ const event=await lockEvent(tx,id),request=event.eventRequest;
+ if(!rolesForUser(actor).includes('EVENT_COORDINATOR')||!hasPermission(actor,'event_requests.review')||
+    actor.id!==request.currentCoordinatorId||actor.id===event.organiserId)
+  throw fail(403,'FORBIDDEN','Only the current assigned Coordinator may accept cancellation');
+ const saved=await tx.eventCancellationIntent.findUnique({where:{eventId:id}});
+ if(saved){
+  if(!matches(saved,body,actor))throw fail(409,'CANCELLATION_INTENT_CONFLICT','This Event already has a different accepted cancellation intent');
+  // Replay precedes mutable time, version and phase checks. The response is
+  // the immutable acceptance, including after resource release/finalization.
+  return view(saved);
+ }
+ if(request.id!==body.eventRequestId)throw fail(409,'CANCELLATION_SOURCE_MISMATCH','Event and request do not match');
+ if(event.version!==body.eventVersion||request.version!==body.requestVersion)throw fail(409,'STALE_VERSION','The Event or request changed. Refresh before accepting cancellation');
+ if(request.status!=='APPROVED')throw fail(409,'INVALID_TRANSITION','Cancellation requires an approved Event');
+ if(await tx.eventCancellationIntent.findUnique({where:{id:body.cancellationActionId}}))throw fail(409,'CANCELLATION_ACTION_CONFLICT','This cancellation action belongs to another Event');
+ const [clock]=await tx.$queryRaw`SELECT clock_timestamp() AS now`;
+ const transition=decide({action:'CANCEL',entity:{scope:'EVENT',status:event.status},actor:{...actor,roles:rolesForUser(actor)},
+  context:{...request,startAt:event.startAt,now:clock.now},text:body.reason});
+ const intent=await tx.eventCancellationIntent.create({data:{id:body.cancellationActionId,eventId:id,eventRequestId:request.id,
+  actorId:actor.id,actorName:[actor.firstName,actor.lastName].filter(value=>typeof value==='string').join(' ')||actor.id,
+  sourceEventVersion:event.version,requestVersion:request.version,acceptedEventVersion:event.version+1,
+  fromStatus:event.status,reason:body.reason,acceptedAt:clock.now}});
+ await tx.event.update({where:{id},data:{status:transition.to,version:{increment:1},safetyToken:null,
+  safetyGeneration:{increment:1},safetyState:event.safetyRoundId?'STALE':'NOT_SUBMITTED',
+  safetyOperation:require('@prisma/client').Prisma.DbNull,safetyRework:require('@prisma/client').Prisma.DbNull}});
+ await tx.safetyRound.updateMany({where:{eventId:id,status:'PENDING'},data:{status:'SUPERSEDED'}});
+ await tx.activityLog.create({data:{eventRequestId:request.id,action:'CANCELLATION_ACCEPTED',actorType:'USER',actorId:actor.id,
+  fromStatus:event.status,toStatus:'CANCELLING',details:{...view(intent),eventVersion:intent.acceptedEventVersion}}});
+ return view(intent);
+}
 async function accept(actor,id,input){
  if(!prisma)throw fail(503,'CANCELLATION_PROOF_UNAVAILABLE','Persistent cancellation acceptance is unavailable');
  const body=validate(input);
- return prisma.$transaction(async tx=>{
-  const event=await lockEvent(tx,id),request=event.eventRequest;
-  if(!rolesForUser(actor).includes('EVENT_COORDINATOR')||!hasPermission(actor,'event_requests.review')||
-     actor.id!==request.currentCoordinatorId||actor.id===event.organiserId)
-   throw fail(403,'FORBIDDEN','Only the current assigned Coordinator may accept cancellation');
-  const saved=await tx.eventCancellationIntent.findUnique({where:{eventId:id}});
-  if(saved){
-   if(!matches(saved,body,actor))throw fail(409,'CANCELLATION_INTENT_CONFLICT','This Event already has a different accepted cancellation intent');
-   // Replay precedes mutable time, version and phase checks. The response is
-   // the immutable acceptance, including after resource release/finalization.
-   return view(saved);
-  }
-  if(request.id!==body.eventRequestId)throw fail(409,'CANCELLATION_SOURCE_MISMATCH','Event and request do not match');
-  if(event.version!==body.eventVersion||request.version!==body.requestVersion)throw fail(409,'STALE_VERSION','The Event or request changed. Refresh before accepting cancellation');
-  if(request.status!=='APPROVED')throw fail(409,'INVALID_TRANSITION','Cancellation requires an approved Event');
-  if(await tx.eventCancellationIntent.findUnique({where:{id:body.cancellationActionId}}))throw fail(409,'CANCELLATION_ACTION_CONFLICT','This cancellation action belongs to another Event');
-  const [clock]=await tx.$queryRaw`SELECT clock_timestamp() AS now`;
-  const transition=decide({action:'CANCEL',entity:{scope:'EVENT',status:event.status},actor:{...actor,roles:rolesForUser(actor)},
-   context:{...request,startAt:event.startAt,now:clock.now},text:body.reason});
-  const intent=await tx.eventCancellationIntent.create({data:{id:body.cancellationActionId,eventId:id,eventRequestId:request.id,
-   actorId:actor.id,actorName:[actor.firstName,actor.lastName].filter(value=>typeof value==='string').join(' ')||actor.id,
-   sourceEventVersion:event.version,requestVersion:request.version,acceptedEventVersion:event.version+1,
-   fromStatus:event.status,reason:body.reason,acceptedAt:clock.now}});
-  await tx.event.update({where:{id},data:{status:transition.to,version:{increment:1},safetyToken:null,
-   safetyGeneration:{increment:1},safetyState:event.safetyRoundId?'STALE':'NOT_SUBMITTED',
-   safetyOperation:require('@prisma/client').Prisma.DbNull,safetyRework:require('@prisma/client').Prisma.DbNull}});
-  await tx.safetyRound.updateMany({where:{eventId:id,status:'PENDING'},data:{status:'SUPERSEDED'}});
-  await tx.activityLog.create({data:{eventRequestId:request.id,action:'CANCELLATION_ACCEPTED',actorType:'USER',actorId:actor.id,
-   fromStatus:event.status,toStatus:'CANCELLING',details:{...view(intent),eventVersion:intent.acceptedEventVersion}}});
-  return view(intent);
- },{maxWait:10000,timeout:20000}).catch(error=>{
+ return prisma.$transaction(tx=>acceptIn(tx,actor,id,body),{maxWait:10000,timeout:20000}).catch(error=>{
   if(error.code==='P2002')throw fail(409,'CANCELLATION_ACTION_CONFLICT','This cancellation action belongs to another Event');
   throw error;
  });
 }
-module.exports={accept,view,matches,validate};
+module.exports={accept,acceptIn,view,matches,validate};

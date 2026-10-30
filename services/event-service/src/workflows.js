@@ -57,7 +57,7 @@ async function mutation(req,mode,id){
   // The database lock serialises duplicates BEFORE checking the unique replay row.
   await lock(db,JSON.stringify([actor.id,key,method,path]));
   let r;
-  if(id){await db.$queryRaw`SELECT id FROM event_requests WHERE id=${id} FOR UPDATE`;r=await load(db,id);if(mode==='decision')assigned(actor,r);else if(mode!=='reassign'&&mode!=='assign')own(actor,r);}
+  if(id){await db.$queryRaw`SELECT id FROM event_requests WHERE id=${id} FOR UPDATE`;r=await load(db,id);if(mode==='decision'||mode==='coordinatorEdit')assigned(actor,r);else if(mode!=='reassign'&&mode!=='assign')own(actor,r);}
   const saved=await db.idempotencyRecord.findUnique({where:{userId_key_method_path:{userId:actor.id,key,method,path}}});
   if(saved){
    if(mode==='create')own(actor,await load(db,saved.responseBody.id));
@@ -117,6 +117,21 @@ async function mutation(req,mode,id){
    r=await db.eventRequest.update({where:{id:r.id},data:{currentCoordinatorId:target,version:{increment:1}},include:{event:true}});
    await activity(db,r,mode==='assign'?'COORDINATOR_ASSIGNED':'COORDINATOR_REASSIGNED',actor,r.status,r.status,{changes:{currentCoordinatorId:{old:from,new:target}}});
    await outbox(db,r,mode==='assign'?'CoordinatorAssigned':'CoordinatorReassigned',actor,{fromCoordinatorId:from,coordinatorId:target});
+  }
+  if(mode==='coordinatorEdit'){
+   // CS-43: the assigned Coordinator may correct routine wording. Only the description
+   // for now; dates, venue, capacity and budget are significant changes (CS-45).
+   const open=r.status==='SUBMITTED'||(r.status==='APPROVED'&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(r.event?.status));
+   if(!open)throw fail(409,'INVALID_TRANSITION','This request is closed and can no longer be edited');
+   const extra=Object.keys(body).filter(k=>!['description','version'].includes(k));
+   if(extra.length)throw fail(422,'VALIDATION_FAILED','Only the description can be edited here. Other changes need a change proposal',Object.fromEntries(extra.map(k=>[k,['Not editable here']])));
+   const text=typeof body.description==='string'?body.description.trim():'';
+   if(!text||text.length>5000)throw fail(422,'VALIDATION_FAILED','Description is required and must be 5000 characters or fewer',{description:['Description is required and must be 5000 characters or fewer']});
+   if(text===(r.description||''))throw fail(409,'NO_CHANGES','No changes made');
+   const old=r.description||'';
+   if(r.event)await db.event.update({where:{id:r.event.id},data:{description:text,version:{increment:1}}});
+   r=await db.eventRequest.update({where:{id:r.id},data:{description:text,version:{increment:1}},include:{event:true}});
+   await activity(db,r,'COORDINATOR_EDITED',actor,r.status,r.status,{changes:{description:{old,new:text}}});
   }
   if(mode==='decision'){
    const action=body.action;if(!['APPROVE','RETURN','REJECT'].includes(action))throw fail(400,'BAD_REQUEST','Choose approve, return or reject');

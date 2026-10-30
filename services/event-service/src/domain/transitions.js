@@ -20,9 +20,12 @@ const ACTIONS = Object.freeze({
   RESUBMIT: 'RESUBMIT',
   REJECT: 'REJECT',
   CONFIRM: 'CONFIRM',
+  BEGIN_PREPARATION: 'BEGIN_PREPARATION',
   SIGNIFICANT_CHANGE_APPROVED: 'SIGNIFICANT_CHANGE_APPROVED',
   CANCEL: 'CANCEL',
   COMPLETE: 'COMPLETE',
+  // CS-54: the orchestrator finalizes a Cancelling Event once every release succeeded.
+  FINALIZE_CANCELLATION: 'FINALIZE_CANCELLATION',
 });
 
 const MAX_NOTE_LENGTH = 500; // placeholder max from CS-28, change here only
@@ -76,18 +79,28 @@ const TABLE = {
       noteRequired: true, outbox: 'RequestRejected', alsoClosesRequest: true },
   ],
   [ACTIONS.CONFIRM]: [
+    // Session 3: current Safety approval AND every required arrangement.
     { scope: 'EVENT', from: ['ARRANGEMENT_PENDING'], who: 'COORDINATOR', to: 'CONFIRMED',
-      check: 'arrangementsComplete' },
+      check: ['safetyApproved', 'arrangementsComplete'] },
+  ],
+  [ACTIONS.BEGIN_PREPARATION]: [
+    // Session 3: Preparation is its own stage after Confirmed, and only
+    // opens on a current approved Safety round.
+    { scope: 'EVENT', from: ['CONFIRMED'], who: 'COORDINATOR', to: 'PREPARATION',
+      check: 'safetyApproved' },
   ],
   [ACTIONS.SIGNIFICANT_CHANGE_APPROVED]: [
-    { scope: 'EVENT', from: ['CONFIRMED'], who: 'COORDINATOR', to: 'ARRANGEMENT_PENDING' },
+    { scope: 'EVENT', from: ['CONFIRMED', 'PREPARATION'], who: 'COORDINATOR', to: 'ARRANGEMENT_PENDING' },
   ],
   [ACTIONS.CANCEL]: [
-    { scope: 'EVENT', from: ['ARRANGEMENT_PENDING', 'CONFIRMED'], who: 'COORDINATOR', to: 'CANCELLING',
+    { scope: 'EVENT', from: ['ARRANGEMENT_PENDING', 'CONFIRMED', 'PREPARATION'], who: 'COORDINATOR', to: 'CANCELLING',
       noteRequired: true, check: 'beforeStart' },
   ],
   [ACTIONS.COMPLETE]: [
-    { scope: 'EVENT', from: ['CONFIRMED'], who: 'SYSTEM', to: 'COMPLETED', check: 'afterEnd' },
+    { scope: 'EVENT', from: ['CONFIRMED', 'PREPARATION'], who: 'SYSTEM', to: 'COMPLETED', check: 'afterEnd' },
+  ],
+  [ACTIONS.FINALIZE_CANCELLATION]: [
+    { scope: 'EVENT', from: ['CANCELLING'], who: 'SYSTEM', to: 'CANCELLED' },
   ],
 };
 
@@ -128,6 +141,13 @@ const CHECKS = {
     const outstanding = Array.isArray(ctx.outstandingArrangements) ? ctx.outstandingArrangements : null;
     if (outstanding === null || outstanding.length > 0) {
       throw new InvalidTransitionError('Not all arrangements are complete', 'ARRANGEMENTS_INCOMPLETE', { outstanding: outstanding || ['unknown'] });
+    }
+  },
+  safetyApproved(ctx) {
+    // Unknown = blocked. The caller must have verified the CURRENT approved
+    // Safety round (token, generation, source revision) and pass true.
+    if (ctx.safetyApproved !== true) {
+      throw new InvalidTransitionError('Current Safety approval is required', 'CURRENT_SAFETY_REQUIRED');
     }
   },
   beforeStart(ctx) {
@@ -179,7 +199,7 @@ function decide({ action, entity, actor, context, text }) {
   const note = row.noteRequired ? cleanNote(text) : (typeof text === 'string' && text.trim() ? text.trim().slice(0, MAX_NOTE_LENGTH) : null);
 
   // 4. Extra conditions.
-  if (row.check) CHECKS[row.check](context);
+  for (const check of [].concat(row.check || [])) CHECKS[check](context);
 
   return {
     action,
