@@ -6,7 +6,7 @@ const { availabilityLine } = require('./domain/equipment-availability');
 // The memory implementation deliberately mirrors the transactional operations
 // below. It is used only by deterministic service tests; production uses the
 // PostgreSQL branch and stock rows are locked in equipment-type order.
-const memory = { reservations: [], operations: [], idempotency: new Map() };
+const memory = { reservations: [], operations: [], idempotency: new Map(), outbox: [], history: [] };
 
 function period(value) {
   const start = Date.parse(value?.startAt);
@@ -149,6 +149,67 @@ async function reservedRequestIds(requests) {
     .map(row => row.eventRequestId));
 }
 
+function validateCancellationProof(eventId, cancellationActionId, proof) {
+  if (typeof cancellationActionId !== 'string' || !cancellationActionId.trim()
+    || proof?.eventId !== eventId || proof?.cancellationActionId !== cancellationActionId
+    || proof?.proofType !== 'ACCEPTED_INTENT' || !['CANCELLING', 'CANCELLED'].includes(proof?.phase)) {
+    throw Object.assign(new Error('A matching committed Event cancellation action is required.'), { status: 409, code: 'CANCELLATION_NOT_COMMITTED' });
+  }
+}
+
+async function releaseCanceledEvent({ eventId, cancellationActionId, proof, now = new Date() }) {
+  validateCancellationProof(eventId, cancellationActionId, proof);
+  const actionKey = `EquipmentReleased:${eventId}:${cancellationActionId}`;
+  if (config.dataMode !== 'prisma') {
+    const replay = memory.outbox.find(row => row.actionKey === actionKey);
+    if (replay) return { ...replay.payload, replayed: true };
+    const rows = memory.reservations.filter(row => row.eventId === eventId && row.active !== false)
+      .sort((a, b) => a.equipmentType.localeCompare(b.equipmentType) || a.id.localeCompare(b.id));
+    const released = rows.map(row => ({ reservationId: row.id, equipmentType: row.equipmentType, quantity: row.quantity }));
+    for (const row of rows) {
+      row.active = false;
+      row.releasedAt = now.toISOString();
+      row.releaseReason = 'Event cancelled';
+      row.cancellationActionId = cancellationActionId;
+      row.releasedBy = 'system';
+    }
+    const payload = { eventId, eventRequestId: proof.eventRequestId || null, cancellationActionId, released,
+      actor: { id: 'system', type: 'SYSTEM' }, reason: 'Event cancelled', releasedAt: now.toISOString() };
+    memory.outbox.push({ actionKey, eventType: 'EquipmentReleased', payload, createdAt: now.toISOString() });
+    memory.history.push({ action: 'EquipmentReleased', eventId, eventRequestId: proof.eventRequestId || null, details: payload, createdAt: now.toISOString() });
+    return { ...payload, replayed: false };
+  }
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`equipment-release:${eventId}`}))::text`;
+    const existing = await tx.outboxEvent.findUnique({ where: { actionKey } });
+    if (existing) return { ...existing.payload, replayed: true };
+    const rows = await tx.equipmentReservation.findMany({
+      where: { eventId, active: true }, orderBy: [{ equipmentType: 'asc' }, { id: 'asc' }],
+    });
+    const released = rows.map(row => ({ reservationId: row.id, equipmentType: row.equipmentType, quantity: row.quantity }));
+    if (rows.length) await tx.equipmentReservation.updateMany({ where: { id: { in: rows.map(row => row.id) }, active: true }, data: {
+      active: false, releasedAt: now, releaseReason: 'Event cancelled', cancellationActionId, releasedBy: 'system',
+    } });
+    const payload = { eventId, eventRequestId: proof.eventRequestId || null, cancellationActionId, released,
+      actor: { id: 'system', type: 'SYSTEM' }, reason: 'Event cancelled', releasedAt: now.toISOString() };
+    await tx.outboxEvent.create({ data: { actionKey, eventType: 'EquipmentReleased', payload } });
+    if (proof.eventRequestId) {
+      const request = await tx.technicalRequest.findUnique({ where: { eventRequestId: proof.eventRequestId } });
+      if (request) await tx.technicalRequestHistory.create({ data: {
+        requestId: request.id, version: request.version, action: 'EquipmentReleased', actorId: 'system', actorRole: 'SYSTEM', details: payload,
+      } });
+    }
+    return { ...payload, replayed: false };
+  }, { isolationLevel: 'ReadCommitted', timeout: 15000 });
+}
+
+async function reservationsForRequest(eventRequestId) {
+  if (config.dataMode !== 'prisma') return memory.reservations
+    .filter(row => row.eventRequestId === eventRequestId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return prisma.equipmentReservation.findMany({ where: { eventRequestId }, orderBy: { createdAt: 'asc' } });
+}
+
 async function createOperation({ body, actor, key }) {
   const hash = JSON.stringify({ action: 'operational-unavailability', body });
   const replay = key && (config.dataMode === 'prisma'
@@ -185,4 +246,4 @@ async function createOperation({ body, actor, key }) {
   }
 }
 
-module.exports = { availability, reserve, reservedRequestIds, createOperation, _memory: memory };
+module.exports = { availability, reserve, reservedRequestIds, createOperation, releaseCanceledEvent, reservationsForRequest, _memory: memory };

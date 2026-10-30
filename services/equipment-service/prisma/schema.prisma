@@ -54,14 +54,18 @@ model TechnicalRequestHistory {
 }
 
 model OutboxEvent {
-  id          String   @id @default(cuid())
-  actionKey   String   @unique
-  eventType   String
-  payload     Json
-  publishedAt DateTime?
-  createdAt   DateTime @default(now())
+  id            String   @id @default(cuid())
+  actionKey     String   @unique
+  eventType     String
+  payload       Json
+  publishedAt   DateTime?
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  lastError     String?
+  suppressedAt  DateTime?
+  createdAt     DateTime @default(now())
 
-  @@index([publishedAt, createdAt])
+  @@index([publishedAt, nextAttemptAt, createdAt], map: "outbox_events_delivery_idx")
   @@map("outbox_events")
 }
 
@@ -89,10 +93,15 @@ model EquipmentReservation {
   active          Boolean  @default(true)
   actorId         String
   sourceVersions  Json
+  releasedAt      DateTime? @db.Timestamptz(3)
+  releaseReason   String?
+  cancellationActionId String?
+  releasedBy      String?
   createdAt       DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([equipmentType, active, startAt, endAt])
   @@index([eventRequestId, active])
+  @@index([eventId, active], map: "equipment_reservations_event_release_idx")
   @@map("equipment_reservations")
 }
 

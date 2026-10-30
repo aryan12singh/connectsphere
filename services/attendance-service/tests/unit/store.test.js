@@ -140,3 +140,25 @@ test('TC-CS48-11 first EventConfirmed creates a local Event without creating a r
   assert.equal(await store.findRegistration(eventId, 'attendee-1'), null);
   assert.equal((await store.listEvents()).filter(event => event.eventId === eventId).length, 1);
 });
+
+test('TC-CS49-11 newer Event detail projections preserve confirmed and withdrawn registration records', async () => {
+  const eventId = `cs49-projection-${Date.now()}`;
+  const base = {
+    id: eventId, eventId, title: 'Confirmed event', description: '', status: 'CONFIRMED', eventVersion: 1,
+    startAt: '2026-11-01T00:00:00.000Z', endAt: '2026-11-01T02:00:00.000Z', timeZone: 'Asia/Singapore',
+    organiserId: 'organiser-1', registrationEnabled: true,
+    registrationWindow: { startAt: '2026-10-01T00:00:00.000Z', endAt: '2026-10-31T00:00:00.000Z' },
+  };
+  await store.upsertConfirmedEvent(base);
+  const confirmed = await store.saveRegistration({ eventId, userId: 'attendee-confirmed', status: 'CONFIRMED', registeredAt: '2026-10-01T00:00:00.000Z' });
+  const withdrawn = await store.saveRegistration({ eventId, userId: 'attendee-withdrawn', status: 'WITHDRAWN', registeredAt: '2026-10-02T00:00:00.000Z', withdrawnAt: '2026-10-03T00:00:00.000Z' });
+  await store.upsertConfirmedEvent({ ...base, eventVersion: 2, title: 'Rescheduled event', startAt: '2026-11-02T00:00:00.000Z' });
+  const rows = await store.registrationsForEvent(eventId);
+  assert.deepEqual(rows.map(row => [row.id, row.status, row.withdrawnAt ?? null]).sort(), [
+    [confirmed.id, 'CONFIRMED', null],
+    [withdrawn.id, 'WITHDRAWN', '2026-10-03T00:00:00.000Z'],
+  ].sort());
+  assert.equal((await store.findEvent(eventId)).title, 'Rescheduled event');
+  assert.equal(store.listOutboxForTest().filter(action => action.aggregateId === eventId && action.type === 'RegistrationWithdrawn').length, 0);
+  assert.equal(store.listOutboxForTest().filter(action => action.aggregateId === eventId && action.type === 'WaitlistOfferMade').length, 0);
+});

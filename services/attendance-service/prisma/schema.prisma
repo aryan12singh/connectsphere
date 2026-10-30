@@ -23,6 +23,9 @@ model Event {
   registrationLimit Int?
   registrationEnabled Boolean @default(false)
   registrationWindow Json?
+  withdrawalEnabled Boolean @default(false)
+  withdrawalCutoffAt DateTime? @db.Timestamptz(3)
+  allowReregistration Boolean @default(false)
   organiserId       String?
   createdAt         DateTime @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime @updatedAt @db.Timestamptz(3)
@@ -37,11 +40,11 @@ model Registration {
   userId      String
   status      String   @default("CONFIRMED")
   registeredAt DateTime @db.Timestamptz(3)
+  withdrawnAt DateTime? @db.Timestamptz(3)
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
   event       Event    @relation(fields: [eventId], references: [eventId], onDelete: Cascade)
 
   @@map("registrations")
-  @@unique([eventId, userId], name: "Registrations_eventId_userId_key")
 }
 
 model AttendanceOutbox {

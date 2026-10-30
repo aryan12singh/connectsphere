@@ -56,6 +56,13 @@ export CSE2E_COMPOSE_FILE="$COMPOSE"
 export CSE2E_EVIDENCE_DIR="$EVIDENCE/browser"
 wait_http "$FRONTEND_BASE/login"
 export RABBITMQ_URL="amqp://connectsphere:connectsphere-dev-only@127.0.0.1:$((PORT_BASE + 5672))"
+for database in attendance_test equipment_test; do
+  compose exec -T postgres createdb -U connectsphere "$database"
+done
+compose exec -T attendance-service sh -lc 'DATABASE_URL=postgresql://connectsphere:connectsphere@postgres:5432/attendance_test npx prisma migrate deploy --schema prisma/schema.prisma' > "$EVIDENCE/attendance-test-migrations.log" 2>&1
+compose exec -T equipment-service sh -lc 'DATABASE_URL=postgresql://connectsphere:connectsphere@postgres:5432/equipment_test npx prisma migrate deploy --schema prisma/schema.prisma' > "$EVIDENCE/equipment-test-migrations.log" 2>&1
+DATABASE_URL="postgresql://connectsphere:connectsphere@127.0.0.1:$((PORT_BASE + 2432))/attendance_test" npm run test:postgres --prefix services/attendance-service 2>&1 | tee "$EVIDENCE/attendance-postgres.log"
+DATABASE_URL="postgresql://connectsphere:connectsphere@127.0.0.1:$((PORT_BASE + 2432))/equipment_test" npm run test:integration --prefix services/equipment-service 2>&1 | tee "$EVIDENCE/equipment-postgres.log"
 export CS_BUS_RESULT="$EVIDENCE/booking-notification.json"
 (cd frontend && CS_BUS_ACCEPTANCE=1 CS_BUS_FAULT_ACCEPTANCE=1 TEST_RESULTS_JSON="$EVIDENCE/notification-results.json" TEST_RECORD_STORIES=CS-39 TEST_EVIDENCE_LAYER='Real Kong, Keycloak, PostgreSQL and RabbitMQ' npm run test:report -- ../tests/specs/CS-39.spec.ts --reporter=default) 2>&1 | tee "$EVIDENCE/notification-integration.log"
 (cd frontend && CS_SAFETY_ACCEPTANCE=1 TEST_RESULTS_JSON="$EVIDENCE/safety-results.json" TEST_RECORD_STORIES=CS-93,CS-95 TEST_EVIDENCE_LAYER='Real Safety lifecycle, PostgreSQL reservations, Keycloak and RabbitMQ' npm run test:report -- ../tests/specs/CS-93.spec.ts ../tests/specs/CS-95.spec.ts --no-file-parallelism --reporter=default) 2>&1 | tee "$EVIDENCE/safety-integration.log"
