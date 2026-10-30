@@ -364,3 +364,22 @@ model ChangeRequest {
   @@index([eventRequestId, status])
   @@map("change_requests")
 }
+
+// CS-30: the current Coordinator asks the Lead to reassign a request. The Lead
+// reassigns (which marks it FULFILLED) or declines with a reason. One open
+// (PENDING) request per EventRequest. Foreign key and the partial unique index live in the migration.
+model CoordinatorTransferRequest {
+  id String @id // client-supplied action id, so a retry returns the same row
+  eventRequestId String
+  requestedById String
+  reason String
+  baseRequestVersion Int
+  status String @default("PENDING") // PENDING, FULFILLED, DECLINED, WITHDRAWN
+  decidedById String?
+  decidedAt DateTime? @db.Timestamptz(3)
+  decisionReason String?
+  newCoordinatorId String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  @@index([eventRequestId, status])
+  @@map("coordinator_transfer_requests")
+}
