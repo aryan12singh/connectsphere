@@ -16,9 +16,9 @@ registerEndpoint('/api/equipment/requests/reserve-ui/availability', () => ({
   lines: [{ equipmentType: 'projector', requested: 2, available: 5, shortfall: 0 }],
 }))
 
-async function review() {
+async function review(status = 'APPROVED') {
   ui.queue = ref({ requests: [{
-    eventRequestId: 'reserve-ui', coordinatorId: 'coordinator', version: 1, status: 'APPROVED', reserved: false,
+    eventRequestId: 'reserve-ui', coordinatorId: 'coordinator', version: 1, status, reserved: false,
     equipment: [{ equipmentType: 'projector', quantity: 2, venueId: 'hall', venueName: 'Main hall' }],
     supportRequired: false, supportDetails: '', placementDetails: 'At the lectern', notRequired: false,
     equipmentPeriod: null, event: null,
@@ -44,6 +44,17 @@ describe('CS-42 — reservation period boundaries', () => {
     ], '2026-11-12T12:45:00.000Z', '2026-11-12T14:00:00.000Z')
 
     expect(result).toEqual({ requested: 3, available: 5, shortfall: 0 })
+  })
+})
+
+describe('CS-42 — pending request reservation controls', () => {
+  it('TC-CS42-13 does not expose Reserve before Technical Support approval', async () => {
+    const wrapper = await review('PENDING_TECH_REVIEW')
+    try {
+      expect(wrapper.findAll('button').some(button => button.text() === 'Reserve complete request')).toBe(false)
+      expect(wrapper.findAll('button').some(button => button.text() === 'Submit decision')).toBe(true)
+    }
+    finally { wrapper.unmount() }
   })
 })
 

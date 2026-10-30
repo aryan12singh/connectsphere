@@ -7,4 +7,5 @@ COPY equipment-service/prisma ./prisma
 RUN npx prisma generate
 COPY equipment-service/src ./src
 COPY utils ./utils
+ENV SERVICE_UTILS_PATH=/app/utils
 CMD ["sh", "-c", "if [ \"$DATA_MODE\" = \"prisma\" ]; then npx prisma migrate deploy; fi; node src/server.js"]

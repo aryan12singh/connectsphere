@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { equipmentPeriod } = require('../../src/domain/equipment-period');
 
-test('TC-CS41-01 pools valid venue occupied windows without adding an equipment buffer', () => {
+test('equipmentPeriod pools supplied occupied windows without adding a second equipment buffer', () => {
   assert.deepEqual(equipmentPeriod([
     { bookingId: 'booking-a', occupiedStartAt: '2026-10-18T09:30:00Z', occupiedEndAt: '2026-10-18T12:45:00Z' },
     { bookingId: 'booking-b', occupiedStartAt: '2026-10-18T10:15:00Z', occupiedEndAt: '2026-10-18T12:00:00Z' },

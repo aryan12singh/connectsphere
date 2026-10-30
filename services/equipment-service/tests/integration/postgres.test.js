@@ -1,10 +1,12 @@
 const { test, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
+const http = require('node:http');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { requireTestDatabase, start } = require('../../../../tests/helpers/service-integration.cjs');
 requireTestDatabase('equipment');
+const config = require('../../src/config');
 const db = require('../../src/db');
 const store = require('../../src/store');
 const operations = require('../../src/operations');
@@ -16,6 +18,24 @@ const window = { startAt: '2035-01-01T10:00:00.000Z', endAt: '2035-01-01T12:00:0
 const requirements = equipment => ({ equipment, supportRequired: false, supportDetails: '', placementDetails: 'At the lectern', notRequired: false });
 const contexts = new Map();
 test.mock.method(require('../../src/eventContext'), 'eventContext', async eventId => contexts.get(eventId) || ({ eventId, eventRequestId: eventId, requirementsRevision: 'revision-1' }));
+async function startJsonStub(handler) {
+  const server = http.createServer(async (req, res) => {
+    const value = await handler(req);
+    if (value === undefined) {
+      res.writeHead(404).end();
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(value));
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  return {
+    url: `http://127.0.0.1:${server.address().port}`,
+    close: () => new Promise(resolve => server.close(resolve)),
+  };
+}
 async function submit(equipment, status = 'PENDING_TECH_REVIEW') {
   const eventRequestId = `pg-${randomUUID()}`;
   const saved = await store.saveSubmission({ eventRequestId, actor: coordinator, value: { version: 1, status, requirements: requirements(equipment) }, hash: 'submit', context: { eventId: eventRequestId, requirementsRevision: 'revision-1' } });
@@ -40,6 +60,54 @@ beforeEach(async () => {
   }
 });
 after(async () => { await api?.close(); await db.$disconnect(); });
+
+test('TC-CS40-11 PostgreSQL concurrent decisions commit one current-version result and one action', async () => {
+  const eventRequestId = `tc40-race-${randomUUID()}`;
+  const saved = await store.saveSubmission({
+    eventRequestId, actor: coordinator,
+    value: { version: 1, status: 'PENDING_TECH_REVIEW', requirements: requirements([{ equipmentType: 'projector', quantity: 1 }]) },
+    hash: 'race-submit', context: { eventId: eventRequestId, requirementsRevision: 'revision-1' },
+  });
+  assert.equal(saved.record.status, 'PENDING_TECH_REVIEW');
+  const route = `/event-requests/${eventRequestId}/technical-request/decision`;
+  const baseHeaders = { 'x-test-user-id': support.id, 'x-test-role': support.role };
+  const [approved, rejected] = await Promise.all([
+    api.http(route, { method: 'POST', headers: { ...baseHeaders, 'Idempotency-Key': `approve-${eventRequestId}` }, body: { decision: 'APPROVED', version: 1 } }),
+    api.http(route, { method: 'POST', headers: { ...baseHeaders, 'Idempotency-Key': `reject-${eventRequestId}` }, body: { decision: 'REJECTED', reason: 'No technician', version: 1 } }),
+  ]);
+  assert.deepEqual([approved.status, rejected.status].sort(), [200, 409]);
+  const current = await store.findRequest(eventRequestId);
+  assert.ok(['APPROVED', 'REJECTED'].includes(current.status));
+  assert.equal(await db.technicalRequestHistory.count({ where: { requestId: current.id, action: 'TechRequestDecided' } }), 1);
+  assert.equal(await db.outboxEvent.count({ where: { actionKey: `TechRequestDecided:${eventRequestId}:v1` } }), 1);
+});
+
+test('TC-CS40-12 a failed request outbox insert rolls back the request and retry persists one durable action', async () => {
+  const eventRequestId = `tc40-submit-rollback-${randomUUID()}`;
+  const key = `submit-${eventRequestId}`;
+  await db.$executeRawUnsafe(`CREATE FUNCTION equipment_test_reject_submission() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."eventType"='TechRequestSubmitted' THEN RAISE EXCEPTION 'isolated submission rollback'; END IF; RETURN NEW; END $$`);
+  await db.$executeRawUnsafe('CREATE TRIGGER equipment_test_reject_submission BEFORE INSERT ON outbox_events FOR EACH ROW EXECUTE FUNCTION equipment_test_reject_submission()');
+  try {
+    const failed = await api.http(`/event-requests/${eventRequestId}/technical-request`, {
+      method: 'POST', headers: { 'x-test-user-id': coordinator.id, 'x-test-role': coordinator.role, 'Idempotency-Key': key },
+      body: { equipment: [{ equipmentType: 'projector', quantity: 1, venueId: 'room-a' }], supportRequired: false, supportDetails: '', placementDetails: 'At the lectern', notRequired: false, version: 1 },
+    });
+    assert.equal(failed.status, 500);
+    assert.equal(await db.technicalRequest.count({ where: { eventRequestId } }), 0);
+    assert.equal(await db.technicalRequestHistory.count(), 0);
+    assert.equal(await db.idempotencyRecord.count({ where: { actorId: coordinator.id, key } }), 0);
+  } finally {
+    await db.$executeRawUnsafe('DROP TRIGGER equipment_test_reject_submission ON outbox_events');
+    await db.$executeRawUnsafe('DROP FUNCTION equipment_test_reject_submission()');
+  }
+  const recovered = await api.http(`/event-requests/${eventRequestId}/technical-request`, {
+    method: 'POST', headers: { 'x-test-user-id': coordinator.id, 'x-test-role': coordinator.role, 'Idempotency-Key': key },
+    body: { equipment: [{ equipmentType: 'projector', quantity: 1, venueId: 'room-a' }], supportRequired: false, supportDetails: '', placementDetails: 'At the lectern', notRequired: false, version: 1 },
+  });
+  assert.equal(recovered.status, 201);
+  assert.equal(await db.technicalRequest.count({ where: { eventRequestId } }), 1);
+  assert.equal(await db.outboxEvent.count({ where: { actionKey: `TechRequestSubmitted:${eventRequestId}:v1` } }), 1);
+});
 
 test('equipment naming migration preserves stock while migrating the legacy catalog and request table names', async () => {
   const migration = readFileSync(join(__dirname, '../../prisma/migrations/20261018090000_snake_case_equipment_schema/migration.sql'), 'utf8');
@@ -73,7 +141,7 @@ test('equipment naming migration preserves stock while migrating the legacy cata
   }), error => error === marker);
 });
 
-test('TC-CS42-01/08 PostgreSQL reserves every approved line and retries retain one history and outbox action', async () => {
+test('TC-CS42-01/08/10 PostgreSQL reserves all lines, retries once and preserves durable proof/outbox across reconnect', async () => {
   const request = await submit([{ equipmentType: 'projector', quantity: 2 }, { equipmentType: 'speaker', quantity: 1 }]);
   const input = { request, window, actor: support, key: randomUUID(), hash: 'two-lines', sourceVersions: { requirementsRevision: 'revision-1' } };
   const saved = await operations.reserve(input);
@@ -85,6 +153,8 @@ test('TC-CS42-01/08 PostgreSQL reserves every approved line and retries retain o
   assert.equal(await db.outboxEvent.count({ where: { actionKey: `EquipmentReserved:${request.eventRequestId}:v1` } }), 1);
   await db.$disconnect();
   assert.equal((await readiness.current(request.eventRequestId)).status, 'APPROVED');
+  assert.equal(await db.equipmentReservation.count({ where: { eventRequestId: request.eventRequestId, active: true } }), 2);
+  assert.equal(await db.outboxEvent.count({ where: { actionKey: `EquipmentReserved:${request.eventRequestId}:v1` } }), 1);
 });
 
 test('TC-CS42 PostgreSQL repeat reserve with a fresh action key reuses the current reservation', async () => {
@@ -96,6 +166,56 @@ test('TC-CS42 PostgreSQL repeat reserve with a fresh action key reuses the curre
   assert.equal(await db.equipmentReservation.count({ where: { eventRequestId: request.eventRequestId, active: true } }), 1);
   assert.equal(await db.technicalRequestHistory.count({ where: { requestId: request.id, action: 'EquipmentReserved' } }), 1);
   assert.equal(await db.outboxEvent.count({ where: { actionKey: `EquipmentReserved:${request.eventRequestId}:v1` } }), 1);
+});
+
+test('TC-CS46-01/03/04 PostgreSQL cancellation release is event-scoped, auditable, durable, and replay-safe', async t => {
+  const request = await submit([{ equipmentType: 'projector', quantity: 1 }, { equipmentType: 'microphone', quantity: 2 }]);
+  const proof = { eventId: request.eventRequestId, eventRequestId: request.eventRequestId, cancellationActionId: randomUUID(), phase: 'CANCELLING', proofType: 'ACCEPTED_INTENT' };
+  t.mock.method(require('../../src/eventContext'), 'cancellationProof', async () => proof);
+  const other = await submit([{ equipmentType: 'projector', quantity: 2 }]);
+  await operations.reserve({ request, window, actor: support, key: randomUUID(), hash: 'release-lines' });
+  await operations.reserve({ request: other, window, actor: support, key: randomUUID(), hash: 'other-event' });
+  await operations.createOperation({ body: { equipmentType: 'projector', quantity: 1, reason: 'Scheduled maintenance', ...window }, actor: support });
+
+  const first = await operations.releaseCanceledEvent({ eventId: request.eventRequestId, cancellationActionId: proof.cancellationActionId, proof });
+  assert.deepEqual(first.released.map(row => [row.equipmentType, row.quantity]), [['microphone', 2], ['projector', 1]]);
+  assert.equal(await db.equipmentReservation.count({ where: { eventId: request.eventRequestId, active: true } }), 0);
+  assert.equal(await db.equipmentReservation.count({ where: { eventId: other.eventRequestId, active: true } }), 1);
+  const available = await operations.availability({ request: { version: 1, requirements: requirements([{ equipmentType: 'projector', quantity: 5 }]) }, window });
+  assert.equal(available.lines.find(row => row.equipmentType === 'projector').available, 2);
+  assert.equal(await db.technicalRequestHistory.count({ where: { requestId: request.id, action: 'EquipmentReleased' } }), 1);
+  assert.equal(await db.outboxEvent.count({ where: { actionKey: `EquipmentReleased:${request.eventRequestId}:${proof.cancellationActionId}` } }), 1);
+  assert.equal((await operations.releaseCanceledEvent({ eventId: request.eventRequestId, cancellationActionId: proof.cancellationActionId, proof })).replayed, true);
+  assert.equal(await db.technicalRequestHistory.count({ where: { requestId: request.id, action: 'EquipmentReleased' } }), 1);
+});
+
+test('TC-CS46-05 PostgreSQL outbox failure rolls back release and a retry completes it once', async t => {
+  const request = await submit([{ equipmentType: 'projector', quantity: 1 }, { equipmentType: 'microphone', quantity: 1 }]);
+  const proof = { eventId: request.eventRequestId, eventRequestId: request.eventRequestId, cancellationActionId: randomUUID(), phase: 'CANCELLING', proofType: 'ACCEPTED_INTENT' };
+  t.mock.method(require('../../src/eventContext'), 'cancellationProof', async () => proof);
+  await operations.reserve({ request, window, actor: support, key: randomUUID(), hash: 'release-rollback' });
+  await db.$executeRawUnsafe(`CREATE FUNCTION equipment_test_reject_release() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."eventType"='EquipmentReleased' THEN RAISE EXCEPTION 'isolated release rollback'; END IF; RETURN NEW; END $$`);
+  await db.$executeRawUnsafe('CREATE TRIGGER equipment_test_reject_release BEFORE INSERT ON outbox_events FOR EACH ROW EXECUTE FUNCTION equipment_test_reject_release()');
+  try {
+  const failed = await api.http(`/internal/events/${request.eventRequestId}/reservations/release`, {
+    method: 'POST', headers: { 'x-internal-api-key': require('../../src/config').internalApiKey },
+    body: { cancellationActionId: proof.cancellationActionId },
+  });
+  assert.equal(failed.status, 500, 'the caller receives a failure rather than a false completion');
+    assert.equal(await db.equipmentReservation.count({ where: { eventId: request.eventRequestId, active: true } }), 2);
+    assert.equal(await db.technicalRequestHistory.count({ where: { requestId: request.id, action: 'EquipmentReleased' } }), 0);
+  } finally {
+    await db.$executeRawUnsafe('DROP TRIGGER equipment_test_reject_release ON outbox_events');
+    await db.$executeRawUnsafe('DROP FUNCTION equipment_test_reject_release()');
+  }
+  const result = await api.http(`/internal/events/${request.eventRequestId}/reservations/release`, {
+    method: 'POST', headers: { 'x-internal-api-key': require('../../src/config').internalApiKey },
+    body: { cancellationActionId: proof.cancellationActionId },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.released.length, 2);
+  assert.equal(await db.equipmentReservation.count({ where: { eventId: request.eventRequestId, active: true } }), 0);
+  assert.equal(await db.outboxEvent.count({ where: { actionKey: `EquipmentReleased:${request.eventRequestId}:${proof.cancellationActionId}` } }), 1);
 });
 
 test('TC-CS41-04/05 live dated checks include reservations and operational unavailability without persisting snapshots or creating commitments', async () => {
@@ -113,6 +233,91 @@ test('TC-CS41-04/05 live dated checks include reservations and operational unava
   await operations.availability({ request, window });
   assert.equal(await db.equipmentReservation.count(), count);
 });
+
+test('TC-CS41-03 and TC-CS42-05 persisted reservations use half-open periods and reserve rechecks the current interval', async () => {
+  const occupiedWindow = { startAt: '2035-01-01T10:00:00.000Z', endAt: '2035-01-01T12:00:00.000Z' };
+  const first = await submit([{ equipmentType: 'projector', quantity: 5 }]);
+  await operations.reserve({ request: first, window: occupiedWindow, actor: support, key: randomUUID(), hash: 'half-open-fixture' });
+  const candidate = await submit([{ equipmentType: 'projector', quantity: 1 }]);
+  const touching = await operations.availability({ request: candidate, window: { startAt: occupiedWindow.endAt, endAt: '2035-01-01T13:00:00.000Z' } });
+  assert.deepEqual(touching.lines[0], { equipmentType: 'projector', requested: 1, available: 5, shortfall: 0 });
+  const overlapping = { startAt: '2035-01-01T11:59:00.000Z', endAt: '2035-01-01T13:00:00.000Z' };
+  const conflict = await operations.availability({ request: candidate, window: overlapping });
+  assert.deepEqual(conflict.lines[0], { equipmentType: 'projector', requested: 1, available: 0, shortfall: 1 });
+  await assert.rejects(() => operations.reserve({ request: candidate, window: overlapping, actor: support, key: randomUUID(), hash: 'overlap-reject' }), error => error.code === 'EQUIPMENT_SHORTFALL');
+  assert.equal(await db.equipmentReservation.count({ where: { eventRequestId: candidate.eventRequestId } }), 0);
+});
+
+test('TC-CS41-06 an earlier sufficient availability response cannot authorize after another Event reserves stock', async () => {
+  const checked = await submit([{ equipmentType: 'projector', quantity: 4 }]);
+  assert.equal((await operations.availability({ request: checked, window })).fulfillable, true);
+  const competitor = await submit([{ equipmentType: 'projector', quantity: 2 }]);
+  await operations.reserve({ request: competitor, window, actor: support, key: randomUUID(), hash: 'stale-check-competitor' });
+  const refreshed = await operations.availability({ request: checked, window });
+  assert.equal(refreshed.fulfillable, false);
+  assert.deepEqual(refreshed.lines[0], { equipmentType: 'projector', requested: 4, available: 3, shortfall: 1 });
+});
+
+test('TC-CS42-11 a Booking hold expiry or single-venue change leaves the persisted equipment commitment active', async () => {
+  const request = await submit([{ equipmentType: 'projector', quantity: 2 }]);
+  const originalSources = { requirementsRevision: 'revision-1', allocations: [{ bookingId: 'expired-hold', bookingVersion: 1, venueId: 'old-hall', venueVersion: 1 }] };
+  const reserved = await operations.reserve({ request, window, actor: support, key: randomUUID(), hash: 'cs42-11-initial', sourceVersions: originalSources });
+  assert.equal(reserved.reservations.length, 1);
+
+  let allocations = [{ bookingId: 'remaining-booking', bookingVersion: 3, venueId: 'hall-a', venueVersion: 4, occupiedStartAt: window.startAt, occupiedEndAt: window.endAt }];
+  let bookingReads = 0;
+  const authStub = await startJsonStub(req => req.url === '/internal/sessions/validate'
+    ? { valid: true, user: { id: support.id, role: support.role }, permissions: [] }
+    : undefined);
+  const eventStub = await startJsonStub(req => {
+    const match = /^\/internal\/requests\/([^/]+)\/technical-context$/.exec(req.url || '');
+    if (!match) return undefined;
+    const eventRequestId = decodeURIComponent(match[1]);
+    return { eventRequestId, eventId: eventRequestId, requirementsRevision: 'revision-1', currentCoordinatorId: coordinator.id };
+  });
+  const bookingStub = await startJsonStub(req => {
+    const match = /^\/internal\/events\/([^/]+)\/equipment-allocation-context$/.exec(req.url || '');
+    if (!match) return undefined;
+    bookingReads++;
+    return { eventId: decodeURIComponent(match[1]), allocations, checkedAt: '2035-01-01T09:00:00.000Z' };
+  });
+  const previousConfig = { isTest: config.isTest, authServiceUrl: config.authServiceUrl, eventServiceUrl: config.eventServiceUrl, bookingServiceUrl: config.bookingServiceUrl };
+  const previousAuthMode = process.env.AUTH_MODE;
+  try {
+    delete process.env.AUTH_MODE;
+    config.isTest = false;
+    config.authServiceUrl = authStub.url;
+    config.eventServiceUrl = eventStub.url;
+    config.bookingServiceUrl = bookingStub.url;
+
+    const path = `/event-requests/${request.eventRequestId}/technical-request/availability`;
+    const firstRead = await api.http(path, { headers: { authorization: 'Bearer isolated-test-token' } });
+    assert.equal(firstRead.status, 200);
+    let active = await db.equipmentReservation.findMany({ where: { eventRequestId: request.eventRequestId, active: true } });
+    assert.deepEqual(active.map(row => row.id), [reserved.reservations[0].id]);
+
+    allocations = [
+      { bookingId: 'remaining-booking', bookingVersion: 3, venueId: 'hall-a', venueVersion: 4, occupiedStartAt: window.startAt, occupiedEndAt: window.endAt },
+      { bookingId: 'replacement-booking', bookingVersion: 2, venueId: 'hall-b', venueVersion: 6, occupiedStartAt: window.startAt, occupiedEndAt: window.endAt },
+    ];
+    const changedVenueRead = await api.http(path, { headers: { authorization: 'Bearer isolated-test-token' } });
+    assert.equal(changedVenueRead.status, 200);
+    active = await db.equipmentReservation.findMany({ where: { eventRequestId: request.eventRequestId, active: true } });
+    assert.deepEqual(active.map(row => row.id), [reserved.reservations[0].id]);
+    assert.deepEqual(active[0].sourceVersions, originalSources);
+    assert.equal(bookingReads, 2);
+  }
+  finally {
+    config.isTest = previousConfig.isTest;
+    config.authServiceUrl = previousConfig.authServiceUrl;
+    config.eventServiceUrl = previousConfig.eventServiceUrl;
+    config.bookingServiceUrl = previousConfig.bookingServiceUrl;
+    if (previousAuthMode === undefined) delete process.env.AUTH_MODE;
+    else process.env.AUTH_MODE = previousAuthMode;
+    await Promise.all([authStub.close(), eventStub.close(), bookingStub.close()]);
+  }
+});
+test.todo('TC-CS42-12 whole-Event cancellation requires the CS-46 cancellation workflow; explicit technical replacement is covered separately');
 
 test('TC-CS42-02/03 PostgreSQL shortages and obsolete approvals commit no reservation, history or action', async () => {
   const competing = await submit([{ equipmentType: 'projector', quantity: 3 }]);

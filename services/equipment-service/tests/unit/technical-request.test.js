@@ -29,6 +29,20 @@ test('TC-CS40-02 rejects unknown equipment and invalid quantities without accept
   }
 });
 
+test('TC-CS40-02 validates equipment-only, support-only and combined request shapes', () => {
+  const equipmentOnly = validateRequirements({ ...base, supportRequired: false, supportDetails: '' }, ['projector']);
+  const supportOnly = validateRequirements({ ...base, equipment: [], supportRequired: true }, ['projector']);
+  const combined = validateRequirements({ ...base, supportRequired: true }, ['projector']);
+  assert.equal(equipmentOnly.valid, true);
+  assert.equal(equipmentOnly.value.requirements.supportRequired, false);
+  assert.equal(supportOnly.valid, true);
+  assert.equal(supportOnly.value.requirements.equipment.length, 0);
+  assert.equal(supportOnly.value.requirements.supportRequired, true);
+  assert.equal(combined.valid, true);
+  assert.equal(combined.value.requirements.equipment.length, 1);
+  assert.equal(combined.value.requirements.supportRequired, true);
+});
+
 test('TC-CS40-05 accepts support-only requests but does not mark them ready before a decision', () => {
   const result = validateRequirements({ ...base, equipment: [], supportRequired: true }, ['projector']);
   assert.equal(result.valid, true);
@@ -69,7 +83,7 @@ test('TC-CS40-03 and TC-CS40-04 require Technical Support and a non-blank reject
   assert.equal(decideRequirements(request, { id: 'support-1', role: 'TECHNICAL_SUPPORT_STAFF' }, 'REJECTED', 'Insufficient staff').status, 'REJECTED');
 });
 
-test('TC-CS40-10 pools equipment allocated across venues into one Event request', () => {
+test('TC-CS40-10 and TC-CS41-07 pool equipment allocated across venues into one Event demand', () => {
   assert.deepEqual(poolVenueAllocations([
     { venueId: 'room-a', equipmentType: 'projector', quantity: 1 },
     { venueId: 'room-b', equipmentType: 'projector', quantity: 1 },

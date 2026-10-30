@@ -5,6 +5,16 @@ const app = express();
 app.use(helmet());
 app.use(express.json({ limit: '32kb' }));
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.post('/internal/events/:eventId/reservations/release', (req, res, next) => {
+  if (req.get('x-internal-api-key') !== require('./config').internalApiKey) return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Internal credential required.' } });
+  const cancellationActionId = req.body?.cancellationActionId;
+  require('./eventContext').cancellationProof(req.params.eventId, cancellationActionId)
+    .then(proof => require('./operations').releaseCanceledEvent({ eventId: req.params.eventId, cancellationActionId, proof }))
+    .then(value => {
+      if (value.replayed) res.set('Idempotency-Replayed', 'true');
+      return res.json(value);
+    }, next);
+});
 app.get('/internal/events/:eventId/readiness', (req, res, next) => {
   if (req.get('x-internal-api-key') !== require('./config').internalApiKey) return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Internal credential required.' } });
   require('./readiness').current(req.params.eventId).then(value => res.json(value), next);

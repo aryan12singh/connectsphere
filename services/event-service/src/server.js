@@ -8,8 +8,10 @@ app.listen(config.port, () => {
 
 const relay=require('./notificationOutbox').start();
 const completion=require('./completion').start();
+const cancellations=require('./cancellationRunner').start();
 for(const signal of ['SIGINT','SIGTERM'])process.once(signal,async()=>{
   await relay?.stop();
   await completion?.stop();
+  await cancellations?.stop();
   process.exit(0);
 });

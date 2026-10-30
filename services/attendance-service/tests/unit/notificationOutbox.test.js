@@ -18,6 +18,11 @@ test('Attendance outbox projection rejects unsupported event types instead of pu
   assert.throws(() => project({ id: 'row-1', kind: 'RegistrationWaitlisted', aggregateId: 'event-1', payload: {} }), /Invalid Attendance notification outbox row/);
 });
 
+test('TC-CS49-01 RegistrationWithdrawn is projected with its stable outbox ID', () => {
+  const row = { id: 'withdrawal-action-1', kind: 'RegistrationWithdrawn', aggregateId: 'event-1', payload: { eventId: 'event-1', registrationId: 'registration-1' } };
+  assert.deepEqual(project(row), { id: row.id, type: 'RegistrationWithdrawn', aggregateType: 'Event', aggregateId: 'event-1', payload: row.payload });
+});
+
 test('Attendance starts its notification relay only in Prisma mode with a configured broker', () => {
   let called = false;
   assert.equal(start({ env: { DATA_MODE: 'memory', RABBITMQ_URL: 'amqp://broker' }, relay: () => { called = true; } }), null);
