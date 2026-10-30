@@ -2,7 +2,7 @@
 //  - cancelNow: the assigned Coordinator cancels directly (Event becomes Cancelling).
 //  - finalize: called by the cancellation orchestrator once every required release
 //    has succeeded. Only then does the Event become Cancelled and EventCancelled go out.
-// Releasing venues, equipment and registrations is done by their own services.
+// Venue and equipment are released by their own services; src/cancellationRunner.js drives them.
 const prisma=require('./db');
 const {lockEvent}=require('./eventLock');
 const {acceptIn,view}=require('./cancellationIntent');
@@ -10,7 +10,8 @@ const {decide,ACTIONS}=require('./domain/transitions');
 const fail=(status,code,message,fields)=>Object.assign(new Error(message),{status,code,...(fields?{fields}:{})});
 const ID=/^[-\w.:]{1,200}$/;
 // Resources that must confirm their release before the Event is Cancelled.
-const REQUIRED_RELEASES=['VENUE','EQUIPMENT','REGISTRATION'];
+// Registration needs no receipt: attendance refuses registrations by reading the Event status.
+const REQUIRED_RELEASES=['VENUE','EQUIPMENT'];
 function db(){if(!prisma)throw fail(503,'CANCELLATION_PROOF_UNAVAILABLE','Persistent cancellation is unavailable');return prisma;}
 function reasonOf(input){
  const reason=typeof input?.reason==='string'?input.reason.trim():'';

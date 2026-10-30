@@ -20,7 +20,7 @@ const approved = async () => {
 const cancel = (id: string, body: Record<string, unknown>, who = 'coord') =>
   api.call('POST', `/api/events/${id}/cancel`, { cancellationActionId: randomUUID(), reason: 'Speaker withdrew', ...body }, who)
 const receipts = (actionId: string, version: number, skip: string[] = []) =>
-  ['VENUE', 'EQUIPMENT', 'REGISTRATION'].filter(r => !skip.includes(r)).map(resource => ({ resource, receiptId: randomUUID(), cancellationActionId: actionId, eventVersion: version }))
+  ['VENUE', 'EQUIPMENT'].filter(r => !skip.includes(r)).map(resource => ({ resource, receiptId: randomUUID(), cancellationActionId: actionId, eventVersion: version }))
 
 describe('CS-54 — TC-CS54-01 only the assigned Coordinator cancels, with a reason', () => {
   it('refuses others and blank reasons; the Coordinator moves the Event to Cancelling', async () => {
