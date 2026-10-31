@@ -1588,6 +1588,134 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /event-requests/transfer-requests:
+    get:
+      summary: Lead lists open transfer requests (CS-30)
+      description: Requests whose Coordinator asked the Lead to reassign them, oldest first. Only requests that are still open and still held by the Coordinator who asked appear. Lead only.
+      responses:
+        "200":
+          description: Page of requests, each with allowedActions reassign and decline and a transfer object (id, reason, requestedAt, requestedById, requestedByName)
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: Caller is not a Coordinator Lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /event-requests/{id}/transfer-request:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+    get:
+      summary: Transfer requests for one request, newest first (CS-30)
+      description: The current Coordinator or a Lead.
+      responses:
+        "200":
+          description: Transfer requests
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: Caller may not do this
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      summary: The assigned Coordinator asks the Lead to reassign (CS-30)
+      description: Body transferActionId (client-generated, makes a retry safe), reason (1 to 500 characters) and optional version. A Coordinator cannot hand a request on directly; this only records the ask. Nothing is reassigned until the Lead reassigns. One open request at a time; the request must still be open (submitted, returned, or approved and being arranged). 201 on create, 200 on an exact retry.
+      responses:
+        "201":
+          description: Transfer request created
+          content:
+            application/json:
+              schema:
+                type: object
+        "200":
+          description: Exact retry of an earlier request
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: Caller may not do this
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Not allowed in the current state, or already decided
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /event-requests/{id}/transfer-request/{transferId}/withdraw:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}, {name: transferId, in: path, required: true, schema: {type: string}}]
+    post:
+      summary: The Coordinator who asked withdraws the request (CS-30)
+      responses:
+        "200":
+          description: Withdrawn (a repeat also returns 200)
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: Caller may not do this
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Not allowed in the current state, or already decided
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /event-requests/{id}/transfer-request/{transferId}/decline:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}, {name: transferId, in: path, required: true, schema: {type: string}}]
+    post:
+      summary: The Lead declines a transfer request (CS-30)
+      description: Body reason (1 to 500 characters). The Coordinator keeps the request. Accepting is the normal reassign, which closes the open transfer request in the same transaction.
+      responses:
+        "200":
+          description: Declined
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: Caller may not do this
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Not allowed in the current state, or already decided
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /event-requests/{id}/change-requests:
     parameters: [{name: id, in: path, required: true, schema: {type: string}}]
     get:

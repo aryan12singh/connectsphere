@@ -202,6 +202,20 @@ router.get('/assigned-by-me', requirePermission('assignments.view'), async (req,
   } catch (error) { return next(error); }
 });
 
+// CS-30: requests whose Coordinator asked the Lead to reassign them, oldest first.
+// The Lead then uses the normal reassign (which closes the request) or declines it.
+router.get('/transfer-requests', requirePermission('assignments.view'), async (req, res, next) => {
+  try {
+    const pending = await require('../coordinatorTransfer').listPending();
+    const names = new Map((await coordinatorCandidates()).map(user => [user.id, [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || user.id]));
+    const items = await Promise.all(pending.map(async ({ transfer, request }) => ({
+      ...leadItem(request, await organiserSummary(request.organiserId), ['reassign', 'decline']),
+      transfer: { id: transfer.id, reason: transfer.reason, requestedAt: transfer.createdAt, requestedById: transfer.requestedById, requestedByName: names.get(transfer.requestedById) || 'Coordinator' },
+    })));
+    return res.json(page(items, req));
+  } catch (error) { return next(error); }
+});
+
 // ── CS-83: the Lead's oversight of active Events ─────────────────────────────
 // Read-only. Lists Events and requests that currently have a Coordinator and are
 // still open (Under Review, Returned for Amendment, Planning, Confirmed,
@@ -437,6 +451,21 @@ router.get('/:id/change-requests', requireAnyPermission('event_requests.create',
 });
 router.post('/:id/change-requests/:changeId/decision', requirePermission('event_requests.review'), async (req, res, next) => {
   try { return res.json(await changeRequests.decide(workflowActor(req.actor), req.params.id, req.params.changeId, req.body)); } catch (error) { return changeError(res, error, next); }
+});
+
+// CS-30: the assigned Coordinator asks the Lead to reassign; the Lead declines or reassigns.
+const transfers = require('../coordinatorTransfer');
+router.post('/:id/transfer-request', requirePermission('event_requests.review'), async (req, res, next) => {
+  try { const out = await transfers.request(workflowActor(req.actor), req.params.id, req.body); return res.status(out.status).json(out.body); } catch (error) { return changeError(res, error, next); }
+});
+router.get('/:id/transfer-request', requireAnyPermission('event_requests.review', 'assignments.view'), async (req, res, next) => {
+  try { return res.json(await transfers.list(workflowActor(req.actor), req.params.id)); } catch (error) { return changeError(res, error, next); }
+});
+router.post('/:id/transfer-request/:transferId/withdraw', requirePermission('event_requests.review'), async (req, res, next) => {
+  try { return res.json(await transfers.withdraw(workflowActor(req.actor), req.params.id, req.params.transferId)); } catch (error) { return changeError(res, error, next); }
+});
+router.post('/:id/transfer-request/:transferId/decline', requirePermission('assignments.view'), async (req, res, next) => {
+  try { return res.json(await transfers.decline(workflowActor(req.actor), req.params.id, req.params.transferId, req.body)); } catch (error) { return changeError(res, error, next); }
 });
 
 // CS-54: the assigned Coordinator cancels the Event directly (it becomes Cancelling).

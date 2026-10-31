@@ -108,6 +108,8 @@ async function mutation(req,mode,id){
    const from=r.currentCoordinatorId;
    await db.coordinatorAssignment.updateMany({where:{eventRequestId:r.id,revokedAt:null},data:{revokedAt:new Date(),revokedById:actor.id}});
    await db.coordinatorAssignment.create({data:{eventRequestId:r.id,coordinatorId:target,assignedById:actor.id,reason:mode==='assign'?'ASSIGNED':'REASSIGNED'}});
+   // CS-30: a reassignment answers any open request from the former Coordinator to be reassigned.
+   if(mode==='reassign')await require('./coordinatorTransfer').fulfilIn(db,r.id,actor,target);
    if(r.event){
     await db.$queryRaw`SELECT id FROM events WHERE id=${r.event.id} FOR UPDATE`;
     // Handover preserves approvals and reservations. Only an unfinished operation

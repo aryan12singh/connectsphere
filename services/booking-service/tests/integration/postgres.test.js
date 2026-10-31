@@ -104,19 +104,30 @@ function independentValues(venueId) {return {...values,venueId,startAt:'2026-12-
 test('TC-CS85-18 PostgreSQL rejects a repeated-hour closure without booking, activity or outbox effects',async()=>{
   coordinatorActor();const venueId='pg-dst-'+randomUUID();
   const hours=closesAt=>['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].map(weekday=>({weekday,isClosed:false,opensAt:'01:00',closesAt}));
-  const body={...independentValues(venueId),startAt:'2026-11-01T01:20:00-04:00',endAt:'2026-11-01T01:10:00-05:00',timeZone:'America/New_York'};
-  venueOverrides.set(venueId,{timeZone:body.timeZone,operatingHours:hours('01:30')});
-  const effects=()=>Promise.all([prisma.venueBookingRequest.count({where:{venueId}}),prisma.venueBookingActivity.count({where:{booking:{venueId}}}),prisma.bookingOutbox.count({where:{payload:{path:['venueId'],equals:venueId}}})]);
-  const before=await effects();
-  const denied=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+'-closed'},body});
-  assert.equal(denied.status,422);assert.ok(denied.body.error.fields.venueId.includes('OUTSIDE_OPERATING_HOURS'));
-  assert.deepEqual(await effects(),before);
-  venueOverrides.set(venueId,{timeZone:body.timeZone,operatingHours:hours('02:00')});
-  const accepted=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+'-open'},body});
-  assert.equal(accepted.status,201);
-  const saved=await prisma.venueBookingRequest.findUnique({where:{id:accepted.body.id}});
-  assert.equal(saved.requestedStart.toISOString(),'2026-11-01T05:20:00.000Z');assert.equal(saved.requestedEnd.toISOString(),'2026-11-01T06:10:00.000Z');
-  assert.deepEqual(await effects(),[1,1,1]);
+  // The first Sunday in November is the New York fall-back transition. Keep
+  // the fixture safely in the future so the hold deadline cannot expire.
+  const transition=year=>{const first=new Date(Date.UTC(year,10,1));return new Date(Date.UTC(year,10,1+(7-first.getUTCDay())%7));};
+  let day=transition(new Date().getUTCFullYear());
+  if(day.getTime()<Date.now()+7*86400000)day=transition(day.getUTCFullYear()+1);
+  const date=day.toISOString().slice(0,10);
+  const body={...independentValues(venueId),startAt:`${date}T01:20:00-04:00`,endAt:`${date}T01:10:00-05:00`,timeZone:'America/New_York'};
+  planningOverrides.set('assigned-event',{startAt:`${date}T00:00:00.000Z`,endAt:`${date}T23:59:00.000Z`});
+  try{
+    venueOverrides.set(venueId,{timeZone:body.timeZone,operatingHours:hours('01:30')});
+    const effects=()=>Promise.all([prisma.venueBookingRequest.count({where:{venueId}}),prisma.venueBookingActivity.count({where:{booking:{venueId}}}),prisma.bookingOutbox.count({where:{payload:{path:['venueId'],equals:venueId}}})]);
+    const before=await effects();
+    const denied=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+'-closed'},body});
+    assert.equal(denied.status,422);assert.ok(denied.body.error.fields.venueId.includes('OUTSIDE_OPERATING_HOURS'));
+    assert.deepEqual(await effects(),before);
+    venueOverrides.set(venueId,{timeZone:body.timeZone,operatingHours:hours('02:00')});
+    const accepted=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+'-open'},body});
+    assert.equal(accepted.status,201);
+    const saved=await prisma.venueBookingRequest.findUnique({where:{id:accepted.body.id}});
+    assert.equal(saved.requestedStart.toISOString(),`${date}T05:20:00.000Z`);assert.equal(saved.requestedEnd.toISOString(),`${date}T06:10:00.000Z`);
+    assert.equal(await prisma.venueBookingRequest.count({where:{venueId}}),1);
+    assert.equal(await prisma.venueBookingActivity.count({where:{bookingId:saved.id,action:'BOOKING_CREATED'}}),1);
+    assert.equal(await prisma.bookingOutbox.count({where:{aggregateId:saved.id,kind:'VenueRequested'}}),1);
+  }finally{planningOverrides.delete('assigned-event');venueOverrides.delete(venueId);}
 });
 test('TC-CS38-23 PostgreSQL confirms a Coordinator hold through one Staff decision with no extra confirmation',async()=>{
   coordinatorActor();const venueId='pg-q2-'+randomUUID();
