@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto'
 import {readFileSync} from 'node:fs'
 import {session,emails,signIn,eventService,waitForEventService,recreateBookingService} from './helpers'
 import {createVenue,planningEvent,hold,roomInput} from './fixtures/venue-fixtures'
+import {internal as equipmentInternal} from './fixtures/equipment-fixtures'
 import {test,mutation,value,summary,current,approve,evidence,reviewDatabase,registrations,internalRequest} from './fixtures/sprint4-fixtures'
 
 // The private orchestration command requires a real Coordinator session as well
@@ -31,6 +32,7 @@ async function coordinatorToken(request:APIRequest,email:string){
 test('TC-CS88-18 LIVE pre-final component: accepted Coordinator intent stays Cancelling while durable venue receipts survive retries and outages without final notices',async({page,playwright,owner},info)=>{
  const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner),other=await planningEvent(playwright.request,owner)
  let sourceStopped=false
+ let equipmentFault:string|undefined
  try{
   const rooms=[]
   for(let i=0;i<3;i++){const room=await hold(p.coordinator,p.event.eventId,(await createVenue(staff)).id);rooms.push(i<2?await approve(staff,room):room)}
@@ -38,6 +40,21 @@ test('TC-CS88-18 LIVE pre-final component: accepted Coordinator intent stays Can
   await registrations(p.event.eventId,3,rooms[0])
   const reservationId='intent-preservation-'+p.event.eventId
   await reviewDatabase('equipment',async db=>db.query('INSERT INTO equipment_reservations(id,"eventRequestId","eventId","requestVersion","equipmentType",quantity,"startAt","endAt",active,"actorId","sourceVersions") VALUES($1,$2,$3,1,\'projector\',1,$4,$5,true,$6,\'{}\'::jsonb)',[reservationId,p.event.id,p.event.eventId,rooms[0].occupiedStart,rooms[0].occupiedEnd,p.contact.id]))
+  // Keep this specific Event in the pre-final phase while the real cancellation
+  // runner continues to retry. Other Events and equipment requests are unaffected.
+  const faultName=`e2e_${randomUUID().replaceAll('-','')}`
+  const reservationLiteral=reservationId.replaceAll("'", "''")
+  equipmentFault=faultName
+  await reviewDatabase('equipment',async db=>{
+   const client=await db.connect()
+   try{
+    await client.query('BEGIN')
+    await client.query(`CREATE FUNCTION ${faultName}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture equipment release unavailable'; END $$`)
+    await client.query(`CREATE TRIGGER ${faultName} BEFORE UPDATE ON equipment_reservations FOR EACH ROW WHEN (OLD.id = '${reservationLiteral}' AND OLD.active = true AND NEW.active = false) EXECUTE FUNCTION ${faultName}()`)
+    await client.query('COMMIT')
+   }catch(error){await client.query('ROLLBACK');throw error}
+   finally{client.release()}
+  })
   const before=await summary(p.coordinator,p.event.eventId),request=await value(await owner.get(`/api/events/${p.event.id}`))
   const input={eventRequestId:p.event.id,eventVersion:before.event.version,requestVersion:request.version,cancellationActionId:randomUUID(),reason:'Accepted cancellation; other resource releases are still pending'}
   const intentPath=`/internal/events/${p.event.eventId}/cancellation-intents`,releasePath=`/internal/events/${p.event.eventId}/cancellation-release`
@@ -46,6 +63,8 @@ test('TC-CS88-18 LIVE pre-final component: accepted Coordinator intent stays Can
   const bearer=await coordinatorToken(playwright.request,p.contact.email)
   const accepted=internalRequest('event',intentPath,input,bearer)
   expect(accepted.status).toBe(200);expect(accepted.body).toMatchObject({eventId:p.event.eventId,eventRequestId:p.event.id,status:'CANCELLING',phase:'CANCELLING',cancellationActionId:input.cancellationActionId,actorId:p.contact.id})
+  const blockedRelease=await equipmentInternal('equipment',`/internal/events/${p.event.eventId}/reservations/release`,'POST',{cancellationActionId:input.cancellationActionId})
+  expect(blockedRelease.status).toBe(500)
   expect(internalRequest('event',intentPath,input,bearer)).toEqual(accepted)
   expect(internalRequest('event',intentPath,{...input,reason:'A different action cannot borrow this identity'},bearer).status).toBe(409)
   const releaseInput={eventVersion:accepted.body.eventVersion,cancellationActionId:input.cancellationActionId}
@@ -107,10 +126,18 @@ test('TC-CS88-18 LIVE pre-final component: accepted Coordinator intent stays Can
   expect(equipment).toEqual([{id:reservationId,active:true}])
   const releaseQuery='SELECT kind,count(*)::int AS count FROM booking_outbox WHERE payload->>\'cancellationActionId\'=$1 GROUP BY kind',releaseRows=(await reviewDatabase('booking',async db=>db.query(releaseQuery,[input.cancellationActionId]))).rows
   expect(releaseRows).toEqual([{kind:'VenueCancellationReleased',count:3}])
-  await info.attach('TC-CS88-18-accepted-intent-and-durable-receipt',{body:Buffer.from(JSON.stringify({scope:'Pre-final venue component, not the complete public CS-54 saga; equipment and registration release remain pending.',accepted,result,history,staleApproval:staleApproval.status(),staleCreate:staleCreate.status(),restartAndSourceOutageReplayMatched:true},null,2)),contentType:'application/json'})
+  await info.attach('TC-CS88-18-accepted-intent-and-durable-receipt',{body:Buffer.from(JSON.stringify({scope:'Pre-final venue component; equipment release remains pending and registrations are retained.',accepted,result,history,staleApproval:staleApproval.status(),staleCreate:staleCreate.status(),restartAndSourceOutageReplayMatched:true},null,2)),contentType:'application/json'})
   await evidence(page,info,'TC-CS88-18',p.event.eventId,[{database:'event_db',query:eventQuery,rows:eventRows},{database:'event_db',query:finalQuery,rows:finalRows},{database:'notification_db',query:noticeQuery,rows:noticeRows},{database:'booking_db',query:releaseQuery,rows:releaseRows},{database:'attendance_db',query:registrationQuery,rows:registered},{database:'equipment_db',query:equipmentQuery,rows:equipment}])
  }finally{
-  if(sourceStopped){eventService('start');await waitForEventService(p.coordinator,p.event.id)}
-  await staff.dispose();await p.coordinator.dispose();await other.coordinator.dispose()
+  try{
+   if(sourceStopped){eventService('start');await waitForEventService(p.coordinator,p.event.id)}
+  }finally{
+   try{
+    if(equipmentFault)await reviewDatabase('equipment',async db=>{
+     await db.query(`DROP TRIGGER IF EXISTS ${equipmentFault} ON equipment_reservations`)
+     await db.query(`DROP FUNCTION IF EXISTS ${equipmentFault}()`)
+    })
+   }finally{await staff.dispose();await p.coordinator.dispose();await other.coordinator.dispose()}
+  }
  }
 })
