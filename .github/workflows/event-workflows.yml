@@ -2,7 +2,7 @@ name: Sprint 2 checks
 on:
   pull_request:
   push:
-    branches: [main, feat/aryan-sprint2-event-workflows, feat/aryan-sprint3-venue-safety]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
