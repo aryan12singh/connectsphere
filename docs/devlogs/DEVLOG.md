@@ -80,6 +80,30 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 2 November 2026 — Aryan — CI stability, CS-88 whole-Event cancellation
+
+**CS-90 duplicate expiry history.** `CS-90.spec.ts` intermittently counted 11
+`HOLD_EXPIRED` rows for 10 holds on unrelated PRs. Overlapping deadline scans
+could both record history while the outbox upsert deduplicated the notice.
+The outbox insert is now the claim; only the scan whose insert lands writes the
+activity row. New PostgreSQL case TC-CS90-17 fails on the previous code
+(`{history: 2, intents: 1}`) and passes now.
+
+**CI time.** The live job took about 83 minutes, 70 of them serial browser
+journeys. The browser suite now runs in four shards on separate fresh stacks
+(`CSE2E_STAGE`, `CSE2E_BROWSER_ARGS`); the integration and restart checks keep
+the "Live E2E and restart checks" job. No test or threshold changed.
+
+**CS-88 / CS-54 / CS-52.** TC-CS88-06 now runs the public Coordinator
+cancellation end to end: every venue booking and the equipment are released, the
+Event finalizes once and the Attendee is told. Running it found that
+notification-service ignored every `EventCancelled`: it compared the final Event
+version with the accepted version in a Coordinator cancellation proof. Fixed
+to use `currentEventVersion`. TC-CS88-18 is unchanged (Alan's #33 keeps it
+deterministic).
+
+**Next.** Review the PR; then human/PO acceptance for CS-88/90/91/92.
+
 ### 27 October 2026 — Marc — main review and CS-52 attendee notices
 
 **Review of main `af7b92c` for CS-10/26/50/51/79.** All still fit. PR #15 merged

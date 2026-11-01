@@ -5,7 +5,7 @@ Execution evidence records actual result, source identity, assertion stage, scre
 | Cases | Executable source / assertion |
 | --- | --- |
 | TC-CS88-01–05,07–12 | `frontend/e2e/CS-88.spec.ts`: four-room scoped cancellation, retry/targeted Staff/history, last-venue Back/confirmation, one-room time change with 30 retained registrations, authorization/reassignment and current Safety. |
-| TC-CS88-06 | Blocked: public CS-54 orchestration, equipment release/registration closure and the full integrated recovery/final-notice journey are pending. The pre-final venue component is covered separately by TC-CS88-18. |
+| TC-CS88-06 | `frontend/e2e/CS-88-cancellation-intent.spec.ts`: the Coordinator cancels through the public CS-54 action; the real runner releases three venue bookings (buffers included) and equipment, leaves an unrelated booking unchanged, finalizes once as Cancelled with one `EventCancelled`, notifies the registered Attendee and replays the same action. The pre-final venue component remains TC-CS88-18. |
 | TC-CS90-07 | `services/booking-service/tests/unit/arrangementChanges.test.js`: production HTTP decision guards at exact T−1s/T/T+1s with a controlled clock, supplementing real worker races. |
 | TC-CS90-01–15 | `frontend/e2e/CS-90.spec.ts`: elapsed/persisted deadlines, fresh resubmit and conflict checks, single extension/history, 24h boundaries, 20 approval/expiry races, worker/broker restart and current Coordinator delivery. |
 | TC-CS91-01–20,22–24 | `frontend/e2e/CS-91.spec.ts`: Staff UI impact/confirmation, categories/authorization/intervals, current recipients, buffered boundaries, explicit targeted restoration, retry deduplication. |

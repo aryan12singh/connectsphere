@@ -141,3 +141,44 @@ test('TC-CS88-18 LIVE pre-final component: accepted Coordinator intent stays Can
   }
  }
 })
+
+test('TC-CS88-06 LIVE whole-Event cancellation by the Coordinator releases every venue booking and equipment, then finishes once as Cancelled',async({page,playwright,owner},info)=>{
+ const staff=await session(playwright.request,emails.staff),p=await planningEvent(playwright.request,owner),other=await planningEvent(playwright.request,owner)
+ try{
+  const rooms=[]
+  for(let i=0;i<3;i++){const room=await hold(p.coordinator,p.event.eventId,(await createVenue(staff)).id);rooms.push(i<2?await approve(staff,room):room)}
+  const unrelated=await approve(staff,await hold(other.coordinator,other.event.eventId,(await createVenue(staff)).id))
+  await registrations(p.event.eventId,3,rooms[0])
+  const reservationId='whole-cancel-'+p.event.eventId
+  await reviewDatabase('equipment',async db=>db.query('INSERT INTO equipment_reservations(id,"eventRequestId","eventId","requestVersion","equipmentType",quantity,"startAt","endAt",active,"actorId","sourceVersions") VALUES($1,$2,$3,1,\'projector\',1,$4,$5,true,$6,\'{}\'::jsonb)',[reservationId,p.event.id,p.event.eventId,rooms[0].occupiedStart,rooms[0].occupiedEnd,p.contact.id]))
+  // The public Coordinator action (CS-54) starts it; the real cancellation runner finishes it.
+  const input={cancellationActionId:randomUUID(),reason:'The Organiser withdrew the Event'}
+  const accepted=await value(await mutation(p.coordinator,'POST',`/api/events/${p.event.id}/cancel`,input))
+  expect(accepted).toMatchObject({eventId:p.event.eventId,eventRequestId:p.event.id,phase:'CANCELLING',cancellationActionId:input.cancellationActionId})
+  const eventQuery='SELECT status,"cancelledAt" IS NOT NULL AS "hasCancelledAt" FROM events WHERE id=$1'
+  await expect.poll(async()=> (await reviewDatabase('event',async db=>db.query(eventQuery,[p.event.eventId]))).rows,{timeout:90_000,intervals:[2_000]}).toEqual([{status:'CANCELLED',hasCancelledAt:true}])
+  const eventRows=(await reviewDatabase('event',async db=>db.query(eventQuery,[p.event.eventId]))).rows
+  // Repeating the same action is a replay, never a second cancellation.
+  expect(await value(await mutation(p.coordinator,'POST',`/api/events/${p.event.id}/cancel`,input))).toMatchObject({cancellationActionId:input.cancellationActionId})
+  for(const room of rooms){
+   expect((await current(staff,room.id)).status).toBe('CANCELLED')
+   const availability=await value(await staff.get(`/api/bookings/availability?venueId=${room.venueId}&startAt=${room.occupiedStart}&endAt=${room.occupiedEnd}`))
+   expect(availability.items.some((row:any)=>row.id===room.id)).toBe(false)
+  }
+  expect(await current(staff,unrelated.id)).toMatchObject(unrelated)
+  const finalQuery='SELECT count(*)::int AS count FROM outbox WHERE "aggregateId"=$1 AND "eventType"=\'EventCancelled\'',finalRows=(await reviewDatabase('event',async db=>db.query(finalQuery,[p.event.eventId]))).rows
+  expect(finalRows).toEqual([{count:1}])
+  const releaseQuery='SELECT kind,count(*)::int AS count FROM booking_outbox WHERE payload->>\'cancellationActionId\'=$1 GROUP BY kind',releaseRows=(await reviewDatabase('booking',async db=>db.query(releaseQuery,[input.cancellationActionId]))).rows
+  expect(releaseRows).toEqual([{kind:'VenueCancellationReleased',count:3}])
+  const equipmentQuery='SELECT id,active FROM equipment_reservations WHERE id=$1',equipment=(await reviewDatabase('equipment',async db=>db.query(equipmentQuery,[reservationId]))).rows
+  expect(equipment).toEqual([{id:reservationId,active:false}])
+  const noticeQuery='SELECT count(*)::int AS count FROM notifications WHERE "eventId"=$1 AND "recipientId"=$2 AND type=\'EVENT_CANCELLED\''
+  await expect.poll(async()=> (await reviewDatabase('notification',async db=>db.query(noticeQuery,[p.event.eventId,'a1000000-0000-4000-8000-000000000013']))).rows,{timeout:30_000}).toEqual([{count:1}])
+  const noticeRows=(await reviewDatabase('notification',async db=>db.query(noticeQuery,[p.event.eventId,'a1000000-0000-4000-8000-000000000013']))).rows
+  await signIn(page,p.contact.email);await page.goto(`/requests/${p.event.id}`)
+  await expect(page.getByRole('status').filter({hasText:'This Event is cancelled. Its records are kept.'})).toBeVisible()
+  await page.screenshot({path:info.outputPath('TC-CS88-06-event-cancelled.png'),fullPage:true})
+  await info.attach('TC-CS88-06-whole-event-cancellation',{body:Buffer.from(JSON.stringify({accepted,event:eventRows[0],releasedBookings:rooms.map(room=>room.id),unrelatedUnchanged:unrelated.id,equipment:equipment[0]},null,2)),contentType:'application/json'})
+  await evidence(page,info,'TC-CS88-06',p.event.eventId,[{database:'event_db',query:eventQuery,rows:eventRows},{database:'event_db',query:finalQuery,rows:finalRows},{database:'booking_db',query:releaseQuery,rows:releaseRows},{database:'equipment_db',query:equipmentQuery,rows:equipment},{database:'notification_db',query:noticeQuery,rows:noticeRows}])
+ }finally{await staff.dispose();await p.coordinator.dispose();await other.coordinator.dispose()}
+})
