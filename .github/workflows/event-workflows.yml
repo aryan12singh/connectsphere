@@ -275,9 +275,9 @@ jobs:
   live:
     name: Live E2E and restart checks
     runs-on: ubuntu-24.04
-    # Serial desktop/mobile journeys honour the production login rate limit.
-    # Allow the full suite, stack setup and restart checks to finish.
-    timeout-minutes: 150
+    # Host PostgreSQL suites, bus/Safety/maintenance acceptance and restart smoke
+    # on a fresh stack. Browser journeys run in the sharded live_browser job.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.0.0
@@ -309,18 +309,68 @@ jobs:
         env:
           CSE2E_PROJECT: csreview-aryan-ci-${{ github.run_id }}-${{ github.run_attempt }}
           CSE2E_WORK_DIR: ${{ runner.temp }}/event-review
+          CSE2E_STAGE: integration
         run: bash scripts/run-event-review-ci.sh
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
-          name: live-browser-evidence
+          name: live-integration-evidence
+          retention-days: 30
+          path: ${{ runner.temp }}/event-review/evidence/
+
+  live_browser:
+    name: Live browser journeys (${{ matrix.shard }}/4)
+    runs-on: ubuntu-24.04
+    # Each shard starts its own fresh stack, so journeys stay serial and keep
+    # the production login rate limit within a shard.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            services/event-service/package-lock.json
+            services/equipment-service/package-lock.json
+            services/attendance-service/package-lock.json
+            frontend/package-lock.json
+      - name: Install locked browser and smoke dependencies
+        run: |
+          npm ci --prefix services/event-service
+          npm ci --prefix services/venue-service
+          npm ci --prefix services/booking-service
+          npm ci --prefix services/notification-service
+          npm ci --prefix services/equipment-service
+          npm ci --prefix services/attendance-service
+          for service in equipment-service attendance-service; do
+            (cd "services/$service" && npx prisma generate)
+          done
+          npm ci --prefix frontend
+          cd frontend
+          npx playwright install --with-deps chromium
+      - name: Run browser journeys on a fresh isolated production stack
+        env:
+          CSE2E_PROJECT: csreview-aryan-ci-${{ github.run_id }}-${{ github.run_attempt }}-s${{ matrix.shard }}
+          CSE2E_WORK_DIR: ${{ runner.temp }}/event-review
+          CSE2E_STAGE: browser
+          CSE2E_BROWSER_ARGS: --shard=${{ matrix.shard }}/4
+        run: bash scripts/run-event-review-ci.sh
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: live-browser-evidence-${{ matrix.shard }}
           retention-days: 30
           path: ${{ runner.temp }}/event-review/evidence/
 
   gate:
     name: Sprint 2 checks
     if: always()
-    needs: [frontend, event, venue_booking, identity, live]
+    needs: [frontend, event, venue_booking, identity, live, live_browser]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     env:
