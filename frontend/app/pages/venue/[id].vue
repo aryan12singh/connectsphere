@@ -8,6 +8,7 @@ import { venuePayload, type VenueFormState } from '@/components/venue/venue-form
 import { venueSaveFailure } from '@/components/venue/venue-save-error'
 
 definePageMeta({ permission: 'venues.manage' })
+useHead({ title: 'Edit venue | ConnectSphere' })
 const route = useRoute()
 const { user } = useUserSession()
 const id = computed(() => String(route.params.id))

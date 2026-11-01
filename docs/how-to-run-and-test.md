@@ -196,7 +196,9 @@ Each seed user has their own password. The full list is in the row comments of
 | Event Organiser | daniel.lim@brightpath.edu.sg | `Daniel@CS02!` |
 | Event Coordinator | aisha.rahman@connectsphere.sg | `Aisha@CS05!` |
 | Event Coordinator | kevin.ong@connectsphere.sg | `Kevin@CS06!` |
+| Event Coordinator Lead | jordan.lim@connectsphere.sg | `Jordan@CS32!` |
 | Venue Staff | ravi.kumar@marinaconvention.sg | `Ravi@CS08!` |
+| Safety Officer | alex.chen@connectsphere.sg | `Alex@CS31!` |
 | Technical Support | hafiz.ismail@connectsphere.sg | `Hafiz@CS11!` |
 | Technical Support | chloe.ng@connectsphere.sg | `Chloe@CS12!` |
 | Attendee | ethan.goh@gmail.com | `Ethan@CS13!` |
