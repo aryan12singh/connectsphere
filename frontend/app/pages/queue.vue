@@ -33,6 +33,8 @@ interface LeadItem {
   stage?: string
   statusLabel?: string
   outstanding?: string[]
+  /** CS-30: set on the Transfer requests tab. */
+  transfer?: { id: string, reason: string, requestedAt: string | null, requestedById: string, requestedByName: string }
 }
 interface WorkloadRow { coordinatorId: string, name: string, active: number }
 interface StageOption { value: string, label: string }
@@ -40,7 +42,7 @@ interface CoordinatorOption { id: string, name: string }
 
 const requestFetch = useRequestFetch()
 const { user } = useUserSession()
-const view = ref<'unassigned' | 'assigned' | 'oversight'>('unassigned')
+const view = ref<'unassigned' | 'assigned' | 'oversight' | 'transfers'>('unassigned')
 // CS-83 filters, used by the oversight view only.
 const filterCoordinator = ref('')
 const filterStatus = ref('')
@@ -78,6 +80,10 @@ const coordinatorNames = ref<Record<string, string>>({})
 const assignOpen = ref(false)
 const chosenCoordinatorId = ref('')
 const assigning = ref(false)
+// CS-30: the Lead may decline a Coordinator's request to be reassigned.
+const declineOpen = ref(false)
+const declineReason = ref('')
+const declining = ref(false)
 
 const choices = computed(() => coordinatorOptions.value.filter(option => option.id !== selected.value?.coordinatorId))
 // Assigned-by-me and oversight both hand work to a different Coordinator.
@@ -91,9 +97,10 @@ function select(id: string) {
   errorMessage.value = ''
   message.value = ''
   assignOpen.value = false
+  declineOpen.value = false
 }
 
-async function setView(next: 'unassigned' | 'assigned' | 'oversight') {
+async function setView(next: 'unassigned' | 'assigned' | 'oversight' | 'transfers') {
   if (view.value === next)
     return
   view.value = next
@@ -103,6 +110,7 @@ async function setView(next: 'unassigned' | 'assigned' | 'oversight') {
   message.value = ''
   errorMessage.value = ''
   assignOpen.value = false
+  declineOpen.value = false
   await refresh()
 }
 
@@ -182,11 +190,34 @@ async function submitAssign() {
   }
 }
 
+async function submitDecline() {
+  const item = selected.value
+  if (!item?.transfer || !declineReason.value.trim() || declining.value)
+    return
+  declining.value = true
+  errorMessage.value = ''
+  try {
+    await requestFetch(`/api/events/${item.id}/transfer-request/${item.transfer.id}/decline`, { method: 'POST', body: { reason: declineReason.value } })
+    message.value = `You declined the request for ${item.eventName}. It stays with ${item.transfer.requestedByName || 'the Coordinator'}.`
+    declineOpen.value = false
+    declineReason.value = ''
+    selectedId.value = null
+    await refresh()
+  }
+  catch (e) {
+    errorMessage.value = apiErrorMessage(e, 'Could not decline the request. Please retry.')
+    await refresh()
+  }
+  finally {
+    declining.value = false
+  }
+}
+
 // Keep the queue fresh without a reload (draft target: about five seconds).
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   void loadCoordinators()
-  timer = setInterval(() => { if (!assigning.value && !assignOpen.value) void refresh() }, 5000)
+  timer = setInterval(() => { if (!assigning.value && !assignOpen.value && !declineOpen.value) void refresh() }, 5000)
 })
 onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 </script>
@@ -204,6 +235,9 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
       </Button>
       <Button size="sm" role="tab" data-testid="tab-assigned" :aria-selected="view === 'assigned'" :variant="view === 'assigned' ? 'default' : 'secondary'" @click="setView('assigned')">
         Assigned by me
+      </Button>
+      <Button size="sm" role="tab" data-testid="tab-transfers" :aria-selected="view === 'transfers'" :variant="view === 'transfers' ? 'default' : 'secondary'" @click="setView('transfers')">
+        Transfer requests
       </Button>
       <Button size="sm" role="tab" data-testid="tab-oversight" :aria-selected="view === 'oversight'" :variant="view === 'oversight' ? 'default' : 'secondary'" @click="setView('oversight')">
         All active events
@@ -240,7 +274,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
       The queue is unavailable right now. Please try again later.
     </p>
     <p v-else-if="items.length === 0" role="status" data-testid="lead-queue-empty" class="mt-6 text-sm text-muted-foreground">
-      {{ isOversight ? 'No active events match these filters.' : isAssignedView ? 'You have no open assignments right now.' : 'No requests are waiting for a Coordinator. New submissions will appear here.' }}
+      {{ isOversight ? 'No active events match these filters.' : view === 'transfers' ? 'No Coordinator is waiting for a reassignment.' : isAssignedView ? 'You have no open assignments right now.' : 'No requests are waiting for a Coordinator. New submissions will appear here.' }}
     </p>
     <div v-else class="mt-6 grid items-start gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
       <ul :aria-label="isOversight ? 'Active events and requests' : isAssignedView ? 'Requests you assigned' : 'Unassigned event requests'" class="grid gap-3">
@@ -304,6 +338,16 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
               <dd class="text-right text-sm" data-testid="oversight-outstanding">{{ selected.outstanding?.length ? selected.outstanding.join(', ') : 'Nothing outstanding' }}</dd>
             </div>
           </template>
+          <template v-if="selected.transfer">
+            <div class="flex items-start justify-between gap-4">
+              <dt class="text-xs text-muted-foreground">Asked to be reassigned</dt>
+              <dd class="text-right text-sm" data-testid="transfer-requested-by">{{ selected.transfer.requestedByName }} · {{ timeAgo(selected.transfer.requestedAt) }}</dd>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <dt class="text-xs text-muted-foreground">Reason</dt>
+              <dd class="text-right text-sm" data-testid="transfer-reason">{{ selected.transfer.reason }}</dd>
+            </div>
+          </template>
           <div class="flex items-start justify-between gap-4">
             <dt class="text-xs text-muted-foreground">Coordinator</dt>
             <dd class="text-right text-sm" data-testid="lead-queue-coordinator">{{ coordinatorLabel(selected) }}</dd>
@@ -340,7 +384,21 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
               </form>
             </PopoverContent>
           </Popover>
+          <Button v-if="selected.allowedActions.includes('decline')" size="sm" variant="outline" data-testid="decline-transfer" :disabled="declining" @click="declineOpen = !declineOpen">
+            Decline request
+          </Button>
         </div>
+        <form v-if="declineOpen && selected.transfer" class="mt-4 grid gap-3" data-testid="decline-form" novalidate @submit.prevent="submitDecline">
+          <Field class="gap-2">
+            <FieldLabel for="decline-reason">Why are you declining? <span aria-hidden="true">*</span></FieldLabel>
+            <textarea id="decline-reason" v-model="declineReason" data-testid="decline-reason" rows="3" maxlength="500" class="rounded-xl border border-border bg-background px-3 py-2 text-sm" />
+          </Field>
+          <p class="text-xs text-muted-foreground">The Coordinator keeps this request and sees your reason.</p>
+          <div class="flex justify-end gap-2">
+            <Button type="button" size="sm" variant="ghost" @click="declineOpen = false">Cancel</Button>
+            <Button type="submit" size="sm" data-testid="confirm-decline" :disabled="declining || !declineReason.trim()">Decline</Button>
+          </div>
+        </form>
       </Card>
     </div>
   </main>

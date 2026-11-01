@@ -9,6 +9,7 @@ import RequestActivityHistory from '@/components/events/RequestActivityHistory.v
 import CancellationPanel from '@/components/events/CancellationPanel.vue'
 import ChangeProposalPanel from '@/components/events/ChangeProposalPanel.vue'
 import CoordinatorEditPanel from '@/components/events/CoordinatorEditPanel.vue'
+import TransferRequestPanel from '@/components/events/TransferRequestPanel.vue'
 import RequestFormPage from '@/components/events/RequestFormPage.vue'
 import { emptyRequestForm,formToPayload,recordToForm } from '@/components/events/request-form-state'
 import { operationIntent,fieldErrors as extractFields } from '@/components/events/request-errors'
@@ -23,6 +24,7 @@ const canEdit=computed(()=>loaded.value?.organiserId===user.value?.id && ['DRAFT
 const canManageTechnicalRequirements=computed(()=>user.value?.role==='EVENT_COORDINATOR'&&loaded.value?.currentCoordinatorId===user.value?.id)
 const canCoordinatorEdit=computed(()=>canManageTechnicalRequirements.value&&(loaded.value?.status==='SUBMITTED'||(loaded.value?.status==='APPROVED'&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(loaded.value?.eventStatus))))
 const canProposeChange=computed(()=>loaded.value?.status==='APPROVED'&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(loaded.value?.eventStatus)&&(canManageTechnicalRequirements.value||loaded.value?.organiserId===user.value?.id))
+const canRequestTransfer=computed(()=>canManageTechnicalRequirements.value&&(['SUBMITTED','RETURNED_FOR_AMENDMENT'].includes(loaded.value?.status)||(loaded.value?.status==='APPROVED'&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(loaded.value?.eventStatus))))
 async function afterChangeDecided(){await refreshNuxtData(`event-request-${id}`);historyRevision.value++}
 const canCancel=computed(()=>loaded.value?.status==='APPROVED'&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION','CANCELLING','CANCELLED'].includes(loaded.value?.eventStatus)&&(canManageTechnicalRequirements.value||loaded.value?.organiserId===user.value?.id))
 async function afterCoordinatorEdit(result:Record<string,any>){record.value=result as typeof record.value;form.value=recordToForm(result);clean.value=JSON.stringify(form.value);historyRevision.value++}
@@ -73,6 +75,8 @@ useHead({title:'Event request | ConnectSphere'})
    <ChangeProposalPanel v-if="canProposeChange" class="mt-6" :request-id="id" :version="loaded.version" :is-coordinator="canManageTechnicalRequirements" :is-organiser="loaded.organiserId===user?.id" @decided="afterChangeDecided" />
 
    <CancellationPanel v-if="canCancel" class="mt-6" :request-id="id" :event-status="loaded.eventStatus" :is-coordinator="canManageTechnicalRequirements" :is-organiser="loaded.organiserId===user?.id" :pending-request="false" @done="afterChangeDecided" />
+
+   <TransferRequestPanel v-if="canRequestTransfer" class="mt-6" :request-id="id" :version="loaded.version" @changed="afterChangeDecided" />
 
    <Tabs v-model="tab" class="mt-8">
     <TabsList variant="line" aria-label="Request details and history" class="h-auto w-fit gap-1 rounded-none border-b bg-transparent p-0">

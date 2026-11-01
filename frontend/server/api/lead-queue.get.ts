@@ -20,6 +20,8 @@ export interface LeadQueueItem {
   stage?: string
   statusLabel?: string
   outstanding?: string[]
+  /** CS-30 transfers view only: the Coordinator's request to be reassigned. */
+  transfer?: { id: string, reason: string, requestedAt: string | null, requestedById: string, requestedByName: string }
 }
 
 export interface WorkloadRow { coordinatorId: string, name: string, active: number }
@@ -29,17 +31,18 @@ export interface StageOption { value: string, label: string }
  * BFF for the Coordinator Lead's queues (CS-81, CS-30, CS-83). `view=unassigned`
  * (default) lists submitted requests nobody holds yet, oldest first;
  * `view=assigned` lists open requests this Lead assigned, so they can be
- * reassigned; `view=oversight` lists every active Event or request that has a
+ * reassigned; `view=transfers` lists requests whose Coordinator asked the Lead to
+ * reassign them (CS-30); `view=oversight` lists every active Event or request that has a
  * Coordinator, filterable by `coordinatorId` and `status`, with the number of
  * active items per Coordinator. The event service enforces Lead-only access,
  * ordering and filtering; this route only adapts the payload.
  */
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
-  const view = query.view === 'assigned' ? 'assigned' : query.view === 'oversight' ? 'oversight' : 'unassigned'
+  const view = query.view === 'assigned' ? 'assigned' : query.view === 'oversight' ? 'oversight' : query.view === 'transfers' ? 'transfers' : 'unassigned'
   const page = Math.max(1, Number(query.page) || 1)
   const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20))
-  const path = view === 'assigned' ? '/event-requests/assigned-by-me' : view === 'oversight' ? '/event-requests/oversight' : '/event-requests/unassigned'
+  const path = view === 'assigned' ? '/event-requests/assigned-by-me' : view === 'oversight' ? '/event-requests/oversight' : view === 'transfers' ? '/event-requests/transfer-requests' : '/event-requests/unassigned'
   const filters = view === 'oversight'
     ? {
         ...(typeof query.coordinatorId === 'string' && query.coordinatorId ? { coordinatorId: query.coordinatorId } : {}),
@@ -68,6 +71,17 @@ export default defineEventHandler(async (event) => {
       coordinatorId: typeof item.currentCoordinatorId === 'string' ? item.currentCoordinatorId : null,
       organiser: { name: organiser.name ?? '', company: organiser.company ?? '' },
       allowedActions: Array.isArray(item.allowedActions) ? item.allowedActions.filter((a): a is string => typeof a === 'string') : [],
+      ...(view === 'transfers' && item.transfer && typeof item.transfer === 'object'
+        ? {
+            transfer: {
+              id: String((item.transfer as Record<string, unknown>).id),
+              reason: String((item.transfer as Record<string, unknown>).reason ?? ''),
+              requestedAt: typeof (item.transfer as Record<string, unknown>).requestedAt === 'string' ? String((item.transfer as Record<string, unknown>).requestedAt) : null,
+              requestedById: String((item.transfer as Record<string, unknown>).requestedById ?? ''),
+              requestedByName: String((item.transfer as Record<string, unknown>).requestedByName ?? ''),
+            },
+          }
+        : {}),
       ...(view === 'oversight'
         ? {
             stage: String(item.stage ?? ''),
