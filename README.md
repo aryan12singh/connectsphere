@@ -1,6 +1,8 @@
 # connectsphere
 Event Planning and Venue Booking System for ConnectSphere Event Services. IS212 Software Project Management, AY2026/27 T1, Section G8.
 
+**Repository:** https://github.com/aryan12singh/connectsphere
+
 Release 1 covers the 20 core features from the Week 4 project instructions and the six Week 7 customer changes: event requests from draft to completion, Lead-controlled Coordinator assignment, venue search and booking with setup/turnaround buffers, multiple venues per Event, expiring holds, venue unavailability and replacement, equipment, the Safety Officer check, attendee registration and withdrawal, changes and cancellation, and notifications.
 
 ## Architecture
@@ -13,6 +15,20 @@ Release 1 covers the 20 core features from the Week 4 project instructions and t
 
 See the [architecture overview](docs/connectsphere-architecture.md).
 
+## Repository layout
+
+```text
+frontend/            Nuxt app and its BFF (frontend/server), Playwright journeys (frontend/e2e)
+services/<name>/     one Express + Prisma service per bounded context, with its unit, contract and PostgreSQL tests
+gateway/             Kong declarative configuration
+infra/               Docker Compose stack, Keycloak realm and seed runner
+scripts/             live review and CI runners
+tests/               frontend specs, shared test helpers and scripts, and per-story test records
+docs/                design, decisions, API contract, test traceability and development log
+.github/workflows/   the CI pipeline
+.agents/skills/      shared guidance the team gives coding assistants (frontend conventions, test-driven development, test alignment)
+```
+
 ## Documentation
 
 - [Definition of Done](docs/DEFINITION_OF_DONE.md) and [role and event access matrix](docs/access-matrix.md).
@@ -21,7 +37,7 @@ See the [architecture overview](docs/connectsphere-architecture.md).
 - [API contract](docs/api-contract.md), [event workflows](docs/event-workflows.md) and [event workflow decisions](docs/event-workflow-decisions.md).
 - [Venue data model](docs/venue-data-model.md), [hold expiry](docs/hold-expiry.md) and [Safety UI](docs/safety-ui.md).
 - [Service integration and RabbitMQ contract](docs/sprint3-integration-handoff.md).
-- [Coverage policy](docs/coverage-policy.md), [Sprint 4 venue test map](docs/sprint4-venue-test-map.md) and [story test records](tests/records/README.md).
+- [Test traceability](docs/test-traceability.md), [test layers](tests/README.md), [coverage policy](docs/coverage-policy.md), [Sprint 4 venue test map](docs/sprint4-venue-test-map.md) and [story test records](tests/records/README.md).
 - [Isolated live review](docs/event-review-run.md) and the [development log](docs/devlogs/DEVLOG.md).
 
 ## Run it locally
@@ -45,6 +61,8 @@ npm run dev                 # http://localhost:3000
 Seed users, useful addresses and troubleshooting are in [docs/how-to-run-and-test.md](docs/how-to-run-and-test.md).
 
 ## Tests
+
+Tests run at four layers: service unit and contract, service PostgreSQL integration, frontend unit/component/BFF (`tests/specs`) and live browser journeys (`frontend/e2e`). [tests/README.md](tests/README.md) explains what each layer proves. The [test traceability index](docs/test-traceability.md) maps every story to its specified cases and to the tests that cover them; per-story case specifications and dated runs are in [tests/records](tests/records/README.md).
 
 Use Node 22 and locked `npm ci` installs. Integration suites refuse any database other than their own `<service>_test`. From each service folder:
 
@@ -80,3 +98,17 @@ The [CI workflow](.github/workflows/event-workflows.yml) runs on every pull requ
 - **Required checks:** the single check branch protection requires; it fails if any job failed, was skipped or was cancelled.
 
 Changes reach `main` through a reviewed, squash-merged pull request with green checks.
+
+## Course deliverables
+
+The Week 12 submission is a zip with numbered folders. This repository supplies folders 6 and 7 and the in-repo evidence for 2 and 3:
+
+| Folder | Deliverable | Where |
+|---|---|---|
+| 1 | Final product backlog | Jira export (submitted in the zip) |
+| 2 | System design (C4) | C4 diagrams in the zip; supporting design in [architecture](docs/connectsphere-architecture.md), [ERDs](docs/erd), [API contract](docs/api-contract.md) and the decision records |
+| 3 | Test cases and traceability | [Test traceability](docs/test-traceability.md), [tests/records](tests/records/README.md) and the Sprint test sheets |
+| 4 | Sprint meeting evidence | In the zip (boards, burndowns, retros, final-sprint recordings) |
+| 5 | Slide deck | In the zip (course template) |
+| 6 | Code, README, tests and CI | This repository |
+| 7 | README with repository link | This file |
