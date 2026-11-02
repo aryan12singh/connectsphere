@@ -16,11 +16,11 @@ registerEndpoint('/api/equipment/requests/reserve-ui/availability', () => ({
   lines: [{ equipmentType: 'projector', requested: 2, available: 5, shortfall: 0 }],
 }))
 
-async function review(status = 'APPROVED') {
+async function review(status = 'APPROVED', equipment: any[] = [{ equipmentType: 'projector', quantity: 2, venueId: 'hall', venueName: 'Main hall' }]) {
   ui.queue = ref({ requests: [{
     eventRequestId: 'reserve-ui', coordinatorId: 'coordinator', version: 1, status, reserved: false,
-    equipment: [{ equipmentType: 'projector', quantity: 2, venueId: 'hall', venueName: 'Main hall' }],
-    supportRequired: false, supportDetails: '', placementDetails: 'At the lectern', notRequired: false,
+    equipment,
+    supportRequired: !equipment.length, supportDetails: equipment.length ? '' : 'An operator at the lectern', placementDetails: 'At the lectern', notRequired: false,
     equipmentPeriod: null, event: null,
   }] })
   ui.error = ref(undefined)
@@ -53,6 +53,14 @@ describe('CS-42 — pending request reservation controls', () => {
     try {
       expect(wrapper.findAll('button').some(button => button.text() === 'Reserve complete request')).toBe(false)
       expect(wrapper.findAll('button').some(button => button.text() === 'Submit decision')).toBe(true)
+    }
+    finally { wrapper.unmount() }
+  })
+
+  it('TC-CS40-05 does not offer Reserve for an approved support-only request', async () => {
+    const wrapper = await review('APPROVED', [])
+    try {
+      expect(wrapper.findAll('button').some(button => button.text() === 'Reserve complete request')).toBe(false)
     }
     finally { wrapper.unmount() }
   })

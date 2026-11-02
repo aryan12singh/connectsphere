@@ -348,7 +348,7 @@ useHead({ title: 'Manage technical availability | ConnectSphere' })
               <Alert v-if="actionError" variant="destructive"><p class="col-start-2">{{ actionError }}</p></Alert>
               <div class="flex flex-wrap justify-end gap-2.5">
                 <Button v-if="canDecide" type="button" :disabled="saving || !pageReady" @click="decide(decisionSelection)">Submit decision</Button>
-                <Button v-else-if="selected.status === 'APPROVED'" type="button" :disabled="saving || !pageReady || requestReserved" @click="reserve">{{ requestReserved ? 'Reserved' : 'Reserve complete request' }}</Button>
+                <Button v-else-if="selected.status === 'APPROVED' && selected.equipment.length" type="button" :disabled="saving || !pageReady || requestReserved" @click="reserve">{{ requestReserved ? 'Reserved' : 'Reserve complete request' }}</Button>
               </div>
             </Card>
           </section>
