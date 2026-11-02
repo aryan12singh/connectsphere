@@ -458,11 +458,15 @@ test('TC-CS90-17 PostgreSQL a deadline claimed after a scan snapshot records one
  // after this scan has selected and locked the unchanged hold.
  const stale=await hold();let claimed=false;
  await prisma.venueBookingActivity.create({data:{bookingId:stale.id,actorId:'hold-deadline-worker',actorRole:'SYSTEM',action:'HOLD_EXPIRED',reason:'Competing scan',fromStatus:'TENTATIVELY_HELD',toStatus:'TENTATIVELY_HELD',changes:{}}});
- const interleaved={$transaction:fn=>prisma.$transaction(tx=>fn(new Proxy(tx,{get(target,key){if(key!=='$queryRaw')return target[key];return async(...args)=>{const rows=await target.$queryRaw(...args);if(!claimed&&rows.some(row=>row.id===stale.id)){claimed=true;await prisma.bookingOutbox.create({data:{actionKey:`deadline:${stale.id}:${stale.expiresAt.toISOString()}:VenueHoldExpired`,aggregateId:stale.id,kind:'VenueHoldExpired',payload:{bookingId:stale.id}}});}return rows;};}})))};
+ const interleaved={$transaction:fn=>prisma.$transaction(tx=>fn(new Proxy(tx,{get(target,key){if(key!=='$queryRaw')return target[key];return async(...args)=>{const rows=await target.$queryRaw(...args);if(!claimed&&rows.some(row=>row.id===stale.id)){claimed=true;await prisma.bookingOutbox.create({data:{actionKey:`deadline:${stale.id}:${stale.expiresAt.toISOString()}:VenueHoldExpired`,aggregateId:stale.id,kind:'VenueHoldExpired',payload:{bookingId:stale.id,expiresAt:stale.expiresAt.toISOString()}}});}return rows;};}})))};
  await processDue(interleaved);assert.equal(claimed,true);assert.deepEqual(await counts(stale.id),{history:1,intents:1});
  // Live contention: repeated parallel scans over fresh holds keep exactly one history row and one intent each.
  const holds=await Promise.all(Array.from({length:6},hold));
- for(let round=0;round<3;round++)await Promise.all(Array.from({length:6},()=>processDue(prisma)));
+ // Scans take 20 rows by deadline, so older due holds from earlier cases are reached first; keep
+ // scanning in parallel until every fresh hold is handled, then require exactly one of each.
+ let rounds=0;
+ do{await Promise.all(Array.from({length:6},()=>processDue(prisma)));rounds++;}
+ while(rounds<3||rounds<20&&(await Promise.all(holds.map(row=>counts(row.id)))).some(c=>c.intents===0));
  for(const row of holds)assert.deepEqual(await counts(row.id),{history:1,intents:1});
- t.diagnostic(JSON.stringify({caseId:'TC-CS90-17',layer:'PostgreSQL concurrent deadline scans',staleSnapshot:await counts(stale.id),parallelHolds:holds.length,parallelScans:18}));
+ t.diagnostic(JSON.stringify({caseId:'TC-CS90-17',layer:'PostgreSQL concurrent deadline scans',staleSnapshot:await counts(stale.id),parallelHolds:holds.length,parallelScans:rounds*6}));
 });
