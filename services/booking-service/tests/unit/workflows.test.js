@@ -14,6 +14,9 @@ test('workflow requirement policy rejects stale, expired and unplannable operati
   assert.doesNotThrow(() => workflows.version({ version: 2 }, 2));
   for (const value of [{ status: 'DRAFT' }, { status: 'ARRANGEMENT_PENDING', safetyState: 'PREPARING' }, { status: 'ARRANGEMENT_PENDING', safetyState: 'APPROVED' }]) assert.throws(() => workflows.planning(value), error => error.code === 'EVENT_NOT_PLANNING');
   assert.doesNotThrow(() => workflows.planning({ status: 'ARRANGEMENT_PENDING', safetyState: 'REWORK' }));
+  // Equipment may read the venue window of any live Event, including during Safety review.
+  for (const status of ['ARRANGEMENT_PENDING', 'CONFIRMED', 'PREPARATION']) assert.doesNotThrow(() => workflows.equipmentReadable({ status, safetyState: 'APPROVED' }));
+  for (const status of ['DRAFT', 'CANCELLING', 'CANCELLED', 'COMPLETED']) assert.throws(() => workflows.equipmentReadable({ status }), error => error.status === 409 && error.code === 'EVENT_NOT_ACTIVE');
   assert.throws(() => workflows.needs({ ...input, layout: '' }, context), error => error.code === 'VALIDATION_ERROR');
   assert.throws(() => workflows.checkedNeeds({ ...input, endAt: '2028-11-20T11:00:00Z' }, context, venue), error => error.code === 'OUTSIDE_EVENT');
   const virtual = workflows.needs({ ...input, layout: undefined, facilities: undefined, required: undefined }, { ...context, venueType: 'VIRTUAL', preferredLayout: undefined });

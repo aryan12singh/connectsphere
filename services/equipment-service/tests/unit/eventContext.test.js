@@ -30,6 +30,9 @@ test('event context fails closed for upstream errors, incomplete payloads, and n
   await assert.rejects(requestContext('missing'), error => error.status === 404);
   global.fetch = async () => { throw new Error('offline'); };
   await assert.rejects(equipmentAllocationContext('event-1'), error => error.status === 503 && error.code === 'EVENT_UNAVAILABLE');
+  // A business refusal from Booking stays a 409 with its reason, not an outage.
+  global.fetch = async () => Response.json({ error: { code: 'EVENT_NOT_ACTIVE', message: 'Equipment can only be arranged for a Planning, Confirmed or Preparation Event' } }, { status: 409 });
+  await assert.rejects(equipmentAllocationContext('event-1'), error => error.status === 409 && error.code === 'EVENT_NOT_ACTIVE' && /Confirmed/.test(error.message));
 });
 
 test('TC-CS46 cancellation context requires matching accepted action proof from Event service', async t => {
