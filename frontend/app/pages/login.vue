@@ -128,7 +128,7 @@ async function handleSubmit() {
           <h1>Sign in to your account</h1>
         </CardTitle>
         <CardDescription class="mx-auto max-w-[25rem] text-center">
-          Event Organisers, Coordinators, Venue and Technical Support staff all sign in here.
+          Attendees, Organisers and ConnectSphere staff (Coordinators, Leads, Venue, Technical Support and Safety) all sign in here.
         </CardDescription>
       </CardHeader>
 
@@ -185,10 +185,10 @@ async function handleSubmit() {
           {{ isSubmitting ? 'Signing in…' : 'Sign in' }}
         </Button>
         <p class="text-center text-sm text-muted-foreground">
-          New attendee?
+          New Attendee or Organiser?
           <NuxtLink to="/signup" class="font-medium text-foreground underline-offset-4 hover:underline">Create an account</NuxtLink>
           <br>
-          Staff accounts are set up by Technical Support.
+          Staff accounts are provided by ConnectSphere.
         </p>
       </CardFooter>
     </Card>
