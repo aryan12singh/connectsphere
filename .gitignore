@@ -238,3 +238,7 @@ coverage/
 .fleet/
 .idea/
 .vscode/
+
+# Local AI assistant configuration (per developer, not part of the product)
+.agents/
+.opencode/
