@@ -88,8 +88,8 @@ with the README's isolated database/auth settings. Native
 `npm run test:coverage` uses Vitest's configured global thresholds; the existing
 report wrapper preserves its exit status. Keep raw outputs outside Git.
 
-The existing required aggregate `Sprint 2 checks` retains its name for branch
-protection. Its frontend and seven service prerequisites enforce these floors;
+The `Required checks` job is the single check branch protection requires (it
+was named `Sprint 2 checks` until November 2026). Its frontend and seven service prerequisites enforce these floors;
 explicit Bash/pipefail preserves a failure through `tee`. Typechecks, production
 build, HTTP contracts, PostgreSQL, live browser, broker and restart checks remain
 required. The existing workflow runs for every PR and main push.

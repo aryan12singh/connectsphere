@@ -72,11 +72,11 @@ The [live review runner](docs/event-review-run.md) builds a fresh stack, runs th
 
 ## Continuous integration
 
-[The workflow](.github/workflows/event-workflows.yml) runs on every pull request and on pushes to `main`:
+The [CI workflow](.github/workflows/event-workflows.yml) runs on every pull request and on pushes to `main`:
 
-- frontend checks and one job per service, each with real PostgreSQL migrations and coverage;
-- **Live E2E and restart checks:** host PostgreSQL suites, bus, Safety and maintenance acceptance, and a restart without reseeding;
-- **Live browser journeys (1/4–4/4):** the Playwright desktop and mobile suite in four shards, each on its own fresh stack;
-- the aggregate **Sprint 2 checks** gate, which fails if any job failed or was skipped.
+- **Frontend** and one job per service (**event-service**, **venue-service**, **booking-service** and so on), each with real PostgreSQL migrations and coverage;
+- **Live stack integration and restart:** host PostgreSQL suites, bus, Safety and maintenance acceptance, and a restart without reseeding;
+- **Live browser journeys (shard 1/4–4/4):** the Playwright desktop and mobile suite in four shards, each on its own fresh stack;
+- **Required checks:** the single check branch protection requires; it fails if any job failed, was skipped or was cancelled.
 
 Changes reach `main` through a reviewed, squash-merged pull request with green checks.

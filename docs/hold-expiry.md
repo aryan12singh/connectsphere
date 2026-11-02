@@ -132,7 +132,7 @@ node --experimental-strip-types tests/scripts/compile-test-run.ts \
 The report keeps missing cases Not Executed and records its layer. Raw JSON,
 coverage and logs remain outside Git or in CI artifacts. The existing Booking
 CI job runs the spike on every supported branch push/PR and archives both logs
-and JSON. It remains part of the existing required `Sprint 2 checks` aggregate.
+and JSON. It is a prerequisite of the `Required checks` job that branch protection requires.
 
 [CS-78 cases and dated runs](../tests/records/CS-78/test-cases.md) contain 17 domain
 checks (cases 01–05) and ten PostgreSQL scenarios (06–15). Case 07 exercises 12

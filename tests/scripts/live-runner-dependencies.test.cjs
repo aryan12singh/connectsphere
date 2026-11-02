@@ -6,7 +6,7 @@ const { resolve } = require('node:path');
 const root = resolve(__dirname, '../..');
 const workflow = readFileSync(resolve(root, '.github/workflows/event-workflows.yml'), 'utf8');
 const runner = readFileSync(resolve(root, 'scripts/run-event-review-ci.sh'), 'utf8');
-const liveJob = workflow.match(/^  live:\n([\s\S]*?)(?=^  gate:)/m)?.[1];
+const liveJob = workflow.match(/^  live_integration:\n([\s\S]*?)(?=^  live_browser:)/m)?.[1];
 
 test('live review CI installs host-run service dependencies and generates Prisma clients', () => {
   assert.ok(liveJob, 'live job exists in the GitHub Actions workflow');

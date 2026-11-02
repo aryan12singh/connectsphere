@@ -1,4 +1,4 @@
-name: Sprint 2 checks
+name: CI
 on:
   pull_request:
   push:
@@ -7,14 +7,14 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: sprint2-${{ github.event_name }}-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 defaults:
   run:
     shell: bash
 jobs:
   frontend:
-    name: Frontend checks
+    name: Frontend
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
@@ -42,7 +42,6 @@ jobs:
           cache-dependency-path: |
             frontend/package-lock.json
             services/event-service/package-lock.json
-            services/equipment-service/package-lock.json
             services/venue-service/package-lock.json
             services/booking-service/package-lock.json
             services/notification-service/package-lock.json
@@ -64,7 +63,8 @@ jobs:
           TEST_RESULTS_JSON: ${{ runner.temp }}/frontend-results.json
           CS_COVERAGE_DIR: ${{ runner.temp }}/frontend-coverage
         run: |
-          export CS_VERIFY_FINGERPRINT="$(git rev-parse 'HEAD^{tree}')"
+          CS_VERIFY_FINGERPRINT="$(git rev-parse 'HEAD^{tree}')"
+          export CS_VERIFY_FINGERPRINT
           npm run typecheck
           npm run typecheck:e2e
           npm run test:coverage
@@ -83,8 +83,8 @@ jobs:
             ${{ runner.temp }}/frontend-coverage
             ${{ runner.temp }}/coverage-gate-proof
 
-  event:
-    name: Event service checks
+  event_service:
+    name: event-service
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
@@ -111,8 +111,10 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: services/event-service/package-lock.json
-      - run: npm ci && npm run build && npx prisma migrate deploy
-      - run: npm run test:coverage | tee "$RUNNER_TEMP/event-coverage.txt"
+      - name: Install, build and migrate
+        run: npm ci && npm run build && npx prisma migrate deploy
+      - name: Unit tests with coverage
+        run: npm run test:coverage | tee "$RUNNER_TEMP/event-coverage.txt"
       - name: PostgreSQL integration tests (real event_db, migrations applied above)
         run: npm run test:integration | tee "$RUNNER_TEMP/event-postgres-coverage.txt"
       - uses: actions/upload-artifact@v7.0.1
@@ -124,8 +126,8 @@ jobs:
             ${{ runner.temp }}/event-coverage.txt
             ${{ runner.temp }}/event-postgres-coverage.txt
 
-  venue_booking:
-    name: ${{ matrix.service }} checks
+  services:
+    name: ${{ matrix.service }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -166,7 +168,8 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: services/${{ matrix.service }}/package-lock.json
-      - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy
+      - name: Install, validate schema and migrate
+        run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy
       - name: Install Booking HTTP boundary fixtures
         if: matrix.service == 'booking-service'
         working-directory: .
@@ -189,8 +192,10 @@ jobs:
           NODE
           cd ../event-service
           DATABASE_URL="${DATABASE_URL%/*}/event_test" npx prisma migrate deploy
-      - run: npm run test:coverage | tee "$RUNNER_TEMP/coverage.txt"
-      - run: npm run test:contract --if-present 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
+      - name: Unit tests with coverage
+        run: npm run test:coverage | tee "$RUNNER_TEMP/coverage.txt"
+      - name: HTTP contract tests
+        run: npm run test:contract --if-present 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
       - name: PostgreSQL HTTP integration and source coverage
         run: npm run test:integration | tee "$RUNNER_TEMP/postgres-coverage.txt"
       - name: Hold expiry PostgreSQL spike
@@ -213,7 +218,7 @@ jobs:
             ${{ runner.temp }}/hold-expiry-results.json
 
   identity:
-    name: ${{ matrix.service }} checks
+    name: ${{ matrix.service }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
@@ -254,7 +259,8 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: services/${{ matrix.service }}/package-lock.json
-      - run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy
+      - name: Install, validate schema and migrate
+        run: npm ci && npx prisma validate && npx prisma generate && npx prisma migrate deploy
       - name: Validate source and application imports
         run: |
           find src -name '*.js' -type f -print0 | xargs -0 -n 1 node --check
@@ -272,8 +278,8 @@ jobs:
             ${{ runner.temp }}/${{ matrix.service }}-coverage.log
             ${{ runner.temp }}/${{ matrix.service }}-postgres.log
 
-  live:
-    name: Live E2E and restart checks
+  live_integration:
+    name: Live stack integration and restart
     runs-on: ubuntu-24.04
     # Host PostgreSQL suites, bus/Safety/maintenance acceptance and restart smoke
     # on a fresh stack. Browser journeys run in the sharded live_browser job.
@@ -319,7 +325,7 @@ jobs:
           path: ${{ runner.temp }}/event-review/evidence/
 
   live_browser:
-    name: Live browser journeys (${{ matrix.shard }}/4)
+    name: Live browser journeys (shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-24.04
     # Each shard starts its own fresh stack, so journeys stay serial and keep
     # the production login rate limit within a shard.
@@ -367,10 +373,12 @@ jobs:
           retention-days: 30
           path: ${{ runner.temp }}/event-review/evidence/
 
-  gate:
-    name: Sprint 2 checks
+  required:
+    # The one check branch protection requires; it fails if any job above
+    # failed, was skipped or was cancelled.
+    name: Required checks
     if: always()
-    needs: [frontend, event, venue_booking, identity, live, live_browser]
+    needs: [frontend, event_service, services, identity, live_integration, live_browser]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     env:

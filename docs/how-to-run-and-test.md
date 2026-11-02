@@ -8,7 +8,7 @@ Commands work in **PowerShell** (Windows) and in bash/zsh (macOS/Linux)
 unless a step says otherwise. Run them from the repo root (the folder with
 `README.md`) unless the step says `cd` somewhere.
 
-For the current Sprint 2 CS-11/29/27/44 request workflow, use the
+For the event request workflow (CS-11/29/27/44 onwards), use the
 [isolated review recipe](event-review-run.md) first. It supplies a fresh
 PostgreSQL 16 project, Node 22 locked installs, parameterised ports, actual
 live-auth smoke and a restart check. The general development instructions and
