@@ -156,6 +156,8 @@ export function toOrganiserEvent(source: BackendEventRequest): OrganiserEvent {
     title: record.eventName,
     meta,
     status: record.status,
+    eventStatus: typeof source.eventStatus === 'string' ? source.eventStatus : null,
+    ...(typeof source.statusLabel === 'string' && source.statusLabel ? { statusLabel: source.statusLabel } : {}),
   }
 }
 

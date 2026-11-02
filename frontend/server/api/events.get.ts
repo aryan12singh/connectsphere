@@ -15,6 +15,9 @@ export interface OrganiserEvent {
   title: string
   meta: string
   status: EventStatus
+  /** Lifecycle stage once the request is approved (Planning, Confirmed, ...). */
+  eventStatus?: string | null
+  statusLabel?: string
 }
 
 export interface EventsResponse {

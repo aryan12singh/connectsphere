@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardFooter, CardHeader } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ReviewQueue from '@/components/events/ReviewQueue.vue'
-import { REQUEST_STATUS_LABELS } from '@/components/events/status-labels'
+import { EVENT_STATUS_LABELS, REQUEST_STATUS_LABELS } from '@/components/events/status-labels'
 const activeTab = ref('all')
 
 const { user } = useUserSession()
@@ -38,6 +38,7 @@ interface OrganiserEvent {
   title: string
   meta: string
   status: EventStatus
+  eventStatus?: string | null
   statusLabel?: string
 }
 
@@ -71,18 +72,42 @@ function isEventsResponse(value: unknown): value is { events: OrganiserEvent[] }
 const events = computed(() => isEventsResponse(data.value) ? data.value.events : [])
 const totalCount = computed(() => events.value.length)
 
+// S2-R9: once a request is approved, the Organiser follows the Event's own
+// stage (Planning, Confirmed, ...), the same label the detail page shows.
+function stageOf(event: OrganiserEvent) {
+  return event.status === 'APPROVED' && event.eventStatus ? event.eventStatus : event.status
+}
+
+// Request stages always have a tab; Event stages appear once an Event reaches them.
+const REQUEST_TABS = [
+  { value: 'DRAFT', label: 'Draft' },
+  { value: 'SUBMITTED', label: REQUEST_STATUS_LABELS.SUBMITTED },
+  { value: 'RETURNED_FOR_AMENDMENT', label: 'Returned' },
+] as const
+const EVENT_TABS = ['ARRANGEMENT_PENDING', 'CONFIRMED', 'PREPARATION', 'COMPLETED', 'CANCELLING', 'CANCELLED']
+
 const filteredEvents = computed(() => {
   if (activeTab.value === 'all')
     return events.value
-  return events.value.filter(event => event.status === activeTab.value)
+  return events.value.filter(event => stageOf(event) === activeTab.value)
 })
 
 const statusCounts = computed(() => {
   const counts = new Map<string, number>()
   for (const event of events.value)
-    counts.set(event.status, (counts.get(event.status) ?? 0) + 1)
+    counts.set(stageOf(event), (counts.get(stageOf(event)) ?? 0) + 1)
   return counts
 })
+
+const statusTabs = computed(() => [
+  ...REQUEST_TABS,
+  ...EVENT_TABS
+    .filter(value => countFor(value) > 0 || activeTab.value === value)
+    .map(value => ({ value, label: EVENT_STATUS_LABELS[value] ?? value })),
+  // An approved request without a linked Event stays visible under its request status.
+  ...(countFor('APPROVED') > 0 ? [{ value: 'APPROVED', label: 'Approved' }] : []),
+  { value: 'REJECTED', label: 'Rejected' },
+])
 
 function countFor(status: string) {
   return status === 'all' ? totalCount.value : (statusCounts.value.get(status) ?? 0)
@@ -98,7 +123,7 @@ const malformedPayload = computed(() => {
   return !error.value && data.value != null && !isEventsResponse(data.value)
 })
 
-function badgeFor(status: EventStatus) {
+function badgeFor(status: string) {
   switch (status) {
     case 'DRAFT':
       return { label: 'Draft', variant: 'outline' as const, class: '', dotted: false }
@@ -110,6 +135,16 @@ function badgeFor(status: EventStatus) {
       return { label: 'Approved', variant: 'outline' as const, class: 'border-transparent bg-success-soft text-success', dotted: true }
     case 'REJECTED':
       return { label: 'Rejected', variant: 'destructive' as const, class: '', dotted: true }
+    case 'ARRANGEMENT_PENDING':
+    case 'PREPARATION':
+      return { label: EVENT_STATUS_LABELS[status] ?? status, variant: 'secondary' as const, class: '', dotted: true }
+    case 'CONFIRMED':
+    case 'COMPLETED':
+      return { label: EVENT_STATUS_LABELS[status] ?? status, variant: 'outline' as const, class: 'border-transparent bg-success-soft text-success', dotted: true }
+    case 'CANCELLING':
+      return { label: EVENT_STATUS_LABELS[status] ?? status, variant: 'outline' as const, class: 'border-transparent bg-warning-soft text-warning', dotted: true }
+    case 'CANCELLED':
+      return { label: EVENT_STATUS_LABELS[status] ?? status, variant: 'outline' as const, class: 'text-muted-foreground', dotted: true }
     default:
       return { label: status, variant: 'outline' as const, class: '', dotted: false }
   }
@@ -145,20 +180,8 @@ function badgeFor(status: EventStatus) {
           <TabsTrigger value="all" data-testid="tab-all" class="flex-none">
             All ({{ countFor('all') }})
           </TabsTrigger>
-          <TabsTrigger value="DRAFT" data-testid="tab-draft" class="flex-none">
-            Draft ({{ countFor('DRAFT') }})
-          </TabsTrigger>
-          <TabsTrigger value="SUBMITTED" data-testid="tab-submitted" class="flex-none">
-            Under Review ({{ countFor('SUBMITTED') }})
-          </TabsTrigger>
-          <TabsTrigger value="RETURNED_FOR_AMENDMENT" data-testid="tab-returned" class="flex-none">
-            Returned ({{ countFor('RETURNED_FOR_AMENDMENT') }})
-          </TabsTrigger>
-          <TabsTrigger value="APPROVED" data-testid="tab-approved" class="flex-none">
-            Approved ({{ countFor('APPROVED') }})
-          </TabsTrigger>
-          <TabsTrigger value="REJECTED" data-testid="tab-rejected" class="flex-none">
-            Rejected ({{ countFor('REJECTED') }})
+          <TabsTrigger v-for="tab in statusTabs" :key="tab.value" :value="tab.value" :data-testid="`tab-${tab.value.toLowerCase()}`" class="flex-none">
+            {{ tab.label }} ({{ countFor(tab.value) }})
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -186,9 +209,9 @@ function badgeFor(status: EventStatus) {
             </div>
           </CardHeader>
           <CardFooter class="justify-between gap-2 border-t border-border p-4 pt-4!">
-            <Badge :variant="badgeFor(event.status).variant" :class="['h-[22px]', badgeFor(event.status).class]">
-              <span v-if="badgeFor(event.status).dotted" aria-hidden="true" class="size-1.5 rounded-full bg-current" />
-              {{ event.statusLabel ?? badgeFor(event.status).label }}
+            <Badge :variant="badgeFor(stageOf(event)).variant" :class="['h-[22px]', badgeFor(stageOf(event)).class]">
+              <span v-if="badgeFor(stageOf(event)).dotted" aria-hidden="true" class="size-1.5 rounded-full bg-current" />
+              {{ event.statusLabel ?? badgeFor(stageOf(event)).label }}
             </Badge>
             <Button as-child variant="ghost" class="relative h-9 shrink-0 gap-1 px-2.5 text-primary hover:text-primary">
               <NuxtLink :to="`/requests/${event.id}`">

@@ -395,6 +395,26 @@ describe('CS-10 — TC-CS10-06 dashboard loads through the request-aware fetch',
     expect(wrapper.find('a[href="/requests/e2"]').exists()).toBe(true)
   })
 
+  it('S2-R9 shows the Event stage for an approved request and filters by it', async () => {
+    useFetchState.data.value = {
+      events: [
+        { id: 'e1', category: 'GALA', title: 'Planning Gala', meta: 'meta', status: 'APPROVED', eventStatus: 'ARRANGEMENT_PENDING', statusLabel: 'Planning' },
+        { id: 'e2', category: 'GALA', title: 'Confirmed Summit', meta: 'meta', status: 'APPROVED', eventStatus: 'CONFIRMED', statusLabel: 'Confirmed' },
+        { id: 'e3', category: 'GALA', title: 'Pending Talk', meta: 'meta', status: 'SUBMITTED' },
+      ],
+    }
+    useFetchState.error.value = null
+    const wrapper = await mountIndexPage()
+    const badges = wrapper.findAll('[data-testid="event-card"]').map(card => card.text())
+    expect(badges.find(text => text.includes('Planning Gala'))).toContain('Planning')
+    expect(badges.find(text => text.includes('Confirmed Summit'))).toContain('Confirmed')
+    expect(badges.join(' ')).not.toContain('Approved')
+    expect(wrapper.get('[data-testid="tab-confirmed"]').text()).toBe('Confirmed (1)')
+    expect(wrapper.get('[data-testid="tab-arrangement_pending"]').text()).toBe('Planning (1)')
+    expect(wrapper.find('[data-testid="tab-cancelled"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="tab-approved"]').exists()).toBe(false)
+  })
+
   it('view-details actions link to the request form', async () => {
     useFetchState.data.value = {
       events: [
