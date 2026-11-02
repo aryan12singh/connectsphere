@@ -239,6 +239,5 @@ coverage/
 .idea/
 .vscode/
 
-# Local AI assistant configuration (per developer, not part of the product)
-.agents/
+# Per-developer assistant tool settings. The shared .agents/ skills stay tracked.
 .opencode/
