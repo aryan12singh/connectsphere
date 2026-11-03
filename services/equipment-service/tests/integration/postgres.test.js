@@ -317,7 +317,8 @@ test('TC-CS42-11 a Booking hold expiry or single-venue change leaves the persist
     await Promise.all([authStub.close(), eventStub.close(), bookingStub.close()]);
   }
 });
-test.todo('TC-CS42-12 whole-Event cancellation requires the CS-46 cancellation workflow; explicit technical replacement is covered separately');
+// TC-CS42-12: whole-Event cancellation is covered by TC-CS46-01/03/04 above (CS-46 is
+// built); explicit technical replacement is the TC-CS42-12 test below.
 
 test('TC-CS42-02/03 PostgreSQL shortages and obsolete approvals commit no reservation, history or action', async () => {
   const competing = await submit([{ equipmentType: 'projector', quantity: 3 }]);

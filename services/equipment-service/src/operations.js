@@ -25,12 +25,16 @@ function validateOperation(body, known, stock) {
   return { ...input, reason: input.reason.trim(), ...period(input) };
 }
 
+// Lines of the same type in different venues draw on one stock pool, so the
+// check runs once per type against the Event's total demand (CS-40/41/42).
 function lineResult(requirements, stockByType, reservations, operations, window) {
-  return requirements.equipment.map(line => {
+  const demand = new Map();
+  for (const line of requirements.equipment) demand.set(line.equipmentType, (demand.get(line.equipmentType) || 0) + line.quantity);
+  return [...demand].map(([equipmentType, quantity]) => {
     const commitments = [...reservations, ...operations]
-      .filter(item => item.equipmentType === line.equipmentType && item.active !== false)
+      .filter(item => item.equipmentType === equipmentType && item.active !== false)
       .map(item => ({ startAt: item.startAt, endAt: item.endAt, quantity: item.quantity }));
-    return { equipmentType: line.equipmentType, ...availabilityLine(stockByType.get(line.equipmentType) || 0, line.quantity, commitments, window.startAt, window.endAt) };
+    return { equipmentType, ...availabilityLine(stockByType.get(equipmentType) || 0, quantity, commitments, window.startAt, window.endAt) };
   });
 }
 

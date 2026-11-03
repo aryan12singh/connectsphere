@@ -280,7 +280,26 @@ test('TC-CS40-10 one Event request retains equipment allocations for multiple ve
   });
 });
 
-test.todo('TC-CS40-10 / TC-CS41-07 / TC-CS42-06 integration: aggregate same-type venue allocations before dated availability and reservation; the pooling helper currently has no service call site');
+test('TC-CS40-10 TC-CS41-07 TC-CS42-06 same-type lines in different venues are checked and reserved as one Event demand', async () => {
+  await withServer(async baseUrl => {
+    const coordinator = actorHeaders('coordinator-pooled', 'EVENT_COORDINATOR');
+    const projector = (await (await fetch(`${baseUrl}/equipment-types`, { headers: coordinator })).json()).equipmentTypes.find(item => item.name === 'projector');
+    const half = Math.floor(projector.total / 2) + 1;
+    const requestPath = `${baseUrl}/event-requests/event-pooled/technical-request`;
+    const support = { ...actorHeaders('support-pooled', 'TECHNICAL_SUPPORT_STAFF'), 'x-test-equipment-period': '2029-03-05T01:00:00.000Z,2029-03-05T03:00:00.000Z' };
+    assert.equal((await fetch(requestPath, { method: 'POST', headers: coordinator, body: JSON.stringify({ ...requestBody, equipment: [
+      { equipmentType: 'projector', quantity: half, venueId: 'room-a' },
+      { equipmentType: 'projector', quantity: half, venueId: 'room-b' },
+    ] }) })).status, 201);
+    assert.equal((await fetch(`${requestPath}/decision`, { method: 'POST', headers: support, body: JSON.stringify({ decision: 'APPROVED', version: 1 }) })).status, 200);
+    const availability = await (await fetch(`${requestPath}/availability`, { headers: support })).json();
+    assert.equal(availability.fulfillable, false);
+    assert.deepEqual(availability.lines, [{ equipmentType: 'projector', requested: half * 2, available: projector.total, shortfall: half * 2 - projector.total }]);
+    const reserve = await fetch(`${requestPath}/reservations`, { method: 'POST', headers: { ...support, 'Idempotency-Key': 'reserve-pooled' }, body: JSON.stringify({ version: 1 }) });
+    assert.equal(reserve.status, 409);
+    assert.equal((await reserve.json()).error.code, 'EQUIPMENT_SHORTFALL');
+  });
+});
 
 test('CS-41 technical request list returns a backend-derived equipment period only when equipment is requested', async () => {
   await withServer(async baseUrl => {
