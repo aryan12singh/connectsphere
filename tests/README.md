@@ -4,8 +4,8 @@ ConnectSphere is tested at four layers. Each layer catches a different kind of f
 
 | Layer | Where | Runner | What it proves | Runs in CI as |
 |---|---|---|---|---|
-| Service unit and HTTP contract | `services/<service>/tests/unit`, `tests/test_*.py` | `node --test`, `unittest` | Domain rules, validation, permissions and each service's HTTP contract, with dependencies stubbed | one job per service (`event-service`, `booking-service`, …) |
-| Service integration | `services/<service>/tests/integration` | `node --test` against the service's own `<service>_test` PostgreSQL database | Real migrations, transactions, locking, outbox and concurrency (for example two expiry scans at once) | the same per-service jobs |
+| Service unit and HTTP contract | `services/<service>/tests/unit` (auth and user: `services/<service>/tests/*.test.js`), `tests/test_*.py` | `node --test`, `unittest` | Domain rules, validation, permissions and each service's HTTP contract, with dependencies stubbed | one job per service (`event-service`, `booking-service`, …) |
+| Service integration | `services/<service>/tests/integration` (attendance also `tests/postgres`) | `node --test` against the service's own `<service>_test` PostgreSQL database (attendance's `tests/integration` runs in memory) | Real migrations, transactions, locking, outbox and concurrency (for example two expiry scans at once) | the same per-service jobs |
 | Frontend unit, component and BFF | `tests/specs` | Vitest with the Nuxt test environment | Pages and components render the right states; BFF routes call event-service and enforce access; runs in seconds without a browser | `Frontend` |
 | Live end-to-end | `frontend/e2e` | Playwright, desktop and mobile | Full journeys through the browser, Kong, Keycloak, RabbitMQ and every service on a freshly seeded stack, including restarts | `Live stack integration and restart`, `Live browser journeys (shard n/4)` |
 
@@ -14,6 +14,7 @@ ConnectSphere is tested at four layers. Each layer catches a different kind of f
 ## Supporting folders
 
 - `tests/helpers`: shared fixtures and harnesses (the event-service BFF harness, live Safety, venue and notification helpers).
+- `services/utils/*.test.js`: the shared outbox retry schedule, run in the `Frontend` job with the test-script tests.
 - `tests/scripts`: runner guards, the coverage wrapper and coverage-gate proof, `validate-equipment-traceability.cjs` (checks that the CS-40/41/42/47 records' declared layers match the browser tests; runs in CI) and `traceability-index.mjs`, which regenerates the traceability index.
 - `tests/records/<story>`: the written case specification (`test-cases.md`) and dated execution reports (`test-runs/`). Case IDs (`TC-CSnn-xx`) match the Sprint test sheet and appear in the test names, so a case can be found in code with a text search.
 

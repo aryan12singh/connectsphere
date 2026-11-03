@@ -14,9 +14,9 @@ const ACTION_ROLES = Object.freeze({
   'event_requests.create': ['EVENT_ORGANISER'],
   'event_requests.review': ['EVENT_COORDINATOR'],
   'events.view': ROLES.filter(role=>role!=='SAFETY_OFFICER'),
-  // CS-10: the Lead's landing screen (Unassigned Queue). Assigning and
-  // reassigning are added by CS-81/CS-30. A Lead is NOT a Coordinator: it never
-  // gets event_requests.review, events.confirm or venue booking powers (Q11).
+  // The Lead's queue, assign (CS-81), reassign and transfer decisions (CS-30)
+  // and oversight (CS-83). A Lead is NOT a Coordinator: it never gets
+  // event_requests.review, events.confirm or venue booking powers (Q11).
   'assignments.view':['EVENT_COORDINATOR_LEAD'],
   'events.technical.metadata.view': ['TECHNICAL_SUPPORT_STAFF'],
   'safety.view':['SAFETY_OFFICER'],

@@ -18,17 +18,16 @@ sequenceDiagram
     API->>Auth: Validate live token and trusted roles/organisation
     API->>DB: Begin transaction; lock scoped replay key/current row
     API->>DB: Validate state/version; persist fields/status
-    API->>Auth: Trusted Coordinator directory (initial submit only)
     API->>DB: Shared assignment + activity + outbox + replay response
     DB-->>API: Commit all or roll back all
     API-->>UI: Stable request ID, version/status/errors via BFF
 ```
 
-`src/workflows.js` orchestrates these writes, calls the existing `decide`/`pickCoordinator`, and exports `recordActivity`/`recordOutbox` for other event transitions using **their existing Prisma transaction**. The activity writer allows captured fields, state and assignment changes; it never accepts arbitrary bodies/headers. Ordinary users have no history update/delete endpoint; the database append-only trigger enforces this too.
+`src/workflows.js` orchestrates these writes, calls the existing `decide` guard, and exports `recordActivity`/`recordOutbox` for other event transitions using **their existing Prisma transaction**. The activity writer allows captured fields, state and assignment changes; it never accepts arbitrary bodies/headers. Ordinary users have no history update/delete endpoint; the database append-only trigger enforces this too.
 
 Draft validation permits missing mandatory fields. Full submission/resubmission uses the single `domain/validation.js` validator. Submitted/rejected requests are read-only. A returned request can be saved incomplete; a complete resubmit must differ from its return baseline. Baseline persists across intermediate saves. Revisions retain ID and Coordinator and record old/new values and revisedAt. No assignment reruns on resubmit.
 
-An initial successful submit writes SUBMITTED plus a separate System COORDINATOR_ASSIGNED entry when a Coordinator exists. Drafts have only private create/edit activity. Decisions retain comments, actor and prior values. The owner sees the full immutable history. Current Coordinators cannot see Draft-only entries or old private Draft values on submission; those old values are explicitly marked private. Wider same-org Event viewers see only actual Event entries with the Event ID, not request/draft/amendment history. Visibility is filtered before pagination. History is newest-first, twenty per cursor page, ordered by a unique database sequence to disambiguate equal timestamps. A cursor must be a positive integer. Actor names are snapshots from trusted identity, with ID fallback; contact profiles/tokens are excluded. UI interpolation escapes all text.
+An initial successful submit writes SUBMITTED and leaves the request unassigned in the Coordinator Lead's queue (Week 7, CS-81). The Lead's assign and reassign write `COORDINATOR_ASSIGNED` or `COORDINATOR_REASSIGNED` with the Lead as actor. Drafts have only private create/edit activity. Decisions retain comments, actor and prior values. The owner sees the full immutable history. Current Coordinators cannot see Draft-only entries or old private Draft values on submission; those old values are explicitly marked private. Wider same-org Event viewers see only actual Event entries with the Event ID, not request/draft/amendment history. Visibility is filtered before pagination. History is newest-first, twenty per cursor page, ordered by a unique database sequence to disambiguate equal timestamps. A cursor must be a positive integer. Actor names are snapshots from trusted identity, with ID fallback; contact profiles/tokens are excluded. UI interpolation escapes all text.
 
 ## BFF mapping
 

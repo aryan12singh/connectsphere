@@ -1,14 +1,14 @@
-# Sprint 2 API contract — shared conventions
+# API contract — shared conventions
 
 ## Event workflow implementation amendment — 2026-10-06
 
 The event-service and event BFF **implemented contract** is [event-workflows.md](event-workflows.md) and [its OpenAPI](../services/event-service/docs/openapi.yaml). This amendment supersedes conflicting event-request draft rules below: owner-private Requests/Drafts; assigned-only Coordinator reads; same-organisation visibility only for actual Event history; required scoped idempotency keys on all request writes, changed payload409 with retained replay rows; error.fields mapping; cursor history pages20; supported local date/clock+zone adapter alongside offset instants. Broader services retain their own contracts. These deliberate deviations do not silently redefine other teams' endpoints or notification delivery.
 
-The following historical shared draft is retained for team traceability; planned event/reassignment/confirmation endpoints within it are not evidence they exist.
+The following historical shared draft is retained for team traceability; planned event/reassignment/confirmation endpoints within it are not evidence they exist. Where Release 1 differs from it, the **As built** notes in §4, §5 and §8 describe the running code.
 
 ---
 
-Status: **agreed draft for review** (Sprint 2 story "Agree the interfaces"). Frontend and
+Status (Sprint 2): **agreed draft for review** (Sprint 2 story "Agree the interfaces"). Frontend and
 backend build against this in parallel. Per-service detail is in each service's OpenAPI file:
 
 | Service | OpenAPI file | Public via Kong |
@@ -98,8 +98,13 @@ Every error body, from every Sprint 2 service:
 Rule of thumb for 403 vs 409 (CS-32): check **who** first, then **state**. A wrong actor gets 403
 even if the state is also wrong; a right actor in the wrong state gets 409.
 
-> auth-service and user-service still return the older `{ "error": "text" }`. They move to the
-> shape above when their public routes are touched; the BFF already handles both.
+**As built (Release 1).** Services did not converge on one shape. The BFF handles every variant below.
+
+| Service | Validation failure (422) | Other errors |
+|---|---|---|
+| event-service, equipment-service, attendance-service | `VALIDATION_FAILED`; field problems, when given, in `details` (event-service) or `fields` (equipment-service) | `{ error: { code, message } }` |
+| booking-service, venue-service | `VALIDATION_ERROR` with a `fields` object; a few newer booking and venue routes use `VALIDATION_FAILED` | Mostly `{ error: { code, message } }`; auth guards, internal routes and some not-found answers (for example `GET /bookings/:id` 404) are a plain `{ "error": "text" }` |
+| auth-service, user-service, notification-service | `VALIDATION_ERROR` | The older plain `{ "error": "text" }` |
 
 ## 5. Idempotency
 
@@ -115,9 +120,12 @@ Idempotency-Key: 6f1c0c9e-3b0a-4c2e-9a53-2f7a8d4e1b10     (a client-generated UU
 * Same key + same caller + same path + same body → the **original response is replayed**
   (status and body), with the header `Idempotency-Replayed: true`. Nothing runs twice.
 * Same key + **different** body → 409 `IDEMPOTENCY_CONFLICT`.
+  **As built:** event-service and equipment-service operations return 409 `IDEMPOTENCY_CONFLICT`;
+  booking-service returns 409 `IDEMPOTENCY_KEY_REUSE`; the original event-request create and the
+  equipment technical-request submit and decision routes return 422 `IDEMPOTENCY_KEY_REUSED`.
 * A *new* key on an already-decided request is not a replay: the status guard and the `version`
   check still apply, so a second approval with a fresh key is a 409 (story CS-12).
-* Stored in `event_db.idempotency_records` for event-service. Other services may adopt the same pattern later.
+* Stored in `event_db.idempotency_records` for event-service; booking, equipment and attendance keep their own replay rows.
 
 ## 6. Concurrency (stale and simultaneous actions)
 
@@ -143,6 +151,10 @@ The wire carries enum codes, never display text. The frontend has **one shared l
 | `APPROVED` | Planning (its Event is in Planning) | `COMPLETED` | Completed |
 | `REJECTED` | Rejected | `REJECTED` | Rejected |
 
+**As built:** the Event also has `PREPARATION` (label Preparation) between Confirmed and Completed,
+and `CANCELLING` (label Cancelling) while a whole-Event cancellation releases its resources
+(`services/event-service/prisma/schema.prisma`).
+
 A request with no Coordinator shows the extra badge **Awaiting assignment**
 (`awaitingAssignment: true` in the response).
 
@@ -152,7 +164,8 @@ State changes write a row to the service's `outbox` table in the same transactio
 publishes to RabbitMQ later (notification-service consumes). Sprint 2 event types:
 `RequestSubmitted`, `CoordinatorAssigned`, `CoordinatorReassigned`, `RequestApproved`,
 `RequestRejected`, `RequestReturned`, `RequestResubmitted`. Payload always has `eventRequestId`,
-`actorId` (null for system), `occurredAt`, plus type-specific ids. Consumers are not part of Sprint 2.
+`actorId` (null for system), `occurredAt`, plus type-specific ids. Consumers were not part of Sprint 2;
+notification-service now consumes them (see the CS-52 contract below).
 
 ## 10. Auth-service additions (Sprint 2)
 
@@ -289,9 +302,9 @@ TC-CS88-06 (2 November) verifies the integrated journey: public Coordinator canc
 | --- | --- | --- | --- |
 | `RegistrationCreated` | Attendance (live) | `eventId`, `eventName`, `eventVersion`, `userId`, `registrationId`, `occurredAt` | `REGISTRATION_CONFIRMED` to `userId` only |
 | `RegistrationWaitlisted`, `WaitlistOfferMade`, `WaitlistOfferExpired`, `WaitlistOfferAccepted` | Attendance (not in Release 1: CS-48 excludes the waitlist) | same as above | `REGISTRATION_WAITLISTED`, `WAITLIST_OFFER_MADE`, `WAITLIST_OFFER_EXPIRED`, `WAITLIST_OFFER_ACCEPTED` to `userId` only |
-| `RegistrationWithdrawn` | Attendance (CS-49, pending) | same as above | `REGISTRATION_WITHDRAWN` to `userId` only |
+| `RegistrationWithdrawn` | Attendance (live, CS-49) | same as above | `REGISTRATION_WITHDRAWN` to `userId` only |
 | `EventConfirmed` with `attendeeMaterialChange` or `attendeeVenueChanged` | Event (live, Safety confirmation) | `eventId`, `eventVersion`, `roundId`, `startAt`, `endAt`, `timeZone`, `venueNames` | `EVENT_CHANGED` or `VENUE_CHANGED` to every active Attendee |
-| `EventCancelled` | Event (CS-54 saga, pending) | `eventId`, `eventRequestId`, `eventVersion`, `cancellationActionId`; optional `attendeeRecipientIds` | `EVENT_CANCELLED` to every active Attendee |
+| `EventCancelled` | Event (live, CS-54 cancellation runner) | `eventId`, `eventRequestId`, `eventVersion`, `cancellationActionId`; optional `attendeeRecipientIds` | `EVENT_CANCELLED` to every active Attendee |
 
 Rules:
 

@@ -1,6 +1,6 @@
-# Sprint 3 coverage policy — CS-79
+# Coverage policy — CS-79
 
-Decision date: 17 October 2026. Aryan authorized selecting and implementing
+Adopted in Sprint 3 and current for Release 1. Decision date: 17 October 2026. Aryan authorized selecting and implementing
 baseline-derived thresholds; peer review of this change records adoption. This
 replaces the earlier pending numerical-policy wording. The separate
 [17 October venue-policy clarification](venue-policy-decisions.md) resolves Q2;
@@ -44,6 +44,7 @@ The executable floors live in each service's `test:coverage` and
 | Event | 60 / 70 / 55 | 60 / 70 / 50 |
 | Equipment | 95 / 60 / 95 | 75 / 45 / 70 |
 | Notification | 80 / 60 / 80 | 65 / 45 / 60 |
+| Attendance | c8 all-source gate: 81 statements / lines / branches / functions over unit and in-memory HTTP tests | No floor; the PostgreSQL suite (`npm run test:postgres`) is a required CI step |
 
 ### 21 October 2026 integration with the expanded Equipment branch
 
@@ -89,7 +90,7 @@ with the README's isolated database/auth settings. Native
 report wrapper preserves its exit status. Keep raw outputs outside Git.
 
 The `Required checks` job is the single check branch protection requires (it
-was named `Sprint 2 checks` until November 2026). Its frontend and seven service prerequisites enforce these floors;
+was named `Sprint 2 checks` until November 2026). Its frontend and eight service prerequisites enforce these floors;
 explicit Bash/pipefail preserves a failure through `tee`. Typechecks, production
 build, HTTP contracts, PostgreSQL, live browser, broker and restart checks remain
 required. The existing workflow runs for every PR and main push.
@@ -115,8 +116,8 @@ defects or fabricated passing runs.
 See [CS-79 cases and dated results](../tests/records/CS-79), the
 [CI workflow](../.github/workflows/event-workflows.yml), and
 [Definition of Done](DEFINITION_OF_DONE.md). The nine already accepted stories
-still need this policy PR approved/merged and green CI on that main merge before
-their shared coverage closure blocker is cleared.
+needed this policy merged with green CI on main to clear their shared coverage
+blocker; it was merged and is enforced on every PR and main push.
 
 Mechanism references: [Node 22 native coverage flags](https://nodejs.org/download/release/v22.23.0/docs/api/cli.html#--test-coverage-linesthreshold)
 and [Vitest coverage thresholds](https://vitest.dev/config/coverage#coverage-thresholds).

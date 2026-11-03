@@ -10,13 +10,13 @@ against `services/utils/role-policy.js`, plus route and service tests.
 
 | Capability (permission) | Organiser | Coordinator | Coordinator Lead | Venue Staff | Technical Support | Safety Officer | Attendee |
 |---|---|---|---|---|---|---|---|
-| Home after login | `/` Events | `/` Events | `/queue` Unassigned Queue | `/venue` | `/technical-support` | `/safety-checks` | `/attendee` |
+| Home after login | `/` Events | `/` Events | `/queue` Unassigned Queue | `/venue` | `/technical-requirements` | `/safety-checks` | `/attendances` |
 | Public sign-up | Yes | Seed only | Seed only | Seed only | Seed only | Seed only | Yes |
 | `event_requests.create` | Yes | – | – | – | – | – | – |
-| `event_requests.review` (approve/return/reject, reassign) | – | Assigned only | – | – | – | – | – |
+| `event_requests.review` (approve/return/reject, ask the Lead to reassign) | – | Assigned only | – | – | – | – | – |
 | `events.confirm` | – | Assigned only | – | – | – | – | – |
-| `events.view` | Own/organisation | Assigned | Granted; no relationship-based records yet (CS-81/30) | Yes | Yes | – | Yes |
-| `assignments.view` (Unassigned Queue) | – | – | Yes | – | – | – | – |
+| `events.view` | Own/organisation | Assigned | Queued (submitted, unassigned) requests and the oversight view | Yes | Yes | – | Yes |
+| `assignments.view` (Unassigned Queue, assign, reassign, oversight, transfer requests) | – | – | Yes | – | – | – | – |
 | `venues.view` / `venues.manage` | – | View | – | View / manage | View | – | – |
 | `venue_bookings.create` / `.decide` | – | Create | – | Decide | – | – | – |
 | `safety.submit` / `safety.rework` | – | Assigned | – | – | – | – | – |
@@ -28,8 +28,9 @@ against `services/utils/role-policy.js`, plus route and service tests.
 
 - **Coordinator Lead** is an assignment/supervision role, not a Coordinator or
   administrator (Session 3). It never gets approve/reject/confirm or venue
-  powers from Lead membership. The queue's contents and assign/reassign arrive
-  with CS-81 and CS-30. Exact Lead authority (Q11) is still pending.
+  powers from Lead membership. The Lead assigns queued requests (CS-81),
+  reassigns them and decides Coordinator transfer requests (CS-30), and sees
+  the oversight view (CS-83). All of these routes require `assignments.view`.
 - **Safety Officer** sees only Safety review rounds (from submission onward)
   and cannot edit events, venues or equipment. Recording decisions is CS-94.
 - Private Drafts stay owner-only for both new roles.
@@ -40,7 +41,7 @@ This amendment supersedes the historical single-role and interface restrictions 
 
 | Action | Organiser | Coordinator | Venue Staff | Technical Support | Attendee |
 |---|---|---|---|---|---|
-| Home | Events | Assigned queue | Venues | User directory | Own profile |
+| Home | Events | Assigned queue | Venues | Technical requirements | My registrations |
 | Public signup | Yes, organisation required | Seed only | Seed only | Seed only | Yes |
 | Venue details/calendar | No | Read | Read | Read | No |
 | Venue mutation | No | No | With manage grant | No | No |
@@ -192,9 +193,11 @@ Covered today by the CS-10 automated tests: unauthenticated access to a protecte
 endpoint returns 401; an account with an unrecognised role is denied rather than
 defaulted.
 
-Not yet covered, and due with CS-26 in Sprint 2: direct endpoint access by a second
-Organiser against another Organiser's request, Coordinator access to an event
-assigned to a different Coordinator, and access revocation after reassignment.
+Not covered at Sprint 1, since added: direct endpoint access by a second
+Organiser against another Organiser's request (`frontend/e2e/CS-11.spec.ts`,
+`services/event-service/tests/unit/routes.test.js`), Coordinator access to an event
+assigned to a different Coordinator (`services/event-service/tests/unit/transitions.test.js`),
+and access revocation after reassignment (`routes.test.js`, `frontend/e2e/CS-88.spec.ts` TC-CS88-04).
 
 ## Current booking creation amendment — 7 October 2026
 

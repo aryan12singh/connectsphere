@@ -64,7 +64,10 @@ docker compose -f infra/docker-compose.yml ps
 ```
 
 You should see `postgres`, `pgadmin`, `rabbitmq`, `keycloak`, `kong`,
-`user-service`, `auth-service`, `venue-service` and `booking-service` running.
+`user-service`, `auth-service`, `event-service`, `venue-service`,
+`booking-service`, `equipment-service`, `attendance-service` and
+`notification-service` running. The one-off `seed` container loads the seed
+data and then exits.
 
 Keycloak takes about 30–60 seconds to be ready. Until then, logins return
 "temporarily unavailable".
@@ -138,9 +141,9 @@ Import the collection for the service you want to exercise:
 - `services/booking-service/postman/booking-service.postman_collection.json` — logs in through Kong, then covers booking creation, idempotent retry, retrieval, cancellation, history and availability.
 - `services/venue-service/postman/venue-service.postman_collection.json` — logs in through Kong as an Event Coordinator and Venue Staff, then covers venue options, listing, CRUD, operating-hours replacement, history and empty-hours validation.
 
-The booking collection defaults to the seeded coordinator and venue. The event
-collection defaults to the mock BFF credentials (`organiser@example.com` and
-`coordinator@example.com`).
+The booking collection defaults to the seeded coordinator and venue. Event
+requests have no Postman collection; use event-service's
+[OpenAPI file](../services/event-service/docs/openapi.yaml) or the website.
 
 ### B4. Useful addresses
 
@@ -167,11 +170,10 @@ copy .env.example .env      # macOS/Linux: cp .env.example .env
 
 Open `frontend/.env` and choose a mode:
 
-- `NUXT_AUTH_MODE=mock`. Mock users, no backend needed. Use this to see the
-  event pages with data: `organiser@example.com` or
-  `coordinator@example.com`, password `Password123!`.
-- `NUXT_AUTH_MODE=live`. Real login through the backend from Part B, with
+- `NUXT_AUTH_MODE=live` (the default). Real login through the backend from Part B, with
   the seed users (list below). Event requests, drafts and history use event-service and PostgreSQL. Role homes and grants are described in [the access matrix](access-matrix.md).
+- `NUXT_AUTH_MODE=mock` is a synthetic sign-in fixture for automated tests only.
+  It has no event data: every event page needs the real services from Part B.
 
 Leave `NUXT_API_BASE_URL=http://localhost:8000`. Leave the
 `NUXT_SESSION_PASSWORD` line commented out. Nuxt generates one on first
@@ -225,7 +227,7 @@ differs, note what you saw.
 | MT-02 | Log in as `sarah.tan@nexuslabs.sg` | Lands on **Your events** (empty list in live mode) |
 | MT-03 | Click the initials (top right), then **Sign out** | Shows Sarah Tan, `EVENT_ORGANISER`, her email. Sign out returns to /login. In pgAdmin, `auth_db.sessions`: her newest session now has `revokedAt` set |
 | MT-04 | Log in as `aisha.rahman@connectsphere.sg` | Lands on **Review queue** |
-| MT-05 | Log in as `hafiz.ismail@connectsphere.sg` (also try Venue Staff and Attendee) | Opens Technical Support `/support`, Venue Staff `/venue`, or Attendee `/attendee` |
+| MT-05 | Log in as `hafiz.ismail@connectsphere.sg` (also try Venue Staff and Attendee) | Opens Technical Support `/technical-requirements`, Venue Staff `/venue`, or Attendee `/attendances` |
 | MT-06 | Signed out, go to http://localhost:3000/ | Redirected to /login |
 | MT-07 | Log in as Aisha, then refresh the page | Still logged in |
 
@@ -252,7 +254,7 @@ differs, note what you saw.
 
 ### Tech support admin (Swagger UI)
 
-Technical Support has a read-only user directory at `/support`; use Swagger at http://localhost:3002/docs for administrative mutations.
+Technical Support's website home is the equipment review queue at `/technical-requirements`. User administration has no website screen; use Swagger at http://localhost:3002/docs.
 Check that the server dropdown at the top shows `http://localhost:3002`.
 
 **Get a token (needed for MT-10 onwards):**

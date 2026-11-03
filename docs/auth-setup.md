@@ -95,7 +95,7 @@ Current signup rules (updated 2026-10-07):
 | Area | What | Takes effect |
 |---|---|---|
 | Users | Create public accounts, change eligible public role, disable / re-enable | Immediately. Disabling also ends the user's open sessions |
-| Role permissions | Tick which permissions each of the 5 roles has | On each user's next request |
+| Role permissions | Tick which permissions each of the seven roles has | On each user's next request |
 | Settings | Session length | For logins made after the change |
 | Settings | Idle timeout (0 = off) | Immediately, for every session |
 | Settings | Lockout: tries, first wait, longest wait | Immediately (copied to Keycloak) |
@@ -171,20 +171,16 @@ calls Kong on the browser's behalf, so the browser never talks to Kong.
 
 **Modes** (set in `frontend/.env`):
 
-- `NUXT_AUTH_MODE=mock` (default). Behaves exactly as before: mock users
-  such as `organiser@example.com`, the event mocks, and your existing tests.
-  No backend needed. The admin API returns 501 in this mode.
-- `NUXT_AUTH_MODE=live`. Real login with the seed users (e.g.
+- `NUXT_AUTH_MODE=live` (the default). Real login with the seed users (e.g.
   `sarah.tan@nexuslabs.sg` / `Sarah@CS01!`; each seed user has their own password, listed in `services/user-service/prisma/seed/01_user_db.sql`). Needs the Docker stack and
   `NUXT_API_BASE_URL=http://localhost:8000`.
 
-  Note: the event pages still use mock data keyed to mock user IDs, so real
-  users see no seeded events until event-service exists.
+  Event pages read event-service through the BFF and have no mock data.
+- `NUXT_AUTH_MODE=mock`. A synthetic sign-in fixture for automated tests only
+  (`organiser@example.com` and similar). The admin API returns 501 in this mode.
 
-**Your tests:** with these files your `tests/specs` give the same result as
-before (75 pass, and the same 20 CS-11/CS-30 failures that exist without
-them), plus 7 passing sign-up tests in `tests/specs/signup.spec.ts`. No
-existing test needed changing.
+**Tests:** sign-in, sign-up and role routing are covered in `tests/specs`
+(for example `CS-10.spec.ts` and `CS-26.spec.ts`); see [tests/README.md](../tests/README.md).
 
 **Using it in components and pages** (both composables are auto-imported by Nuxt):
 
@@ -209,9 +205,9 @@ Hiding a button or page only keeps the screen tidy. The backend checks the
 permission on every call.
 
 The middleware routes each recognised role to its functional home and checks
-permission metadata on typed routes. Technical Support opens `/support` with a
-read-only user directory and may read `/venue`; administrative mutations remain
-in the Swagger API. Backend action-role and record guards apply on every call.
+permission metadata on typed routes. Technical Support opens the equipment
+review queue at `/technical-requirements` and may read `/venue`; user
+administration has no website screen and stays in the Swagger API. Backend action-role and record guards apply on every call.
 
 ## 8. Running a service without Docker (optional)
 
@@ -254,7 +250,7 @@ pgAdmin4, use `now() at time zone 'utc'`, not `now()`.
 
 ## Multi-role homes and local identity checks
 
-The account menu switches only among server-issued roles; `POST /api/auth/role` updates the sealed presentation role, never database grants. Homes are `/` for Organiser/Coordinator, `/venue` for Venue Staff, `/support` for Technical Support and `/attendee` for Attendee. User roles and effective permissions are refreshed by `/api/auth/me`. Unknown/empty roles are denied.
+The account menu switches only among server-issued roles; `POST /api/auth/role` updates the sealed presentation role, never database grants. Homes are `/` for Organiser/Coordinator, `/queue` for the Coordinator Lead, `/venue` for Venue Staff, `/technical-requirements` for Technical Support, `/safety-checks` for the Safety Officer and `/attendances` for Attendee (`frontend/lib/roles.ts`). User roles and effective permissions are refreshed by `/api/auth/me`. Unknown/empty roles are denied.
 
 Auth/User Docker builds use the `services/` context so the static action policy is available in each image; no service accesses another database. `docker compose -f infra/docker-compose.yml build auth-service user-service venue-service booking-service` follows the updated contexts.
 
