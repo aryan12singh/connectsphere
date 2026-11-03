@@ -22,6 +22,7 @@ function fakeDb(events) {
 const ev = (id, status, endAt) => ({ id, status, endAt: new Date(endAt), startAt: new Date('2026-11-20T01:00:00Z'), timeZone: 'Asia/Singapore', organiserId: 'o', eventRequestId: 'r-' + id, eventRequest: { currentCoordinatorId: 'c' } });
 const lockFrom = events => async (_tx, id) => events.find(e => e.id === id);
 
+// TC-CS31-12 ended Confirmed events complete once, by the system, with history
 test('completes Confirmed events whose end time has passed, once each', async () => {
   const events = [ev('a', 'CONFIRMED', '2026-11-20T10:00:00Z'), ev('b', 'CONFIRMED', '2026-11-20T09:00:00Z')];
   const db = fakeDb(events);
@@ -34,6 +35,7 @@ test('completes Confirmed events whose end time has passed, once each', async ()
   assert.equal(db.log.activity.length, 2);
 });
 
+// TC-CS31-12 Preparation events complete too
 test('a Preparation event completes exactly when the transition table allows it', async () => {
   // The table is the single authority. Before the CS-32 change it only allows
   // Confirmed -> Completed, so a Preparation event waits (skipped, unchanged).

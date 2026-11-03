@@ -14,6 +14,8 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-27](https://spmg8.atlassian.net/browse/CS-27) | Validate and Resubmit Returned Event Requests | 3 | 3 | 1 | – | 1 | [CS-27](../tests/records/CS-27) |
 | [CS-29](https://spmg8.atlassian.net/browse/CS-29) | Save and Resume a Draft Event Request | 4 | 3 | 1 | – | 1 | [CS-29](../tests/records/CS-29) |
 | [CS-30](https://spmg8.atlassian.net/browse/CS-30) | Lead Assignment and Reassignment of the Event Coordinator | 11 | 11 | 3 | – | – | [CS-30](../tests/records/CS-30) |
+| [CS-31](https://spmg8.atlassian.net/browse/CS-31) | Confirm an Event When Essential Arrangements Are Ready | 13 | 8 | 1 | 2 | – | [CS-31](../tests/records/CS-31) |
+| [CS-32](https://spmg8.atlassian.net/browse/CS-32) | Maintain Event Status and Transition Rules | 12 | 10 | 1 | 1 | – | [CS-32](../tests/records/CS-32) |
 | [CS-33](https://spmg8.atlassian.net/browse/CS-33) | Maintain Venue Catalogue and Operating Information | 16 | 16 | 1 | 1 | 1 | [CS-33](../tests/records/CS-33) |
 | [CS-34](https://spmg8.atlassian.net/browse/CS-34) | View Venue Availability Calendar | 13 | 13 | 1 | 3 | 1 | [CS-34](../tests/records/CS-34) |
 | [CS-35](https://spmg8.atlassian.net/browse/CS-35) | Record Operational Venue Unavailability | 8 | 8 | 1 | 1 | – | [CS-35](../tests/records/CS-35) |
@@ -26,7 +28,7 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-42](https://spmg8.atlassian.net/browse/CS-42) | Reserve the Complete Equipment Request | 13 | 13 | 1 | 4 | 1 | [CS-42](../tests/records/CS-42) |
 | [CS-43](https://spmg8.atlassian.net/browse/CS-43) | View and Update Event Planning Information | 14 | 11 | 1 | – | – | [CS-43](../tests/records/CS-43) |
 | [CS-44](https://spmg8.atlassian.net/browse/CS-44) | View Event Activity and Change History | 3 | 2 | 1 | – | 1 | [CS-44](../tests/records/CS-44) |
-| [CS-45](https://spmg8.atlassian.net/browse/CS-45) | Review Event Changes and Reassess Affected Arrangements | 6 | 6 | 1 | – | – | [CS-45](../tests/records/CS-45) |
+| [CS-45](https://spmg8.atlassian.net/browse/CS-45) | Review Event Changes and Reassess Affected Arrangements | 14 | 10 | 1 | – | – | [CS-45](../tests/records/CS-45) |
 | [CS-46](https://spmg8.atlassian.net/browse/CS-46) | Release Equipment Reservations After Event Cancellation | 9 | 5 | – | 4 | 1 | [CS-46](../tests/records/CS-46) |
 | [CS-47](https://spmg8.atlassian.net/browse/CS-47) | View Confirmed Event Information | 9 | 9 | – | 1 | 2 | [CS-47](../tests/records/CS-47) |
 | [CS-48](https://spmg8.atlassian.net/browse/CS-48) | Configure Event Registration and Manage Registration Records | 12 | 10 | – | 7 | 1 | [CS-48](../tests/records/CS-48) |
@@ -52,7 +54,7 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-94](https://spmg8.atlassian.net/browse/CS-94) | Conduct the Operational Safety Check | 22 | 16 | 1 | – | 1 | [CS-94](../tests/records/CS-94) |
 | [CS-95](https://spmg8.atlassian.net/browse/CS-95) | Rework Arrangements After Safety Changes or Rejection | 22 | 17 | 1 | – | 1 | [CS-95](../tests/records/CS-95) |
 
-Totals: 684 specified cases in `tests/records`; 568 named by at least one automated test. CI tasks (CS-15, CS-73, CS-79) are proven by the [CI workflow](../.github/workflows/event-workflows.yml) runs.
+Totals: 717 specified cases in `tests/records`; 590 named by at least one automated test. CI tasks (CS-15, CS-73, CS-79) are proven by the [CI workflow](../.github/workflows/event-workflows.yml) runs.
 
 ## Files by story
 
@@ -90,6 +92,16 @@ Totals: 684 specified cases in `tests/records`; 568 named by at least one automa
 ### CS-30 — Lead Assignment and Reassignment of the Event Coordinator
 
 - Unit / component / BFF (Vitest): [CS-30-assignment-rules.spec.ts](../tests/specs/CS-30-assignment-rules.spec.ts), [CS-30-transfer-request.spec.ts](../tests/specs/CS-30-transfer-request.spec.ts), [CS-30.spec.ts](../tests/specs/CS-30.spec.ts)
+
+### CS-31 — Confirm an Event When Essential Arrangements Are Ready
+
+- Unit / component / BFF (Vitest): [CS-32.spec.ts](../tests/specs/CS-32.spec.ts)
+- Service unit, contract and PostgreSQL (node --test, unittest): [completion.test.js](../services/event-service/tests/unit/completion.test.js), [transitions.test.js](../services/event-service/tests/unit/transitions.test.js)
+
+### CS-32 — Maintain Event Status and Transition Rules
+
+- Unit / component / BFF (Vitest): [CS-32.spec.ts](../tests/specs/CS-32.spec.ts)
+- Service unit, contract and PostgreSQL (node --test, unittest): [transitions.test.js](../services/event-service/tests/unit/transitions.test.js)
 
 ### CS-33 — Maintain Venue Catalogue and Operating Information
 

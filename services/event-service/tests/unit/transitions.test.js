@@ -10,6 +10,7 @@ const ORG = { id: 'org-1', roles: ['EVENT_ORGANISER'] };
 const COORD = { id: 'coord-A', roles: ['EVENT_COORDINATOR'] };
 const OTHER_COORD = { id: 'coord-B', roles: ['EVENT_COORDINATOR'] };
 const OTHER_ORG = { id: 'org-2', roles: ['EVENT_ORGANISER'] };
+const LEAD = { id: 'lead-1', roles: ['EVENT_COORDINATOR_LEAD'] };
 const SYSTEM = { id: null, system: true, roles: [] };
 
 const NOW = new Date('2026-10-10T04:00:00Z'); // 12:00 in Singapore
@@ -26,6 +27,7 @@ const req = (status) => ({ scope: 'REQUEST', status });
 const evt = (status) => ({ scope: 'EVENT', status });
 
 // ── every allowed row of the transition table ────────────────────────────
+// TC-CS32-10 every row of the table, with old and new status and actor recorded (TC-CS32-01 Confirm, TC-CS32-08 Begin preparation, TC-CS31-01 Confirm when ready)
 test('allowed rows', async (t) => {
   const rows = [
     ['Draft → Submit (owner) → Submitted', ACTIONS.SUBMIT, req('DRAFT'), ORG, {}, 'SUBMITTED'],
@@ -72,6 +74,7 @@ test('outbox event types', () => {
 });
 
 // ── one forbidden action for each status (→ 409, nothing changes) ─────────
+// TC-CS32-05 Draft → Approved directly, TC-CS32-09 closed statuses, TC-CS31-06 confirm twice: all 409
 test('forbidden action per status is a 409', async (t) => {
   const forbidden = [
     ['Draft cannot be approved (Draft → Approved directly)', ACTIONS.APPROVE, req('DRAFT'), COORD],
@@ -105,6 +108,7 @@ test('forbidden action per status is a 409', async (t) => {
 });
 
 // ── the wrong actor is refused for each action (→ 403) ───────────────────
+// TC-CS32-04 Organiser confirm, TC-CS31-04 another Coordinator, TC-CS31-10 the Lead: all 403
 test('wrong actor is a 403 for every action', async (t) => {
   const cases = [
     ['Submit by another organiser', ACTIONS.SUBMIT, req('DRAFT'), OTHER_ORG],
@@ -118,6 +122,7 @@ test('wrong actor is a 403 for every action', async (t) => {
     ['Significant change by a different coordinator', ACTIONS.SIGNIFICANT_CHANGE_APPROVED, evt('CONFIRMED'), OTHER_COORD],
     ['Begin preparation by a different coordinator', ACTIONS.BEGIN_PREPARATION, evt('CONFIRMED'), OTHER_COORD],
     ['Begin preparation by the organiser', ACTIONS.BEGIN_PREPARATION, evt('CONFIRMED'), ORG],
+    ['Confirm by a Coordinator Lead (supervision is not confirmation)', ACTIONS.CONFIRM, evt('ARRANGEMENT_PENDING'), LEAD],
     ['Cancel from Preparation by the organiser', ACTIONS.CANCEL, evt('PREPARATION'), ORG],
     ['Cancel by the organiser', ACTIONS.CANCEL, evt('CONFIRMED'), ORG],
     ['Complete by a human coordinator (system only)', ACTIONS.COMPLETE, evt('CONFIRMED'), COORD],
@@ -232,6 +237,7 @@ test('approve: event date yesterday / today / tomorrow (Singapore)', async (t) =
 });
 
 // ── CS-32 confirm preconditions (32-03, 32-06, 32-07) ────────────────────
+// TC-CS32-06 none complete, TC-CS32-07 n−1 of n then n of n
 test('confirm needs every arrangement complete', async (t) => {
   const call = (outstanding) => decide({ action: ACTIONS.CONFIRM, entity: evt('ARRANGEMENT_PENDING'), actor: COORD, context: baseCtx({ outstandingArrangements: outstanding, safetyApproved: true }) });
   await t.test('n−1 of n complete: blocked, and the outstanding items are listed', () => {
@@ -247,6 +253,7 @@ test('confirm needs every arrangement complete', async (t) => {
 });
 
 // ── Session 3: Safety before Confirmed, distinct Preparation ─────────────
+// TC-CS31-08 Safety approval that is not current does not count; TC-CS32-08 Preparation needs it too
 test('Confirm and Begin preparation need current Safety approval', async (t) => {
   const confirm = (extra) => decide({ action: ACTIONS.CONFIRM, entity: evt('ARRANGEMENT_PENDING'), actor: COORD, context: baseCtx({ outstandingArrangements: [], ...extra }) });
   const prepare = (extra) => decide({ action: ACTIONS.BEGIN_PREPARATION, entity: evt('CONFIRMED'), actor: COORD, context: baseCtx(extra) });
@@ -280,6 +287,7 @@ test('Cancel from Preparation: until the event starts, not after', async (t) => 
   await t.test('at start', () => assert.throws(() => call(new Date('2026-11-20T01:00:00Z')), (e) => e.code === 'EVENT_STARTED'));
 });
 
+// TC-CS32-10 one guard holds every action
 test('every action in the table has a row, and every row has a known check', () => {
   const { TABLE } = require('../../src/domain/transitions');
   for (const action of Object.values(ACTIONS)) assert.ok(TABLE[action]?.length, `${action} has no row`);
@@ -293,6 +301,7 @@ test('cancel is allowed until the event starts, not after', async (t) => {
   await t.test('after start', () => assert.throws(() => call(new Date('2026-11-20T05:00:00Z')), (e) => e.status === 409));
 });
 
+// TC-CS31-13 completion boundary: one second before the end stays Confirmed; from the end time it completes
 test('Completed only once the end time has passed', () => {
   const call = (now) => decide({ action: ACTIONS.COMPLETE, entity: evt('CONFIRMED'), actor: SYSTEM, context: baseCtx({ now }) });
   assert.throws(() => call(new Date('2026-11-20T09:59:59Z')), (e) => e.code === 'EVENT_NOT_ENDED');
@@ -300,6 +309,7 @@ test('Completed only once the end time has passed', () => {
 });
 
 // ── shared label map ─────────────────────────────────────────────────────
+// TC-CS32-11 one shared label per status, used by every screen
 test('label map: one place for every screen', () => {
   assert.equal(REQUEST_LABELS.SUBMITTED, 'Under Review');
   assert.equal(EVENT_LABELS.ARRANGEMENT_PENDING, 'Planning');
@@ -314,7 +324,7 @@ test('displayStatus: approval shows Planning to the organiser, never Confirmed',
 
 test('every status has a label', () => {
   for (const s of ['DRAFT', 'SUBMITTED', 'RETURNED_FOR_AMENDMENT', 'APPROVED', 'REJECTED']) assert.ok(REQUEST_LABELS[s], s);
-  for (const s of ['ARRANGEMENT_PENDING', 'CONFIRMED', 'CANCELLING', 'CANCELLED', 'COMPLETED', 'REJECTED']) assert.ok(EVENT_LABELS[s], s);
+  for (const s of ['ARRANGEMENT_PENDING', 'CONFIRMED', 'PREPARATION', 'CANCELLING', 'CANCELLED', 'COMPLETED', 'REJECTED']) assert.ok(EVENT_LABELS[s], s);
 });
 
 test('frontend screens use the shared label map, not their own spelling (AC5)', () => {
