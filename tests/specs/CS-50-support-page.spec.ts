@@ -26,8 +26,8 @@ async function supportHome(permissions: string[]) {
 }
 
 describe('CS-50 — failed deliveries on the Technical Support home', () => {
-  it('TC-CS50-08 Technical Support with audit.view opens failed deliveries from its home page', async () => {
-    const wrapper = await supportHome(['technical.review', 'audit.view'])
+  it('TC-CS50-08 Technical Support with notifications.failures.view opens failed deliveries from its home page', async () => {
+    const wrapper = await supportHome(['technical.review', 'notifications.failures.view'])
     const tab = wrapper.findAll('[role="tab"]').find(item => item.text() === 'Failed notifications')
     expect(tab).toBeDefined()
     await tab!.trigger('mousedown', { button: 0 })
@@ -37,7 +37,7 @@ describe('CS-50 — failed deliveries on the Technical Support home', () => {
     expect(table.text()).toContain('User service returned 503')
   })
 
-  it('TC-CS50-08 the tab is hidden without audit.view', async () => {
+  it('TC-CS50-08 the tab is hidden without notifications.failures.view', async () => {
     const wrapper = await supportHome(['technical.review'])
     expect(wrapper.findAll('[role="tab"]').some(item => item.text() === 'Failed notifications')).toBe(false)
   })

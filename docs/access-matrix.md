@@ -22,7 +22,8 @@ against `services/utils/role-policy.js`, plus route and service tests.
 | `safety.submit` / `safety.rework` | – | Assigned | – | – | – | – | – |
 | `safety.view` / `safety.decide` | – | – | – | – | – | Review rounds only | – |
 | `technical.submit` / `.view` / `.review` | – | Submit, view | – | – | View, review | – | – |
-| `users.*`, `permissions.manage`, `settings.manage`, `audit.view` | – | – | – | – | Yes | – | – |
+| `notifications.failures.view` (Failed notifications tab) | – | – | – | – | Yes | – | – |
+| User, permission or settings administration | – | – | – | – | – | – | – |
 | `attendance.register` | – | – | – | – | – | – | Yes |
 | `messages.send` | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
@@ -34,6 +35,12 @@ against `services/utils/role-policy.js`, plus route and service tests.
 - **Safety Officer** sees only Safety review rounds (from submission onward)
   and cannot edit events, venues or equipment. Recording decisions is CS-94.
 - Private Drafts stay owner-only for both new roles.
+- **No in-app administration (3 November, CS-10, CS-24 T02, CS-76).** No role
+  manages accounts, role permissions, login settings or an audit log in the
+  app. Staff accounts and role permissions are seeded by migrations. Account
+  status changes are a controlled-setup command (auth-service
+  `PATCH /internal/users/{id}/status`, internal key only), which refuses to
+  deactivate a Coordinator who still has open requests (Session 3).
 
 ## Identity and venue amendment — 7 October 2026
 
@@ -48,7 +55,7 @@ This amendment supersedes the historical single-role and interface restrictions 
 | Ordinary booking create | No | With create grant and current Event assignment | No, unless also Coordinator with create grant | No | No |
 | Operational BLOCKED/UNAVAILABLE window | No | No | With decision grant | No | No |
 | Booking decision | No | Own tentative/cancelled edits with current Event assignment | With decision grant | No | No |
-| User administration | No | No | No | With matching grant | No |
+| User administration | No | No | No | No (controlled setup only, 3 November) | No |
 
 All role homes are implemented. A multi-role account can choose an already granted presentation role in the account menu without logging in again; this affects navigation only. The backend continues to check all verified roles plus effective capabilities and record relationships. Reload preserves the selected role while it remains granted. An unassigned role selection returns 403. No System Administrator role exists.
 

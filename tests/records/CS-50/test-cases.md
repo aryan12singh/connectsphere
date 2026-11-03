@@ -28,7 +28,7 @@ The inbox is the channel of record; email is optional and not built.
 |---|---|---|
 | TC-CS50-02b | First assignment notifies the new Coordinator and the Organiser (Session 3 rule) | unit |
 | TC-CS50-05b | Two separate actions on one event each notify (dedup by message + recipient + type, not by event) | unit |
-| TC-CS50-08 | Delivery failure is retried 3 times (4 attempts), then marked Failed; no notice; Technical Support (`audit.view`) sees it without notice text; others get 403 | unit, contract, PG, vitest `TC-CS50-08u`, live |
+| TC-CS50-08 | Delivery failure is retried 3 times (4 attempts), then marked Failed; no notice; Technical Support (`notifications.failures.view`, was `audit.view` until 3 November) sees it without notice text; others get 403 | unit, contract, PG, vitest `TC-CS50-08u`, live |
 | TC-CS50-09 | A retry that then succeeds delivers once | unit |
 | TC-CS50-10 | Every notice has eventName, requestId, oldStatus, newStatus, timestamp; no internal notes | unit |
 | TC-CS50-11 | Read notices kept 30 days after reading, hidden after; unread always shown | unit, PG |

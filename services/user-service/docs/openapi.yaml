@@ -7,12 +7,10 @@ info:
     services (today: auth-service), never by the browser. Kong does not route
     to user-service, and every route needs the `x-internal-api-key` header.
 
-    These routes do not check permissions themselves — the calling service
-    must (auth-service checks `users.view` / `users.manage` before calling).
-    `passwordHash` is never returned.
-
-    Frontend developers: use the BFF contract in services/auth-service/swagger.html
-    (/api/admin/users) instead.
+    These routes do not check permissions themselves; only services with the
+    internal key call them (auth-service for login, sign-up and controlled-setup
+    status changes). `passwordHash` is never returned. There is no in-app user
+    administration (CS-10, CS-24 T02).
 servers:
   - url: http://user-service:3000
     description: Inside the Docker network (how services call it)
@@ -47,7 +45,7 @@ components:
         roles: { type: array, items: { $ref: '#/components/schemas/Role' }, description: Authoritative role list }
         organisationId: { type: string, nullable: true }
         company: { type: string, nullable: true }
-        isActive: { type: boolean, description: false = disabled by tech support }
+        isActive: { type: boolean, description: false = disabled through controlled setup }
         createdAt: { type: string, format: date-time }
     Error:
       type: object
@@ -138,7 +136,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       summary: Change role and/or enable/disable
-      description: Send at least one field. Disabling here does not end sessions or block Keycloak — auth-service does that; always go through PATCH /admin/users/{id}/status.
+      description: Send at least one field. Disabling here does not end sessions or block Keycloak — auth-service does that; always go through auth-service PATCH /internal/users/{id}/status.
       requestBody:
         required: true
         content:

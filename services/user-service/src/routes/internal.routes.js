@@ -1,8 +1,9 @@
 // Internal routes: called by other services (auth-service for now), never by
 // the browser. Every route here is protected by internalOnly.
 //
-// These routes don't check permissions themselves — auth-service checks
-// that the caller is allowed (e.g. has "users.manage") before calling them.
+// These routes don't check permissions themselves: only services holding the
+// internal key call them (auth-service for login, sign-up and controlled-setup
+// status changes). There is no in-app user administration (CS-10, CS-24 T02).
 const express = require('express');
 const prisma = require('../db');
 const internalOnly = require('../middleware/internalOnly');

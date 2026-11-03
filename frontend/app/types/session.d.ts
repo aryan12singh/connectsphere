@@ -7,7 +7,7 @@ declare module '#auth-utils' {
     role: string
     roles?: string[]
     organisationId?: string | null
-    // What this user may do, e.g. ["events.view", "users.manage"]. Used only
+    // What this user may do, e.g. ["events.view", "venues.manage"]. Used only
     // to show/hide UI — the backend checks permissions on every request.
     permissions: string[]
   }

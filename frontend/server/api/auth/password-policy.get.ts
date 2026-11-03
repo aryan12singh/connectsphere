@@ -1,8 +1,8 @@
 /**
  * BFF password rules — GET /api/auth/password-policy.
  *
- * Live mode: the current rules from auth-service (tech support can change
- * them in /api/admin/settings). Mock mode: the default rules, so the sign-up
+ * Live mode: the current rules from auth-service (seeded in
+ * auth_db.auth_settings). Mock mode: the default rules, so the sign-up
  * page still renders. Public: the rules are not secret.
  */
 export interface PasswordPolicy {

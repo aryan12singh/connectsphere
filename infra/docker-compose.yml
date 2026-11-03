@@ -147,7 +147,7 @@ services:
       EVENT_SERVICE_URL: http://event-service:3000 # open-assignment check before deactivation
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
       # Session length, lockout and password rules are NOT set here —
-      # tech support changes them at runtime (PUT /admin/settings).
+      # they are seeded in auth_db.auth_settings by migrations.
     ports:
       - "3002:3000" # local debugging + Swagger UI at http://localhost:3002/docs
     depends_on:

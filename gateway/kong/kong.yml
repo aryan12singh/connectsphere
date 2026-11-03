@@ -38,7 +38,7 @@ plugins:
         headers: ["x-user-id", "x-user-roles", "x-organisation-id"]
 
 services:
-  # ── auth-service: login, sessions, tech support admin API ─────────────
+  # ── auth-service: login, sign-up and sessions ─────────────────────────
   - name: auth-service
     url: http://auth-service:3000
     routes:
@@ -72,11 +72,6 @@ services:
       - name: auth-password-policy
         paths: ["/auth/password-policy"]
         methods: ["GET", "OPTIONS"]
-        strip_path: false
-      # auth-service checks the permission on every admin route; Kong just forwards.
-      - name: auth-admin
-        paths: ["/admin"]
-        methods: ["GET", "POST", "PUT", "PATCH", "OPTIONS"]
         strip_path: false
 
   # ── user-service: current user, Coordinator list, user by id ──────────

@@ -13,7 +13,7 @@ backend build against this in parallel. Per-service detail is in each service's 
 
 | Service | OpenAPI file | Public via Kong |
 |---|---|---|
-| auth-service | `services/auth-service/docs/openapi.yaml` (+ Sprint 2 section below) | `/auth/*`, `/admin/*` |
+| auth-service | `services/auth-service/docs/openapi.yaml` (+ Sprint 2 section below) | `/auth/*` |
 | user-service | `services/user-service/docs/openapi.yaml` (public routes at the end) | `GET /users/*` only |
 | event-service | `services/event-service/docs/openapi.yaml` | `/event-requests/*`, `/events/*` |
 | venue-service | `services/venue-service/swagger.html` (owned by the venue epic) | `/venues/*` |
@@ -192,13 +192,14 @@ The existing auth routes keep their paths. What changes in the **session / role 
 * Public signup accepts only `EVENT_ORGANISER` or `ATTENDEE` (default). Organisers supply company/organisation; user-service resolves the exact trimmed name transactionally. Duplicate email or invalid fields return field messages. Staff roles come only from seed data.
 * `POST /api/auth/role` selects an already granted navigation role in the sealed cookie. It grants no database role, checks fresh `/auth/me` identity, and rejects unassigned roles with 403.
 * Inactivity expires at the configured boundary (`>=`), successful protected requests record their exact activity time, and unknown/empty role lists deny 403.
+* There is no `/admin/*` API (removed 3 November; CS-10, CS-24 T02). Account status changes use the internal `PATCH /internal/users/{id}/status` (controlled setup, internal key).
 * Services check the fixed action-role table and fresh effective permission together, then owner/organisation/current-assignment relationships. The [access matrix](access-matrix.md) and individual service OpenAPI contracts define each action.
 
 ## 11. Gateway map
 
 | Path prefix | Goes to | Notes |
 |---|---|---|
-| `/auth/*`, `/admin/*` | auth-service | login rate-limited 10/min, register 5/min |
+| `/auth/*` | auth-service | login rate-limited 10/min, register 5/min |
 | `GET /users/*` | user-service | read-only; `/internal/*` never routed |
 | `/event-requests/*`, `/events/*` | event-service | `POST /events/{id}/confirm` → Event, gated by current approved Safety proof |
 | `/venues/*` | venue-service | |

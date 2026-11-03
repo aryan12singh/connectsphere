@@ -7,7 +7,6 @@ const helmet = require('helmet');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yaml');
 const authRoutes = require('./routes/auth.routes');
-const adminRoutes = require('./routes/admin.routes');
 const internalRoutes = require('./routes/internal.routes');
 
 const app = express();
@@ -29,7 +28,6 @@ const openapi = YAML.parse(fs.readFileSync(path.join(__dirname, '../docs/openapi
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
 
 app.use('/auth', authRoutes);
-app.use('/admin', adminRoutes);
 app.use('/internal', internalRoutes);
 
 // Anything else is a 404.

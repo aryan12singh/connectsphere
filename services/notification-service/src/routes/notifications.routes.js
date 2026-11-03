@@ -22,7 +22,7 @@ router.get('/summary', auth, async (req, res) => {
 
 // Technical Support: messages that failed after 3 retries (CS-50 AC5).
 // Shows the message type, ids, attempts and error only, no notice text.
-router.get('/failures', auth, requireAnyPermission('audit.view'), async (req, res) => {
+router.get('/failures', auth, requireAnyPermission('notifications.failures.view'), async (req, res) => {
   const items = await store.listFailed();
   return res.json({ items, total: items.length });
 });

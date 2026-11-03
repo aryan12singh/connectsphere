@@ -13,7 +13,7 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-26](https://spmg8.atlassian.net/browse/CS-26) | Register Accounts and Enforce Role-and-Event Permissions | 15 | 13 | 2 | 8 | 1 | [CS-26](../tests/records/CS-26) |
 | [CS-27](https://spmg8.atlassian.net/browse/CS-27) | Validate and Resubmit Returned Event Requests | 3 | 3 | 1 | – | 1 | [CS-27](../tests/records/CS-27) |
 | [CS-29](https://spmg8.atlassian.net/browse/CS-29) | Save and Resume a Draft Event Request | 4 | 3 | 1 | – | 1 | [CS-29](../tests/records/CS-29) |
-| [CS-30](https://spmg8.atlassian.net/browse/CS-30) | Lead Assignment and Reassignment of the Event Coordinator | 11 | 11 | 4 | – | – | [CS-30](../tests/records/CS-30) |
+| [CS-30](https://spmg8.atlassian.net/browse/CS-30) | Lead Assignment and Reassignment of the Event Coordinator | 11 | 11 | 3 | – | – | [CS-30](../tests/records/CS-30) |
 | [CS-31](https://spmg8.atlassian.net/browse/CS-31) | Confirm an Event When Essential Arrangements Are Ready | 13 | 8 | 1 | 2 | – | [CS-31](../tests/records/CS-31) |
 | [CS-32](https://spmg8.atlassian.net/browse/CS-32) | Maintain Event Status and Transition Rules | 12 | 10 | 1 | 1 | – | [CS-32](../tests/records/CS-32) |
 | [CS-33](https://spmg8.atlassian.net/browse/CS-33) | Maintain Venue Catalogue and Operating Information | 16 | 16 | 1 | 1 | 1 | [CS-33](../tests/records/CS-33) |
@@ -91,7 +91,7 @@ Totals: 718 specified cases in `tests/records`; 590 named by at least one automa
 
 ### CS-30 — Lead Assignment and Reassignment of the Event Coordinator
 
-- Unit / component / BFF (Vitest): [CS-30-assignment-rules.spec.ts](../tests/specs/CS-30-assignment-rules.spec.ts), [CS-30-transfer-request.spec.ts](../tests/specs/CS-30-transfer-request.spec.ts), [CS-30-user-directory.spec.ts](../tests/specs/CS-30-user-directory.spec.ts), [CS-30.spec.ts](../tests/specs/CS-30.spec.ts)
+- Unit / component / BFF (Vitest): [CS-30-assignment-rules.spec.ts](../tests/specs/CS-30-assignment-rules.spec.ts), [CS-30-transfer-request.spec.ts](../tests/specs/CS-30-transfer-request.spec.ts), [CS-30.spec.ts](../tests/specs/CS-30.spec.ts)
 
 ### CS-31 — Confirm an Event When Essential Arrangements Are Ready
 
