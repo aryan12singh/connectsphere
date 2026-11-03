@@ -81,12 +81,22 @@ export const test = baseTest.extend<{ owner: APIRequestContext }>({
   },
 })
 
+// A kept-alive socket the server already closed while idle shows up as a
+// connection drop with no response. Resend once with the same idempotency key so
+// a request the server did receive is replayed, not repeated. HTTP responses,
+// including errors, and refused connections (a stopped service) are not retried.
+const connectionDropped = /socket hang up|ECONNRESET/
 export async function mutation(context: APIRequestContext, method: string, path: string, data: any, key = randomUUID()) {
-  return context.fetch(path, {
+  const send = () => context.fetch(path, {
     method,
     headers: { origin: new URL(baseURL).origin, 'idempotency-key': key },
     data,
   })
+  try { return await send() }
+  catch (error) {
+    if (!connectionDropped.test(String((error as Error)?.message))) throw error
+    return send()
+  }
 }
 
 export function validRequest(overrides: Record<string, unknown> = {}) {
