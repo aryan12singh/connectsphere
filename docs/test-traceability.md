@@ -24,7 +24,7 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-40](https://spmg8.atlassian.net/browse/CS-40) | Record and Review Equipment and Technical Requirements | 18 | 17 | 2 | 4 | 1 | [CS-40](../tests/records/CS-40) |
 | [CS-41](https://spmg8.atlassian.net/browse/CS-41) | Check Equipment Availability and Operational Status | 14 | 11 | 2 | 6 | 1 | [CS-41](../tests/records/CS-41) |
 | [CS-42](https://spmg8.atlassian.net/browse/CS-42) | Reserve the Complete Equipment Request | 13 | 13 | 1 | 4 | 1 | [CS-42](../tests/records/CS-42) |
-| [CS-43](https://spmg8.atlassian.net/browse/CS-43) | View and Update Event Planning Information | 2 | 2 | 1 | – | – | [CS-43](../tests/records/CS-43) |
+| [CS-43](https://spmg8.atlassian.net/browse/CS-43) | View and Update Event Planning Information | 14 | 11 | 1 | – | – | [CS-43](../tests/records/CS-43) |
 | [CS-44](https://spmg8.atlassian.net/browse/CS-44) | View Event Activity and Change History | 3 | 2 | 1 | – | 1 | [CS-44](../tests/records/CS-44) |
 | [CS-45](https://spmg8.atlassian.net/browse/CS-45) | Review Event Changes and Reassess Affected Arrangements | 6 | 6 | 1 | – | – | [CS-45](../tests/records/CS-45) |
 | [CS-46](https://spmg8.atlassian.net/browse/CS-46) | Release Equipment Reservations After Event Cancellation | 9 | 5 | – | 4 | 1 | [CS-46](../tests/records/CS-46) |
@@ -39,7 +39,7 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-78](https://spmg8.atlassian.net/browse/CS-78) | Design and Verify Hold Expiry Scheduling and Clock Semantics | 15 | 15 | 1 | 1 | – | [CS-78](../tests/records/CS-78) |
 | [CS-79](https://spmg8.atlassian.net/browse/CS-79) | Finalize Release 1 CI, Coverage Gates and Integration Tests | 8 | CI runs | – | – | – | [CS-79](../tests/records/CS-79) |
 | [CS-81](https://spmg8.atlassian.net/browse/CS-81) | View the Unassigned Event Request Queue | 6 | 6 | 1 | 1 | – | [CS-81](../tests/records/CS-81) |
-| [CS-83](https://spmg8.atlassian.net/browse/CS-83) | Oversee Coordinator Assignments and Active Events | 2 | 2 | 1 | – | – | [CS-83](../tests/records/CS-83) |
+| [CS-83](https://spmg8.atlassian.net/browse/CS-83) | Oversee Coordinator Assignments and Active Events | 11 | 7 | 1 | – | – | [CS-83](../tests/records/CS-83) |
 | [CS-84](https://spmg8.atlassian.net/browse/CS-84) | Configure Venue Setup and Turnaround Times | 33 | 27 | 1 | 1 | 2 | [CS-84](../tests/records/CS-84) |
 | [CS-85](https://spmg8.atlassian.net/browse/CS-85) | Apply Venue Buffers to Availability and Conflict Checks | 20 | 13 | 1 | 2 | 1 | [CS-85](../tests/records/CS-85) |
 | [CS-86](https://spmg8.atlassian.net/browse/CS-86) | Flag Existing Bookings That Conflict Under Buffer Rules | 27 | 23 | 1 | 2 | 1 | [CS-86](../tests/records/CS-86) |
@@ -52,7 +52,7 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-94](https://spmg8.atlassian.net/browse/CS-94) | Conduct the Operational Safety Check | 22 | 16 | 1 | – | 1 | [CS-94](../tests/records/CS-94) |
 | [CS-95](https://spmg8.atlassian.net/browse/CS-95) | Rework Arrangements After Safety Changes or Rejection | 22 | 17 | 1 | – | 1 | [CS-95](../tests/records/CS-95) |
 
-Totals: 663 specified cases in `tests/records`; 554 named by at least one automated test. CI tasks (CS-15, CS-73, CS-79) are proven by the [CI workflow](../.github/workflows/event-workflows.yml) runs.
+Totals: 684 specified cases in `tests/records`; 568 named by at least one automated test. CI tasks (CS-15, CS-73, CS-79) are proven by the [CI workflow](../.github/workflows/event-workflows.yml) runs.
 
 ## Files by story
 

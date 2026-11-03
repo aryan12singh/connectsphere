@@ -14,7 +14,7 @@ export const valid={eventName:'BFF summit',purpose:'Learning',description:'Synth
 export async function eventHarness(){
  const prefix='bff-'+randomUUID()
  const permissionOverrides=new Map<string,string[]>()
- const users:Record<string,any>={owner:{id:prefix+'-owner',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-bff'},other:{id:prefix+'-other',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-other'},coord:{id:prefix+'-coord',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR']},coord2:{id:prefix+'-coord2',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR']},attendee:{id:prefix+'-attendee',role:'ATTENDEE',roles:['ATTENDEE']},lead:{id:prefix+'-lead',role:'EVENT_COORDINATOR_LEAD',roles:['EVENT_COORDINATOR_LEAD']}}
+ const users:Record<string,any>={owner:{id:prefix+'-owner',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-bff'},other:{id:prefix+'-other',role:'EVENT_ORGANISER',roles:['EVENT_ORGANISER'],organisationId:'org-other'},coord:{id:prefix+'-coord',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR']},coord2:{id:prefix+'-coord2',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR']},attendee:{id:prefix+'-attendee',role:'ATTENDEE',roles:['ATTENDEE']},lead:{id:prefix+'-lead',role:'EVENT_COORDINATOR_LEAD',roles:['EVENT_COORDINATOR_LEAD']},safety:{id:prefix+'-safety',role:'SAFETY_OFFICER',roles:['SAFETY_OFFICER']}}
  for(const [who,u] of Object.entries(users))Object.assign(u,{firstName:who,lastName:'Synthetic',email:who+'@example.test',name:who+' Synthetic',company:'Synthetic Org',isActive:true})
  // Coordinators the directory offers for automatic assignment. Starts with one so
  // existing tests stay deterministic; a test can push users.coord2.id to hand over.

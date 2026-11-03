@@ -47,3 +47,78 @@ describe('CS-83 — TC-CS83-02 assigned work appears with its status, outstandin
     expect(wrongStage.hit).toBeNull()
   })
 })
+
+const approved = async (to = 'coord') => {
+  const r = await api.submitAssigned(valid, to)
+  const d = await api.call('POST', `/api/events/${r.body.id}/decision`, { decision: 'approve', version: r.body.version }, to)
+  expect(d.status).toBe(200)
+  return d.body
+}
+
+describe('CS-83 — TC-CS83-03 the Lead reassigns from the oversight view, which stays read-only', () => {
+  it('offers reassign only, applies it with the listed version, and shows the new Coordinator', async () => {
+    const r = await api.submitAssigned(valid)
+    const { hit } = await oversight(r.body.id)
+    expect(hit.allowedActions).toEqual(['reassign'])
+    expect((await api.call('POST', `/api/events/${r.body.id}/coordinator-edit`, { description: 'Lead edit', version: hit.version }, 'lead')).status).toBe(403)
+    api.directory.push(api.users.coord2.id)
+    try {
+      const moved = await api.call('POST', `/api/events/${r.body.id}/reassign`, { coordinatorId: api.users.coord2.id, version: hit.version }, 'lead')
+      expect(moved.status).toBe(200)
+      expect((await oversight(r.body.id)).hit).toMatchObject({ coordinatorId: api.users.coord2.id })
+    } finally {
+      api.directory.splice(1)
+    }
+  })
+})
+
+describe('CS-83 — TC-CS83-04 a Coordinator cannot open the oversight view', () => {
+  it('returns 403 without workload data', async () => {
+    for (const who of ['coord', 'coord2', 'safety']) {
+      const res = await api.call('GET', '/api/lead-queue?view=oversight', undefined, who)
+      expect(res.status).toBe(403)
+      expect(JSON.stringify(res.body)).not.toContain('workload')
+    }
+  })
+})
+
+describe('CS-83 — TC-CS83-05 Drafts, Rejected, Cancelled and Completed records are excluded', () => {
+  it('lists the Planning Event and none of the closed ones', async () => {
+    const draft = await api.call('POST', '/api/events', { ...valid, saveAs: 'draft' })
+    const sent = await api.submitAssigned(valid)
+    const rejected = await api.call('POST', `/api/events/${sent.body.id}/decision`, { decision: 'reject', version: sent.body.version, notes: 'Out of scope' }, 'coord')
+    expect(rejected.body.status).toBe('REJECTED')
+    const planning = await approved()
+    const cancelled = await approved()
+    const completed = await approved()
+    // Setup: close two Events directly; the cancel and completion flows have their own stories.
+    await api.db.event.update({ where: { id: cancelled.eventId }, data: { status: 'CANCELLED', cancelledAt: new Date() } })
+    await api.db.event.update({ where: { id: completed.eventId }, data: { status: 'COMPLETED', completedAt: new Date() } })
+
+    expect((await oversight(planning.id)).hit).toMatchObject({ stage: 'ARRANGEMENT_PENDING' })
+    for (const id of [draft.body.id, sent.body.id, cancelled.id, completed.id]) expect((await oversight(id)).hit).toBeNull()
+  })
+})
+
+describe('CS-83 — TC-CS83-09 the status filter returns only that stage', () => {
+  it('lists Planning Events only under the Planning filter', async () => {
+    const planning = await approved()
+    const queued = await api.submitAssigned(valid)
+    const { hit, body } = await oversight(planning.id, '&status=ARRANGEMENT_PENDING')
+    expect(hit).not.toBeNull()
+    expect(new Set(body.items.map((i: { stage: string }) => i.stage))).toEqual(new Set(['ARRANGEMENT_PENDING']))
+    expect((await oversight(queued.body.id, '&status=ARRANGEMENT_PENDING')).hit).toBeNull()
+    expect((await api.call('GET', '/api/lead-queue?view=oversight&status=BOGUS', undefined, 'lead')).status).toBe(422)
+  })
+})
+
+describe('CS-83 — TC-CS83-10 outstanding arrangements follow the Event state', () => {
+  it('lists arrangements and Safety while Planning, then only what is still open', async () => {
+    const r = await approved()
+    expect((await oversight(r.id)).hit.outstanding).toEqual(['Venue and technical arrangements', 'Safety review'])
+    await api.db.event.update({ where: { id: r.eventId }, data: { safetyState: 'APPROVED' } })
+    expect((await oversight(r.id)).hit.outstanding).toEqual(['Event confirmation'])
+    await api.db.event.update({ where: { id: r.eventId }, data: { status: 'CONFIRMED', confirmedAt: new Date() } })
+    expect((await oversight(r.id)).hit).toMatchObject({ stage: 'CONFIRMED', outstanding: [] })
+  })
+})
