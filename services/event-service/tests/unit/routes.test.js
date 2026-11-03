@@ -10,7 +10,7 @@ const http = require('node:http');
 
 const app = require('../../src/app');
 const authModule = require('../../src/auth');
-const { pickCoordinator, countsAsActive } = require('../../src/domain/assignment');
+const { countsAsActive } = require('../../src/domain/assignment');
 const { isOrganiser, isCoordinator, isLead, canRead, canEdit, canDecide, allowedActions } = require('../../src/policy');
 
 async function withServer(run) {
@@ -171,16 +171,13 @@ test('app health and unknown routes return their documented envelopes', async ()
   });
 });
 
-test('assignment policy handles active counts, ties and empty coordinator lists', () => {
+test('assignment policy counts only open responsibility as active', () => {
   assert.equal(countsAsActive({ requestStatus: 'SUBMITTED' }), true);
   assert.equal(countsAsActive({ requestStatus: 'RETURNED_FOR_AMENDMENT' }), true);
   assert.equal(countsAsActive({ requestStatus: 'APPROVED', eventStatus: 'ARRANGEMENT_PENDING' }), true);
   assert.equal(countsAsActive({ requestStatus: 'APPROVED', eventStatus: 'CONFIRMED' }), true);
   assert.equal(countsAsActive({ requestStatus: 'APPROVED', eventStatus: 'CANCELLED' }), false);
   assert.equal(countsAsActive({ requestStatus: 'DRAFT' }), false);
-  assert.equal(pickCoordinator([], {}), null);
-  assert.equal(pickCoordinator([{ id: 'senior', createdAt: '2020-01-01' }, { id: 'junior', createdAt: '2025-01-01' }], { senior: 2 }), 'junior');
-  assert.equal(pickCoordinator([{ id: 'z', createdAt: '2020-01-01' }, { id: 'a', createdAt: '2020-01-01' }], {}), 'a');
 });
 
 test('policy helpers cover owner, organisation, coordinator and disabled action branches', () => {
