@@ -117,10 +117,10 @@ async function setView(next: 'unassigned' | 'assigned' | 'oversight' | 'transfer
 function formatWhen(item: LeadItem) {
   if (!item.startAt)
     return 'Date to be confirmed'
-  const options: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short', ...(item.timeZone ? { timeZone: item.timeZone } : {}) }
+  const options: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short', timeZone: item.timeZone || 'Asia/Singapore' }
   try {
     const start = new Intl.DateTimeFormat('en-SG', options).format(new Date(item.startAt))
-    const end = item.endAt ? new Intl.DateTimeFormat('en-SG', { timeStyle: 'short', ...(item.timeZone ? { timeZone: item.timeZone } : {}) }).format(new Date(item.endAt)) : ''
+    const end = item.endAt ? new Intl.DateTimeFormat('en-SG', { timeStyle: 'short', timeZone: item.timeZone || 'Asia/Singapore' }).format(new Date(item.endAt)) : ''
     return end ? `${start} – ${end}` : start
   }
   catch {

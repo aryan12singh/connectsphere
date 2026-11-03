@@ -42,7 +42,7 @@ docs/                design, decisions, API contract, test traceability and deve
 
 ## Run it locally
 
-Needs Docker Desktop and Node.js 22.
+Needs Docker Desktop and Node.js 22 (`.nvmrc`; `nvm use` picks it up).
 
 ```bash
 # 1. Backend: PostgreSQL, Keycloak, Kong, RabbitMQ and every service

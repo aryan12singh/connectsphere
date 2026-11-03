@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDateTime } from '~~/lib/datetime'
 import { computed, onMounted, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -252,7 +253,7 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
           <li v-for="reservation in equipmentReservations" :key="reservation.id" class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border px-4 py-3">
             <div>
               <p class="font-medium">{{ reservation.equipmentType }} · {{ reservation.quantity }}</p>
-              <p v-if="reservation.releasedAt" class="mt-1 text-sm text-muted-foreground">{{ reservation.releaseReason || 'Released' }} · {{ new Date(reservation.releasedAt).toLocaleString() }}</p>
+              <p v-if="reservation.releasedAt" class="mt-1 text-sm text-muted-foreground">{{ reservation.releaseReason || 'Released' }} · {{ formatDateTime(reservation.releasedAt) }}</p>
             </div>
             <Badge v-if="reservation.active" class="bg-success-soft text-success">Reserved</Badge>
             <Badge v-else class="bg-muted text-muted-foreground">Released<span v-if="reservation.releaseReason"> — {{ reservation.releaseReason }}</span></Badge>

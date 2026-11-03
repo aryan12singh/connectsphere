@@ -1,19 +1,18 @@
-# Auth setup — login, RBAC and the tech support admin API
+# Auth setup — login, sign-up and RBAC
 
 What this adds:
 
-- **auth-service**: Organiser/Attendee sign-up, login, logout and "who am I", permission checks, and the
-  admin API (users, role permissions, settings, audit log).
+- **auth-service**: Organiser/Attendee sign-up, login, logout and "who am I", and permission checks.
+  There is no in-app user, permission or settings administration (CS-10, CS-24 T02); see section 5.
 - **user-service**: user profiles and roles.
 - **Keycloak**: checks passwords and locks accounts after repeated wrong passwords.
   Stores its accounts in Postgres (`keycloak_db`), so they survive restarts.
 - **Kong**: sits in front of everything.
 - **Nuxt frontend wiring** (in `frontend/`): the BFF login and logout talk to
-  auth-service, a `usePermissions()` composable, a page permission check, and
-  an admin API proxy with a `useAdminApi()` composable.
+  auth-service, a `usePermissions()` composable, and a page permission check.
 
 ```
-Browser ──► Nuxt BFF /api/* ──► Kong :8000 ──► auth-service ──► Keycloak   (password check, lockout, admin API)
+Browser ──► Nuxt BFF /api/* ──► Kong :8000 ──► auth-service ──► Keycloak   (password check, lockout)
                                  │
                                  ├──► user-service ──► user_db  (profile, role, active?)
                                  └──► auth_db  (sessions, role permissions, settings, audit log)
@@ -30,7 +29,7 @@ What's where in the repo:
 | Path | What |
 |---|---|
 | `services/user-service/` | User profiles and roles (`user_db`) |
-| `services/auth-service/` | Login, sessions, permissions, settings, admin API (`auth_db`) |
+| `services/auth-service/` | Login, sessions, permissions, settings (`auth_db`) |
 | `infra/docker-compose.yml` | Whole local stack. Not-yet-built services sit under the `not-built-yet` profile |
 | `infra/keycloak/connectsphere-realm.json` | Keycloak realm: seed users, `auth-service` client and its service account, lockout rules |
 | `infra/postgres/init-databases.sh` | Creates one database per service, the first time the Postgres volume is created |
@@ -63,7 +62,7 @@ When a not-yet-built service gets code:
 
 | Who reads it | File | What it covers |
 |---|---|---|
-| Frontend developers | `services/auth-service/swagger.html` (open the file in a browser) | The Nuxt `/api/*` routes: sign-up, password rules, login, logout, `/api/auth/me`, the `/api/admin/*` proxy and the built-in `/api/_auth/session` |
+| Frontend developers | `services/auth-service/swagger.html` (open the file in a browser) | The Nuxt `/api/*` routes: sign-up, password rules, login, logout, `/api/auth/me`, the built-in `/api/_auth/session` |
 | Backend developers | `services/auth-service/docs/openapi.yaml`, served at http://localhost:3002/docs | auth-service behind Kong (incl. `POST /auth/register`, `GET /auth/password-policy`), plus `POST /internal/sessions/validate` for other services' permission checks |
 | Backend developers | `services/user-service/docs/openapi.yaml` | user-service's internal routes (not reachable from the browser) |
 
@@ -86,27 +85,27 @@ Current signup rules (updated 2026-10-07):
   "A user with this email already exists" — this does tell a visitor that
   the email has an account; the rate limit keeps that slow to abuse.
 - Each sign-up is written to the audit log as `USER_REGISTERED`.
-- Same code path as tech support's "create user" (`account.service.js`):
-  Keycloak login first, then the profile; if the profile fails, the Keycloak
-  login is deleted again.
+- `account.service.js`: Keycloak login first, then the profile; if the
+  profile fails, the Keycloak login is deleted again.
 
-## 5. What tech support can change
+## 5. Accounts, permissions and settings: controlled setup only
 
-| Area | What | Takes effect |
+There is no System Administrator and no in-app administration (CS-10, CS-24
+T02, CS-76; changed 3 November). Technical Support's app role is equipment
+review, stock and failed notification deliveries.
+
+| Area | How it is set | Takes effect |
 |---|---|---|
-| Users | Create public accounts, change eligible public role, disable / re-enable | Immediately. Disabling also ends the user's open sessions |
-| Role permissions | Tick which permissions each of the 5 roles has | On each user's next request |
-| Settings | Session length | For logins made after the change |
-| Settings | Idle timeout (0 = off) | Immediately, for every session |
-| Settings | Lockout: tries, first wait, longest wait | Immediately (copied to Keycloak) |
-| Settings | Password rules: min length, upper/lower/digit/special | New passwords (copied to Keycloak) |
+| Staff accounts and roles | Seeded (`services/user-service/prisma/seed`, Keycloak realm file) | At seed time |
+| Role permissions | Seeded by `auth-service` migrations into `role_permissions` | On each user's next request |
+| Session length, idle timeout, lockout, password rules | Seeded in `auth_db.auth_settings`; lockout and password rules are copied to Keycloak at start-up | Next login / start-up |
+| Disable or re-enable an account | Operator command: `PATCH /internal/users/{id}/status` on auth-service with the `x-internal-api-key` header (Swagger at http://localhost:3002/docs, Internal) | Immediately. Disabling also ends the user's open sessions |
 
-Built-in safety rules:
-
-- Tech support can't change their own role or disable themselves.
-- Tech support always keeps `users.manage` and `permissions.manage`, so the
-  admin screens can never lock everyone out.
-- Every change is written to the audit log.
+A Coordinator who still has open event requests cannot be disabled: the
+command returns 409 `COORDINATOR_HAS_OPEN_EVENTS` with the requests, and the
+Coordinator Lead reassigns them first (Session 3). If event-service cannot be
+reached, the command returns 503 and changes nothing. Each status change is
+written to the audit log.
 
 ## 6. Protecting routes (RBAC) — the rule for every developer
 
@@ -128,7 +127,7 @@ router.post('/event-requests/:id/decision',
 1. Add it to `lib/permissions.js`, with a short description.
 2. Use it in `requirePermission(...)`.
 3. Grant it to the right roles with a migration that inserts into
-   `role_permissions` (or through the admin API).
+   `role_permissions`.
 
 A misspelt permission name crashes the service at start-up on purpose, so
 it can't silently block everyone.
@@ -161,57 +160,49 @@ calls Kong on the browser's behalf, so the browser never talks to Kong.
 | `server/api/auth/password-policy.get.ts` | new | Current password rules for the sign-up form |
 | `app/pages/signup.vue` | new | Sign-up page: live password-rule checklist, then back to /login |
 | `app/pages/login.vue` | changed | "Create an account" link, and "Account created" message after sign-up |
-| `server/api/admin/[...path].ts` | new | Proxies `/api/admin/*` to auth-service `/admin/*` (live mode only) |
 | `app/types/session.d.ts` | replaced | Adds `permissions` to the user and `token` to the server-only session |
 | `app/types/page-meta.d.ts` | new | Allows `definePageMeta({ permission: '...' })` |
 | `app/middleware/auth.global.ts` | replaced | `/login` and `/signup` are public. Adds the page permission check. Your login check and role gate are unchanged |
 | `app/plugins/verify-session.client.ts` | new | Once per page load, confirms the backend session is still alive; logs out if not |
-| `app/composables/usePermissions.ts` | new | `can('users.manage')`, `canAny(...)` |
-| `app/composables/useAdminApi.ts` | new | Typed calls for the admin screens |
+| `app/composables/usePermissions.ts` | new | `can('venues.manage')`, `canAny(...)` |
 
 **Modes** (set in `frontend/.env`):
 
-- `NUXT_AUTH_MODE=mock` (default). Behaves exactly as before: mock users
-  such as `organiser@example.com`, the event mocks, and your existing tests.
-  No backend needed. The admin API returns 501 in this mode.
-- `NUXT_AUTH_MODE=live`. Real login with the seed users (e.g.
+- `NUXT_AUTH_MODE=live` (the default). Real login with the seed users (e.g.
   `sarah.tan@nexuslabs.sg` / `Sarah@CS01!`; each seed user has their own password, listed in `services/user-service/prisma/seed/01_user_db.sql`). Needs the Docker stack and
   `NUXT_API_BASE_URL=http://localhost:8000`.
 
-  Note: the event pages still use mock data keyed to mock user IDs, so real
-  users see no seeded events until event-service exists.
+  Event pages read event-service through the BFF and have no mock data.
+- `NUXT_AUTH_MODE=mock`. A synthetic sign-in fixture for automated tests only
+  (`organiser@example.com` and similar).
 
-**Your tests:** with these files your `tests/specs` give the same result as
-before (75 pass, and the same 20 CS-11/CS-30 failures that exist without
-them), plus 7 passing sign-up tests in `tests/specs/signup.spec.ts`. No
-existing test needed changing.
+**Tests:** sign-in, sign-up and role routing are covered in `tests/specs`
+(for example `CS-10.spec.ts` and `CS-26.spec.ts`); see [tests/README.md](../tests/README.md).
 
-**Using it in components and pages** (both composables are auto-imported by Nuxt):
+**Using it in components and pages** (auto-imported by Nuxt):
 
 ```vue
 <script setup lang="ts">
 const { can } = usePermissions()
-const admin = useAdminApi()
-const { users } = await admin.listUsers({ search: 'tan' })
 </script>
 
 <template>
-  <Button v-if="can('users.manage')">Add user</Button>
+  <Button v-if="can('venues.manage')">Add venue</Button>
 </template>
 ```
 
 ```ts
-// A page only some roles may open (e.g. app/pages/admin/users.vue)
-definePageMeta({ permission: 'users.view' })
+// A page only some roles may open
+definePageMeta({ permission: 'venues.manage' })
 ```
 
 Hiding a button or page only keeps the screen tidy. The backend checks the
 permission on every call.
 
 The middleware routes each recognised role to its functional home and checks
-permission metadata on typed routes. Technical Support opens `/support` with a
-read-only user directory and may read `/venue`; administrative mutations remain
-in the Swagger API. Backend action-role and record guards apply on every call.
+permission metadata on typed routes. Technical Support opens the equipment
+review queue at `/technical-requirements` and may read `/venue`; its Failed
+notifications tab needs `notifications.failures.view`. Backend action-role and record guards apply on every call.
 
 ## 8. Running a service without Docker (optional)
 
@@ -243,18 +234,17 @@ pgAdmin4, use `now() at time zone 'utc'`, not `now()`.
 | Symptom | Likely cause |
 |---|---|
 | Login returns 503 | Keycloak is still starting (around 30 s), or the client secret doesn't match the realm file |
-| Admin create/disable or saving settings returns 503 | Keycloak is down, or the realm predates the service account. Recreate the Keycloak container (step 2) |
-| auth-service logs "Keycloak sync attempt N failed" | Same as above. It retries for about 2 minutes, then gives up until the next settings save |
-| Login 401 with the right password | Account locked (wait), account disabled by tech support, or the user isn't in Keycloak |
+| Sign-up or the status command returns 503 | Keycloak is down, or the realm predates the service account. Recreate the Keycloak container (step 2) |
+| auth-service logs "Keycloak sync attempt N failed" | Same as above. It retries for about 2 minutes, then gives up until auth-service restarts |
+| Login 401 with the right password | Account locked (wait), account disabled through controlled setup, or the user isn't in Keycloak |
 | Login 429 | More than 10 login attempts in a minute from your machine (Kong) |
 | Nuxt login returns 503 in live mode | Kong or auth-service isn't running, or `NUXT_API_BASE_URL` is wrong |
-| Admin calls return 501 | Frontend is in mock mode: set `NUXT_AUTH_MODE=live` |
-| Create user: "Password does not meet the password rules" | Check the current rules in `GET /admin/settings` |
+| Sign-up: "Password does not meet the password rules" | Check the current rules in `GET /auth/password-policy` |
 | `prisma generate` fails downloading engines | Your network blocks `binaries.prisma.sh`. Try another network |
 
 ## Multi-role homes and local identity checks
 
-The account menu switches only among server-issued roles; `POST /api/auth/role` updates the sealed presentation role, never database grants. Homes are `/` for Organiser/Coordinator, `/venue` for Venue Staff, `/support` for Technical Support and `/attendee` for Attendee. User roles and effective permissions are refreshed by `/api/auth/me`. Unknown/empty roles are denied.
+The account menu switches only among server-issued roles; `POST /api/auth/role` updates the sealed presentation role, never database grants. Homes are `/` for Organiser/Coordinator, `/queue` for the Coordinator Lead, `/venue` for Venue Staff, `/technical-requirements` for Technical Support, `/safety-checks` for the Safety Officer and `/attendances` for Attendee (`frontend/lib/roles.ts`). User roles and effective permissions are refreshed by `/api/auth/me`. Unknown/empty roles are denied.
 
 Auth/User Docker builds use the `services/` context so the static action policy is available in each image; no service accesses another database. `docker compose -f infra/docker-compose.yml build auth-service user-service venue-service booking-service` follows the updated contexts.
 

@@ -8,7 +8,7 @@ The diagrams below describe this branch and supersede the historical proposed la
 
 ```mermaid
 flowchart LR
-  Roles[Five user roles] --> UI[Nuxt role homes and account menu]
+  Roles[Seven user roles] --> UI[Nuxt role homes and account menu]
   UI --> BFF[Nuxt sealed-cookie BFF]
   BFF --> Kong[Kong gateway]
   Kong --> Auth[Auth service]

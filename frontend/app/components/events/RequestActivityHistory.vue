@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDateTime } from '~~/lib/datetime'
 const requestFetch=useRequestFetch()
 import { ref } from 'vue'
 import { Button } from '@/components/ui/button'
@@ -33,7 +34,7 @@ onMounted(()=>load())
   <ol aria-label="History entries, newest first" class="grid gap-3">
    <li v-for="entry in items" :key="entry.id">
     <details class="rounded-xl border border-border px-4 py-3 transition-colors hover:bg-muted/20" data-testid="history-entry">
-     <summary class="cursor-pointer list-none text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"><span class="font-medium">{{ actionLabel(entry.action) }}</span><span class="text-muted-foreground"> · {{ entry.actorType==='SYSTEM'?'System':entry.details?.actorName || entry.actorId }} · <time :datetime="entry.createdAt">{{ new Date(entry.createdAt).toLocaleString() }}</time></span></summary>
+     <summary class="cursor-pointer list-none text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"><span class="font-medium">{{ actionLabel(entry.action) }}</span><span class="text-muted-foreground"> · {{ entry.actorType==='SYSTEM'?'System':entry.details?.actorName || entry.actorId }} · <time :datetime="entry.createdAt">{{ formatDateTime(entry.createdAt) }}</time></span></summary>
      <div class="mt-3 border-t border-border pt-3">
       <p v-if="entry.fromStatus!==entry.toStatus" class="text-sm">{{ entry.fromStatus ?? 'New' }} → {{ entry.toStatus }}</p>
       <p v-if="entry.details?.bookingId" class="mt-2 break-all text-xs text-muted-foreground">Booking {{ entry.details.bookingId }}</p>

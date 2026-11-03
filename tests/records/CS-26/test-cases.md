@@ -21,3 +21,8 @@ Acceptance source: current CS-26 and Session 2 account/role clarification. Field
 | TC-CS26-15 | Signup hydration safety | Public signup page with JavaScript disabled | Render before mount; inspect credential inputs and submit; exercise existing live signup after hydration | Synthetic identity | Credentials and submit disabled before mount; no native GET of credentials; normal signup works afterward | SSR component + production desktop/mobile | 2026-10-07T02:50:32+00:00 |
 
 Component/controlled-boundary records do not prove live Keycloak/PostgreSQL behavior; browser and database results are recorded separately. Organisation labels are self-declared at public signup; the server resolves exact trimmed names. This follows the signup contract; verified/invited organisation membership would be a separate product requirement.
+
+### No in-app administration (3 November)
+
+The `/admin/*` API and its BFF proxy are removed (CS-10, CS-24 T02, CS-76: no System Administrator, staff accounts seeded). TC-CS26-06 now checks sign-up only, because no staff user-creation endpoint exists. TC-CS26-11 checks that every role, Technical Support included, gets 404 from the former user, permission, settings and audit routes, and that a stray `users.view` grant is not a known permission. Test: `services/auth-service/tests/identity.test.js`. Account status changes are the internal controlled-setup command covered in the CS-30 record.
+

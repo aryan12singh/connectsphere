@@ -152,12 +152,9 @@ test('TC-CS26-05 duplicate email is a field-level 409 and creates no profile', a
 });
 // CS-10 Week 7 adds SAFETY_OFFICER and EVENT_COORDINATOR_LEAD (TC-CS10-21): internal only.
 for (const role of ['EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF', 'SYSTEM_ADMINISTRATOR', 'SAFETY_OFFICER', 'EVENT_COORDINATOR_LEAD']) {
-  test(`TC-CS26-06 ${role} cannot be granted by signup or the staff user-creation endpoint`, async () => {
+  test(`TC-CS26-06 ${role} cannot be granted by signup, and there is no staff user-creation endpoint`, async () => {
     assert.equal((await http('/auth/register', { method: 'POST', body: signup({ role }) })).status, 400);
     user.role = 'TECHNICAL_SUPPORT_STAFF'; user.roles = [user.role];
-    const token = storedToken(0);
-    assert.equal((await http('/admin/users', { method: 'POST', token, body: signup({ role }) })).status, 400);
-    assert.equal((await http(`/admin/users/${user.id}/role`, { method: 'PATCH', token, body: { role } })).status, 400);
     assert.equal(created.length, 0);
   });
 }
@@ -180,9 +177,12 @@ test('TC-CS26-10 multi-role grants are a deduplicated union and removals take ef
   user.roles = ['ATTENDEE'];
   assert.ok(!(await sessionService.resolveToken(token)).permissions.includes('messages.send'));
 });
-test('TC-CS26-11 protected user-management routes deny every non-support role even with an injected capability', async () => {
-  for (const role of ['ATTENDEE', 'EVENT_ORGANISER', 'EVENT_COORDINATOR', 'VENUE_STAFF']) {
+test('TC-CS26-11 there is no in-app user, permission or settings administration for any role (CS-10, CS-24 T02)', async () => {
+  for (const role of ['ATTENDEE', 'EVENT_ORGANISER', 'EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF']) {
     user.role = role; user.roles = [role]; permissionRows.push({ role, permission: 'users.view' });
-    assert.equal((await http('/admin/users', { token: storedToken(0) })).status, 403);
+    const token = storedToken(0);
+    for (const [method, path] of [['GET', '/admin/users'], ['POST', '/admin/users'], ['PATCH', `/admin/users/${user.id}/role`], ['PATCH', `/admin/users/${user.id}/status`], ['GET', '/admin/permissions'], ['PUT', '/admin/settings'], ['GET', '/admin/audit-logs']])
+      assert.equal((await http(path, { method, token, body: method === 'GET' ? undefined : {} })).status, 404, `${role} ${method} ${path}`);
+    assert.ok(!(await sessionService.resolveToken(token)).permissions.includes('users.view'), 'a stray grant is not a known permission');
   }
 });

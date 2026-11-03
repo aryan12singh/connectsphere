@@ -1,5 +1,5 @@
-// Creating an account: used by both tech support (POST /admin/users) and
-// self sign-up (POST /auth/register), so both follow exactly the same rules.
+// Creating an account: self sign-up (POST /auth/register) for Organisers and
+// Attendees. Staff accounts are seeded (CS-24 T02), never created here.
 //
 // An account has two halves that must stay in step:
 //   1. the Keycloak login (email + password, lockout, password rules)

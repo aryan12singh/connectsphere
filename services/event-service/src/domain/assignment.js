@@ -1,6 +1,6 @@
-// Choosing the Coordinator for a request (CS-30, decision D3).
-// Pure functions: the service loads the Coordinators and their load, calls
-// pickCoordinator, then saves the result. No database access here.
+// Coordinator workload (CS-30, decision D3), used by the Lead's queue and
+// oversight counts. Week 7 retired automatic assignment: only the Lead assigns.
+// Pure function; no database access here.
 
 /**
  * Does this request count towards its Coordinator's load?
@@ -15,30 +15,4 @@ function countsAsActive({ requestStatus, eventStatus }) {
   return false;
 }
 
-/**
- * @param coordinators  [{ id, createdAt }]  active users holding EVENT_COORDINATOR
- *                      (the list comes from user-service)
- * @param lastAssigned  { [coordinatorId]: Date|string } latest assignment ever, including revoked/closed; missing = never
- * @param activeCounts  { [coordinatorId]: number }  their active requests; missing = 0
- * @returns the chosen Coordinator's id, or null when there is none
- *          (the request is then saved as "Awaiting assignment")
- *
- * Order: fewest active requests, then least recently assigned (never first),
- * then earliest createdAt and lowest id for deterministic ties.
- * Policy selected by Aryan on 2026-10-06; one shared selector remains.
- */
-function pickCoordinator(coordinators, activeCounts = {}, lastAssigned = {}) {
-  if (!Array.isArray(coordinators) || coordinators.length === 0) return null;
-  const load = (c) => activeCounts[c.id] || 0;
-  const sorted = [...coordinators].sort((x, y) => {
-    if (load(x) !== load(y)) return load(x) - load(y);
-    const assignedAt = c => lastAssigned[c.id] ? new Date(lastAssigned[c.id]).getTime() : -Infinity;
-    if (assignedAt(x) !== assignedAt(y)) return assignedAt(x) < assignedAt(y) ? -1 : 1;
-    const t = new Date(x.createdAt).getTime() - new Date(y.createdAt).getTime();
-    if (t !== 0) return t;
-    return x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
-  });
-  return sorted[0].id;
-}
-
-module.exports = { pickCoordinator, countsAsActive };
+module.exports = { countsAsActive };

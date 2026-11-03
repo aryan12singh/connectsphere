@@ -317,7 +317,8 @@ test('TC-CS42-11 a Booking hold expiry or single-venue change leaves the persist
     await Promise.all([authStub.close(), eventStub.close(), bookingStub.close()]);
   }
 });
-test.todo('TC-CS42-12 whole-Event cancellation requires the CS-46 cancellation workflow; explicit technical replacement is covered separately');
+// TC-CS42-12: whole-Event cancellation is covered by TC-CS46-01/03/04 above (CS-46 is
+// built); explicit technical replacement is the TC-CS42-12 test below.
 
 test('TC-CS42-02/03 PostgreSQL shortages and obsolete approvals commit no reservation, history or action', async () => {
   const competing = await submit([{ equipmentType: 'projector', quantity: 3 }]);
@@ -466,6 +467,25 @@ test('TC-CS41-10 operational retries persist exactly one command and reject chan
   assert.equal(second.id, first.id);
   assert.equal(await db.equipmentOperationalUnavailability.count({ where: { equipmentType: 'stage' } }), 1);
   await assert.rejects(() => operations.createOperation({ body: { ...body, quantity: 2 }, actor: support, key }), error => error.status === 409);
+});
+
+test('CS-51 AC3/AC4 submissions, decisions, reservations and overlapping flags write notice actions in the same transaction', async () => {
+  const affected = await submit([{ equipmentType: 'speaker', quantity: 2 }]);
+  const other = await submit([{ equipmentType: 'speaker', quantity: 1 }]);
+  const occupied = { startAt: '2039-01-01T10:00:00Z', endAt: '2039-01-01T12:00:00Z' };
+  await operations.reserve({ request: affected, window: occupied, actor: support, key: randomUUID(), hash: 'flag-affected' });
+  await operations.reserve({ request: other, window: { startAt: '2039-02-01T10:00:00Z', endAt: '2039-02-01T12:00:00Z' }, actor: support, key: randomUUID(), hash: 'flag-other' });
+  const types = (await db.outboxEvent.findMany({ where: { payload: { path: ['eventRequestId'], equals: affected.eventRequestId } } })).map(row => row.eventType).sort();
+  assert.deepEqual(types, ['EquipmentReserved', 'TechRequestDecided', 'TechRequestSubmitted']);
+  const key = randomUUID();
+  const body = { ...occupied, equipmentType: 'speaker', quantity: 1, reason: 'Cable fault' };
+  const operation = await operations.createOperation({ body, actor: support, key });
+  await operations.createOperation({ body, actor: support, key });
+  const flags = await db.outboxEvent.findMany({ where: { eventType: 'EquipmentUnavailable' } });
+  assert.equal(flags.length, 1, 'only the overlapping Event is told, once per operation');
+  assert.equal(flags[0].payload.eventRequestId, affected.eventRequestId);
+  assert.equal(flags[0].payload.operationId, operation.id);
+  assert.equal(flags[0].payload.reason, 'Cable fault');
 });
 
 test('TC-CS42-12 current-version proof requires replacement and replacement does not count its own old stock', async () => {

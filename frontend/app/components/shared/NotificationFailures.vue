@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDateTime } from '~~/lib/datetime'
 // CS-50: Technical Support view of notification deliveries that failed after
 // 3 retries. Shows ids and the error only, never the notice text.
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,7 +17,7 @@ const { data, error, refresh } = await useFetch<{ items: Failure[] }>('/api/noti
       <table v-else class="w-full text-left text-sm" data-testid="notification-failures">
         <thead class="text-xs text-muted-foreground"><tr><th class="py-2">Message</th><th>Request / event</th><th>Attempts</th><th>Error</th><th>Failed at</th></tr></thead>
         <tbody class="divide-y divide-border">
-          <tr v-for="item in data?.items ?? []" :key="item.messageId"><td class="py-2">{{ item.messageType }}</td><td class="break-all">{{ item.aggregateId || '—' }}</td><td>{{ item.attempts }}</td><td>{{ item.lastError || '—' }}</td><td>{{ new Date(item.failedAt).toLocaleString() }}</td></tr>
+          <tr v-for="item in data?.items ?? []" :key="item.messageId"><td class="py-2">{{ item.messageType }}</td><td class="break-all">{{ item.aggregateId || '—' }}</td><td>{{ item.attempts }}</td><td>{{ item.lastError || '—' }}</td><td>{{ formatDateTime(item.failedAt) }}</td></tr>
         </tbody>
       </table>
     </CardContent>

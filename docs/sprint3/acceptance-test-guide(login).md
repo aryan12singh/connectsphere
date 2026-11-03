@@ -77,7 +77,7 @@ cd ../notification-service && npm run test:unit && npm run test:contract   # CS-
 | 10-04 Wrong password / unknown email | Log in with a right email + wrong password; then an unknown email | Same generic error both times, no session | Both error screens |
 | 10-05 No recognised role | Covered by the automated test `TC-CS10-05` / `TC-CS10-11` (unknown role → Access Denied, never a default role). Can't be created in live data on purpose | Test passes | Test run |
 | 10-06 Call API after logout | Swagger: login → copy token → `POST /auth/logout` → `GET /auth/me` with the same token | **401** | Swagger responses |
-| 10-07 Idle timeout | As Technical Support, Swagger `PUT /admin/settings` with `"idleTimeoutMinutes": 1`; log in as another user; wait 1 min idle; click any page | Sent to login. The exact 29:59 / 30:00 / 30:01 boundary is proven by `TC-CS10-13`. Set the timeout back afterwards (default is 0 = off) | Settings response, then the redirect |
+| 10-07 Idle timeout | In pgAdmin set `auth_db.auth_settings.idleTimeoutMinutes` to 1 (there is no settings API since 3 November); log in as another user; wait 1 min idle; click any page | Sent to login. The exact 29:59 / 30:00 / 30:01 boundary is proven by `TC-CS10-13`. Set the timeout back afterwards (default is 0 = off) | Settings response, then the redirect |
 | Multi-role switch | Log in as Priya (Organiser + Attendee) → account menu → **Active role** → Attendee | Moves to `/attendee` without logging in again; switch back works | Menu + new home |
 
 ### Week 7 cases (PO sheet)

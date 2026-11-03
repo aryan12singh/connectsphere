@@ -7,7 +7,7 @@
 // Passwords: Keycloak is the source of truth for passwords (hybrid auth).
 // `passwordHash` is kept only because the seed contract has it — the login
 // flow never reads it. Decided 2026-09-28: keep it, unused. It is optional
-// so users created by tech support don't need a fake value.
+// so users created by sign-up don't need a fake value.
 // ─────────────────────────────────────────────────────────────────────────
 
 generator client {
@@ -20,7 +20,7 @@ datasource db {
   url      = env("DATABASE_URL") // -> user_db
 }
 
-// The five fixed customer roles. Public/admin/internal provisioning only grants
+// The fixed customer roles. Sign-up only grants
 // Organiser or Attendee; Coordinator, Venue Staff and Technical Support are seeded.
 enum UserRole {
   SAFETY_OFFICER
@@ -69,7 +69,7 @@ model User {
   organisationId String? // same-service FK. Null for staff and most attendees.
   organisation   Organisation? @relation(fields: [organisationId], references: [id])
 
-  isActive  Boolean  @default(true) // false = disabled by tech support, cannot log in
+  isActive  Boolean  @default(true) // false = disabled through controlled setup, cannot log in
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

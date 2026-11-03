@@ -650,7 +650,7 @@ describe('CS-10 Week 7 — seven-role permission matrix and landings', () => {
     // Lead: supervision landing + read-only event views. No Coordinator powers (Q11).
     EVENT_COORDINATOR_LEAD: ['assignments.view', 'events.view', 'messages.send'],
     VENUE_STAFF: ['events.view', 'messages.send', 'venues.view', 'venues.manage', 'venue_bookings.decide'],
-    TECHNICAL_SUPPORT_STAFF: ['users.view', 'users.manage', 'permissions.manage', 'settings.manage', 'audit.view', 'events.view', 'messages.send', 'venues.view', 'technical.view', 'technical.review'],
+    TECHNICAL_SUPPORT_STAFF: ['notifications.failures.view', 'events.view', 'messages.send', 'venues.view', 'technical.view', 'technical.review'],
     // Safety Officer: Safety workspace only; no event/venue/equipment editing.
     SAFETY_OFFICER: ['safety.view', 'safety.decide', 'messages.send'],
     ATTENDEE: ['events.view', 'messages.send', 'attendance.register'],

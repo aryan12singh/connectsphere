@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDateTime } from '~~/lib/datetime'
 import { computed, onMounted, ref } from 'vue'
 import { ArrowLeftIcon, UsersRoundIcon } from '@lucide/vue'
 import { useUserSession } from '#imports'
@@ -116,7 +117,7 @@ async function saveWithdrawalPolicy() {
                 <li v-for="row in roster.registrations" :key="row.id" class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border px-4 py-3">
                   <div class="min-w-0">
                     <p class="break-all font-medium">{{ row.userId }}</p>
-                    <p class="mt-1 text-sm text-muted-foreground">{{ new Date(row.registeredAt).toLocaleString() }}</p>
+                    <p class="mt-1 text-sm text-muted-foreground">{{ formatDateTime(row.registeredAt) }}</p>
                   </div>
                   <Badge class="shrink-0">{{ formatStatus(row.status) }}</Badge>
                 </li>

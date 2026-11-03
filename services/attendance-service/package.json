@@ -15,7 +15,7 @@
     "test:coverage": "c8 --all --include='src/**/*.js' --reporter=text --reporter=json --reporter=json-summary --reporter=lcov --check-coverage --statements=81 --branches=81 --functions=81 --lines=81 node ../../tests/scripts/service-coverage.cjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^6.19.3",

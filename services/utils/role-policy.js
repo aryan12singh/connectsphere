@@ -6,17 +6,14 @@ const ROLES = Object.freeze(['EVENT_ORGANISER', 'EVENT_COORDINATOR', 'VENUE_STAF
 const PUBLIC_ROLES = Object.freeze(['EVENT_ORGANISER', 'ATTENDEE']);
 const INTERNAL_ROLES = Object.freeze(['EVENT_COORDINATOR', 'VENUE_STAFF', 'TECHNICAL_SUPPORT_STAFF']);
 const ACTION_ROLES = Object.freeze({
-  'users.view': ['TECHNICAL_SUPPORT_STAFF'],
-  'users.manage': ['TECHNICAL_SUPPORT_STAFF'],
-  'permissions.manage': ['TECHNICAL_SUPPORT_STAFF'],
-  'settings.manage': ['TECHNICAL_SUPPORT_STAFF'],
-  'audit.view': ['TECHNICAL_SUPPORT_STAFF'],
+  // No in-app user, permission or settings administration (CS-10, CS-24 T02).
+  'notifications.failures.view': ['TECHNICAL_SUPPORT_STAFF'],
   'event_requests.create': ['EVENT_ORGANISER'],
   'event_requests.review': ['EVENT_COORDINATOR'],
   'events.view': ROLES.filter(role=>role!=='SAFETY_OFFICER'),
-  // CS-10: the Lead's landing screen (Unassigned Queue). Assigning and
-  // reassigning are added by CS-81/CS-30. A Lead is NOT a Coordinator: it never
-  // gets event_requests.review, events.confirm or venue booking powers (Q11).
+  // The Lead's queue, assign (CS-81), reassign and transfer decisions (CS-30)
+  // and oversight (CS-83). A Lead is NOT a Coordinator: it never gets
+  // event_requests.review, events.confirm or venue booking powers (Q11).
   'assignments.view':['EVENT_COORDINATOR_LEAD'],
   'events.technical.metadata.view': ['TECHNICAL_SUPPORT_STAFF'],
   'safety.view':['SAFETY_OFFICER'],

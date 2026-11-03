@@ -1,12 +1,12 @@
-// The list of every permission the system knows about, and which ones are
-// protected.
+// The list of every permission the system knows about.
 //
 // Why the list lives in code: a permission only means something if some
-// route checks it. Tech support can change WHICH ROLES have each permission
-// (stored in auth_db.role_permissions), but can't invent new permissions —
-// a developer adds one here when they add a route that checks it.
+// route checks it. Which roles have each permission is seeded in
+// auth_db.role_permissions by migrations; there is no in-app editor
+// (CS-10, CS-24 T02). A developer adds one here when they add a route that
+// checks it.
 //
-// Naming: "<area>.<action>". Keep descriptions short; the admin screen shows them.
+// Naming: "<area>.<action>".
 
 const PERMISSIONS = Object.freeze({
   'safety.view':'View permitted Safety review rounds',
@@ -16,12 +16,8 @@ const PERMISSIONS = Object.freeze({
   'technical.view':'View current technical requests',
   'technical.submit':'Submit technical requirements',
   'technical.review':'Review technical requirements',
-  // Admin (tech support)
-  'users.view': 'See the list of users',
-  'users.manage': 'Manage public accounts and disable or re-enable accounts',
-  'permissions.manage': 'Change which permissions each role has',
-  'settings.manage': 'Change login and password settings',
-  'audit.view': 'See the admin audit log',
+  // Technical Support: deliveries that failed after their retries (CS-50 AC5).
+  'notifications.failures.view': 'See notification deliveries that failed',
 
   // Event requests and events
   'event_requests.create': 'Submit event requests',
@@ -45,14 +41,8 @@ const PERMISSIONS = Object.freeze({
 // The fixed roles (they match the UserRole enum in user-service).
 const { ROLES } = require('../../../utils/role-policy');
 
-// Tech support always keeps these, so nobody can accidentally lock every
-// admin out of the admin screens.
-const PROTECTED = Object.freeze({
-  TECHNICAL_SUPPORT_STAFF: ['users.manage', 'permissions.manage'],
-});
-
 function isKnownPermission(permission) {
   return Object.prototype.hasOwnProperty.call(PERMISSIONS, permission);
 }
 
-module.exports = { PERMISSIONS, ROLES, PROTECTED, isKnownPermission };
+module.exports = { PERMISSIONS, ROLES, isKnownPermission };

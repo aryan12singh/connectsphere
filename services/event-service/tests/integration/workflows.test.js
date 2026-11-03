@@ -588,3 +588,14 @@ test('cancellation acceptance: request lock serializes handover and reads the de
  });const denied=await pending;assert.equal(denied.status,409);assert.equal(denied.body.error.code,'EVENT_STARTED');assert.equal(await prisma.eventCancellationIntent.count({where:{eventId:boundary.event.id}}),0);
  t.diagnostic(JSON.stringify({layer:'PostgreSQL/request-row lock barriers',handoverResult:403,afterLockDeadline:denied}));
 });
+test('CS30 Session 3: open assignments list a Coordinator\'s open requests for the deactivation check, internal only',async()=>{
+ const open=await create(valid,'owner',randomUUID(),'test-coord2');
+ const closed=await create(valid,'owner',randomUUID(),'test-coord2');
+ assert.equal((await call('POST',`/event-requests/${closed.body.id}/decision`,{action:'REJECT',text:'Not feasible on that date',version:closed.body.version},'coord2')).status,200);
+ const path='/internal/coordinators/test-coord2/open-assignments';
+ assert.notEqual((await call('GET',path,undefined,'coord2')).status,200,'a user session cannot read it');
+ const r=await call('GET',path,undefined,null,randomUUID(),{'x-internal-api-key':'integration-key'});
+ assert.equal(r.status,200);assert.equal(r.body.coordinatorId,'test-coord2');
+ const ids=r.body.requests.map(x=>x.id);assert.ok(ids.includes(open.body.id));assert.ok(!ids.includes(closed.body.id),'a rejected request is closed');
+ assert.equal(r.body.count,ids.length);
+});

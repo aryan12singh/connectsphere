@@ -25,12 +25,16 @@ function validateOperation(body, known, stock) {
   return { ...input, reason: input.reason.trim(), ...period(input) };
 }
 
+// Lines of the same type in different venues draw on one stock pool, so the
+// check runs once per type against the Event's total demand (CS-40/41/42).
 function lineResult(requirements, stockByType, reservations, operations, window) {
-  return requirements.equipment.map(line => {
+  const demand = new Map();
+  for (const line of requirements.equipment) demand.set(line.equipmentType, (demand.get(line.equipmentType) || 0) + line.quantity);
+  return [...demand].map(([equipmentType, quantity]) => {
     const commitments = [...reservations, ...operations]
-      .filter(item => item.equipmentType === line.equipmentType && item.active !== false)
+      .filter(item => item.equipmentType === equipmentType && item.active !== false)
       .map(item => ({ startAt: item.startAt, endAt: item.endAt, quantity: item.quantity }));
-    return { equipmentType: line.equipmentType, ...availabilityLine(stockByType.get(line.equipmentType) || 0, line.quantity, commitments, window.startAt, window.endAt) };
+    return { equipmentType, ...availabilityLine(stockByType.get(equipmentType) || 0, quantity, commitments, window.startAt, window.endAt) };
   });
 }
 
@@ -79,6 +83,7 @@ async function reserve({ request, window, actor, key, hash, sourceVersions = {} 
     old.forEach(row => { row.active = false; });
     memory.reservations.push(...rows);
     const value = { requestVersion: request.version, period: normalized, reservations: rows, sourceVersions };
+    memory.outbox.push({ actionKey: `EquipmentReserved:${request.eventRequestId}:v${request.version}`, eventType: 'EquipmentReserved', payload: { ...value, eventRequestId: request.eventRequestId, eventId: request.planningEventId || null }, createdAt: new Date().toISOString() });
     if (key) memory.idempotency.set(`${actor.id}:${key}`, { hash, value });
     return value;
   }
@@ -120,7 +125,7 @@ async function reserve({ request, window, actor, key, hash, sourceVersions = {} 
     for (const line of request.requirements.equipment) rows.push(await tx.equipmentReservation.create({ data: { id: crypto.randomUUID(), eventRequestId: request.eventRequestId, eventId: request.planningEventId || request.eventRequestId, requestVersion: request.version, equipmentType: line.equipmentType, quantity: line.quantity, startAt: new Date(normalized.startAt), endAt: new Date(normalized.endAt), actorId: actor.id, sourceVersions } }));
     const value = { requestVersion: request.version, period: normalized, reservations: rows, sourceVersions };
     await tx.technicalRequestHistory.create({ data: { requestId: current.id, version: request.version, action: 'EquipmentReserved', actorId: actor.id, actorRole: actor.role, details: value } });
-    await tx.outboxEvent.create({ data: { actionKey: `EquipmentReserved:${request.eventRequestId}:v${request.version}`, eventType: 'EquipmentReserved', payload: value } });
+    await tx.outboxEvent.create({ data: { actionKey: `EquipmentReserved:${request.eventRequestId}:v${request.version}`, eventType: 'EquipmentReserved', payload: { ...value, eventRequestId: request.eventRequestId, eventId: request.planningEventId || null } } });
     if (key) await tx.idempotencyRecord.create({ data: { actorId: actor.id, key, requestHash: hash, responseBody: value } });
     return value;
   }, { isolationLevel: 'ReadCommitted', timeout: 15000 }); }
@@ -210,6 +215,17 @@ async function reservationsForRequest(eventRequestId) {
   return prisma.equipmentReservation.findMany({ where: { eventRequestId }, orderBy: { createdAt: 'asc' } });
 }
 
+// CS-51 AC4: one notice action per Event whose active reservation overlaps
+// the flagged period, so each goes to that Event's current Coordinator.
+function flagNotices(operation, affected) {
+  const events = new Map(affected.map(row => [row.eventRequestId, row.eventId === row.eventRequestId ? null : row.eventId]));
+  return [...events].map(([eventRequestId, eventId]) => ({
+    actionKey: `EquipmentUnavailable:${operation.id}:${eventRequestId}`,
+    eventType: 'EquipmentUnavailable',
+    payload: { eventRequestId, eventId, operationId: operation.id, equipmentType: operation.equipmentType, quantity: operation.quantity, reason: operation.reason, startAt: new Date(operation.startAt).toISOString(), endAt: new Date(operation.endAt).toISOString() },
+  }));
+}
+
 async function createOperation({ body, actor, key }) {
   const hash = JSON.stringify({ action: 'operational-unavailability', body });
   const replay = key && (config.dataMode === 'prisma'
@@ -228,6 +244,7 @@ async function createOperation({ body, actor, key }) {
     for (const eventRequestId of new Set(affected.map(row => row.eventRequestId))) await require('./readiness').invalidateRequest(eventRequestId);
     const item = { id: crypto.randomUUID(), ...value, actorId: actor.id, version: 1, createdAt: new Date().toISOString() };
     memory.operations.push(item);
+    for (const row of flagNotices(item, affected)) memory.outbox.push({ ...row, createdAt: item.createdAt });
     if (key) memory.idempotency.set(`${actor.id}:${key}`, { hash, value: item });
     return item;
   }
@@ -236,6 +253,7 @@ async function createOperation({ body, actor, key }) {
     const affected = await tx.equipmentReservation.findMany({ where: { active: true, equipmentType: value.equipmentType, startAt: { lt: new Date(value.endAt) }, endAt: { gt: new Date(value.startAt) } } });
     for (const eventRequestId of new Set(affected.map(row => row.eventRequestId))) await require('./readiness').invalidateRequest(eventRequestId, tx);
     const saved = await tx.equipmentOperationalUnavailability.create({ data: { id: crypto.randomUUID(), equipmentType: value.equipmentType, quantity: value.quantity, reason: value.reason, startAt: new Date(value.startAt), endAt: new Date(value.endAt), actorId: actor.id } });
+    for (const row of flagNotices(saved, affected)) await tx.outboxEvent.create({ data: row });
     if (key) await tx.idempotencyRecord.create({ data: { actorId: actor.id, key, requestHash: hash, responseBody: JSON.parse(JSON.stringify(saved)) } });
     return saved;
   }); } catch (error) {

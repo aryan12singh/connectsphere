@@ -138,6 +138,21 @@ test('TC-CS46-06 technical revisions leave existing equipment reservations activ
   });
 });
 
+test('CS-51 AC4 marking stock unavailable records a notice action for each overlapping Event only', async () => {
+  const operations = require('../../src/operations');
+  const base = { requestVersion: 1, equipmentType: 'microphone', quantity: 1, active: true, actorId: 'support', sourceVersions: {}, createdAt: new Date().toISOString() };
+  operations._memory.reservations.push(
+    { ...base, id: 'flag-hit', eventRequestId: 'flag-request-hit', eventId: 'flag-event-hit', startAt: '2040-01-01T10:00:00.000Z', endAt: '2040-01-01T12:00:00.000Z' },
+    { ...base, id: 'flag-miss', eventRequestId: 'flag-request-miss', eventId: 'flag-event-miss', startAt: '2040-03-01T10:00:00.000Z', endAt: '2040-03-01T12:00:00.000Z' },
+  );
+  await withServer(async baseUrl => {
+    const response = await fetch(`${baseUrl}/equipment-operational-unavailability`, { method: 'POST', headers: actorHeaders('flag-support', 'TECHNICAL_SUPPORT_STAFF'), body: JSON.stringify({ equipmentType: 'microphone', quantity: 1, reason: 'Battery recall', startAt: '2040-01-01T11:00:00.000Z', endAt: '2040-01-01T13:00:00.000Z' }) });
+    assert.equal(response.status, 201);
+    const flags = operations._memory.outbox.filter(row => row.eventType === 'EquipmentUnavailable' && row.payload.equipmentType === 'microphone' && row.payload.startAt.startsWith('2040'));
+    assert.deepEqual(flags.map(row => [row.payload.eventRequestId, row.payload.eventId]), [['flag-request-hit', 'flag-event-hit']]);
+  });
+});
+
 test('TC-CS40-02 rejects invalid equipment with field feedback and no saved request', async () => {
   await withServer(async baseUrl => {
     const response = await fetch(`${baseUrl}/event-requests/event-invalid/technical-request`, {
@@ -280,7 +295,26 @@ test('TC-CS40-10 one Event request retains equipment allocations for multiple ve
   });
 });
 
-test.todo('TC-CS40-10 / TC-CS41-07 / TC-CS42-06 integration: aggregate same-type venue allocations before dated availability and reservation; the pooling helper currently has no service call site');
+test('TC-CS40-10 TC-CS41-07 TC-CS42-06 same-type lines in different venues are checked and reserved as one Event demand', async () => {
+  await withServer(async baseUrl => {
+    const coordinator = actorHeaders('coordinator-pooled', 'EVENT_COORDINATOR');
+    const projector = (await (await fetch(`${baseUrl}/equipment-types`, { headers: coordinator })).json()).equipmentTypes.find(item => item.name === 'projector');
+    const half = Math.floor(projector.total / 2) + 1;
+    const requestPath = `${baseUrl}/event-requests/event-pooled/technical-request`;
+    const support = { ...actorHeaders('support-pooled', 'TECHNICAL_SUPPORT_STAFF'), 'x-test-equipment-period': '2029-03-05T01:00:00.000Z,2029-03-05T03:00:00.000Z' };
+    assert.equal((await fetch(requestPath, { method: 'POST', headers: coordinator, body: JSON.stringify({ ...requestBody, equipment: [
+      { equipmentType: 'projector', quantity: half, venueId: 'room-a' },
+      { equipmentType: 'projector', quantity: half, venueId: 'room-b' },
+    ] }) })).status, 201);
+    assert.equal((await fetch(`${requestPath}/decision`, { method: 'POST', headers: support, body: JSON.stringify({ decision: 'APPROVED', version: 1 }) })).status, 200);
+    const availability = await (await fetch(`${requestPath}/availability`, { headers: support })).json();
+    assert.equal(availability.fulfillable, false);
+    assert.deepEqual(availability.lines, [{ equipmentType: 'projector', requested: half * 2, available: projector.total, shortfall: half * 2 - projector.total }]);
+    const reserve = await fetch(`${requestPath}/reservations`, { method: 'POST', headers: { ...support, 'Idempotency-Key': 'reserve-pooled' }, body: JSON.stringify({ version: 1 }) });
+    assert.equal(reserve.status, 409);
+    assert.equal((await reserve.json()).error.code, 'EQUIPMENT_SHORTFALL');
+  });
+});
 
 test('CS-41 technical request list returns a backend-derived equipment period only when equipment is requested', async () => {
   await withServer(async baseUrl => {

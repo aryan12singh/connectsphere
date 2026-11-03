@@ -70,7 +70,7 @@ useHead({title:'Event request | ConnectSphere'})
 
    <p v-if="savedMessage" role="status" class="mt-5 rounded-xl border border-success/30 bg-success-soft px-4 py-3 text-sm text-success">{{ savedMessage }}</p>
 
-   <CoordinatorEditPanel v-if="canCoordinatorEdit" class="mt-6" :key="loaded.version" :request-id="id" :description="loaded.description ?? ''" :version="loaded.version" @saved="afterCoordinatorEdit" />
+   <CoordinatorEditPanel v-if="canCoordinatorEdit" class="mt-6" :key="loaded.version" :request-id="id" :description="loaded.description ?? ''" :purpose="loaded.purpose ?? ''" :version="loaded.version" @saved="afterCoordinatorEdit" />
 
    <ChangeProposalPanel v-if="canProposeChange" class="mt-6" :request-id="id" :version="loaded.version" :is-coordinator="canManageTechnicalRequirements" :is-organiser="loaded.organiserId===user?.id" @decided="afterChangeDecided" />
 

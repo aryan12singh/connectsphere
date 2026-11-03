@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDateTime } from '~~/lib/datetime'
 import { ArrowLeftIcon, CalendarDaysIcon, TicketCheckIcon } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -64,7 +65,7 @@ function formatStatus(status: string) {
             </div>
             <div>
               <dt class="flex items-center gap-2 text-sm font-medium text-muted-foreground"><CalendarDaysIcon :size="16" aria-hidden="true" />Registered at</dt>
-              <dd class="mt-1.5 font-medium"><time>{{ new Intl.DateTimeFormat('en-SG', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(registration.registeredAt)) }}</time></dd>
+              <dd class="mt-1.5 font-medium"><time>{{ formatDateTime(registration.registeredAt) }}</time></dd>
             </div>
           </dl>
         </CardContent>

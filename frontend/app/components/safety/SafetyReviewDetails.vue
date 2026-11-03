@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDateTime } from '~~/lib/datetime'
 import type { SafetySnapshot, SafetyVenue } from './safety-review-state'
 const props=defineProps<{snapshot:SafetySnapshot}>()
 const text=(value:string | null | undefined)=>value?.trim() || 'Not recorded'
@@ -24,10 +25,10 @@ function factors(room:SafetyVenue) {
 </script>
 <template>
   <section aria-label="Safety review factors" class="grid gap-4">
-    <p v-if="props.snapshot.eventStartAt" class="text-sm">Submitted Event interval: {{ new Date(props.snapshot.eventStartAt).toLocaleString() }} – {{ new Date(props.snapshot.eventEndAt || '').toLocaleString() }} · {{ props.snapshot.timeZone }}</p>
+    <p v-if="props.snapshot.eventStartAt" class="text-sm">Submitted Event interval: {{ formatDateTime(props.snapshot.eventStartAt) }} – {{ formatDateTime(props.snapshot.eventEndAt) }} · {{ props.snapshot.timeZone }}</p>
     <p v-if="!props.snapshot.venues.length" class="text-sm text-muted-foreground">No venue arrangements are available for review.</p>
     <article v-for="room in props.snapshot.venues" :key="room.bookingId" :data-safety-booking="room.bookingId" class="rounded-2xl border border-border p-4">
-      <h3 class="font-semibold">{{ room.venueName }}</h3><p v-if="room.bookingStartAt" class="mt-1 text-sm">Booked: {{ new Date(room.bookingStartAt).toLocaleString() }} – {{ new Date(room.bookingEndAt || '').toLocaleString() }}</p><p v-if="room.venueRequirements" class="mt-1 whitespace-pre-wrap text-sm">Event venue requirements: {{ room.venueRequirements }}</p>
+      <h3 class="font-semibold">{{ room.venueName }}</h3><p v-if="room.bookingStartAt" class="mt-1 text-sm">Booked: {{ formatDateTime(room.bookingStartAt) }} – {{ formatDateTime(room.bookingEndAt) }}</p><p v-if="room.venueRequirements" class="mt-1 whitespace-pre-wrap text-sm">Event venue requirements: {{ room.venueRequirements }}</p>
       <p v-if="exceeds(room)" role="alert" class="mt-2 text-sm font-medium text-destructive">Attendance exceeds capacity. This room needs attention.</p>
       <dl class="mt-3 grid gap-3 sm:grid-cols-2">
         <div v-for="[label,value] in factors(room)" :key="label"><dt class="text-sm font-medium">{{ label }}</dt><dd class="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground">{{ value }}</dd></div>

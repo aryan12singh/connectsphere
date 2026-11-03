@@ -15,7 +15,7 @@
     "test:integration": "node --experimental-test-coverage --test-coverage-lines=65 --test-coverage-branches=55 --test-coverage-functions=65 --test --test-coverage-include='src/**/*.js' tests/integration/*.test.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^6.19.3",

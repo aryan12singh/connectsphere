@@ -15,6 +15,8 @@ const STORIES = {
   'CS-27': 'Validate and Resubmit Returned Event Requests',
   'CS-29': 'Save and Resume a Draft Event Request',
   'CS-30': 'Lead Assignment and Reassignment of the Event Coordinator',
+  'CS-31': 'Confirm an Event When Essential Arrangements Are Ready',
+  'CS-32': 'Maintain Event Status and Transition Rules',
   'CS-33': 'Maintain Venue Catalogue and Operating Information',
   'CS-34': 'View Venue Availability Calendar',
   'CS-35': 'Record Operational Venue Unavailability',

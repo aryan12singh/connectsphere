@@ -30,6 +30,15 @@ router.get('/attendee-events',async(_req,res,next)=>{
 router.get('/attendee-events/:id',async(req,res,next)=>{
  try{const [event]=await repository.listEvents({id:req.params.id}),item=event&&await attendeeEvent(event);if(!item)return res.status(404).json({error:{code:'NOT_FOUND',message:'Current confirmed Event not found'}});res.json(item);}catch(error){next(error);}
 });
+// Session 3 / DEF-53-08: an account may be deactivated only after the Lead has
+// reassigned its open work. auth-service asks here before disabling anyone.
+router.get('/coordinators/:id/open-assignments',async(req,res,next)=>{
+ try{
+  const {isOpen}=require('../coordinatorTransfer');
+  const open=(await repository.listRequests({currentCoordinatorId:req.params.id})).filter(isOpen);
+  res.json({coordinatorId:req.params.id,count:open.length,requests:open.map(r=>({id:r.id,eventName:r.eventName,status:r.event?.status||r.status}))});
+ }catch(error){next(error);}
+});
 router.get('/requests/:id/technical-context',async(req,res,next)=>{
  try{
   const request=await repository.findRequest(req.params.id);

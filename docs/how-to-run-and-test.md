@@ -64,7 +64,10 @@ docker compose -f infra/docker-compose.yml ps
 ```
 
 You should see `postgres`, `pgadmin`, `rabbitmq`, `keycloak`, `kong`,
-`user-service`, `auth-service`, `venue-service` and `booking-service` running.
+`user-service`, `auth-service`, `event-service`, `venue-service`,
+`booking-service`, `equipment-service`, `attendance-service` and
+`notification-service` running. The one-off `seed` container loads the seed
+data and then exits.
 
 Keycloak takes about 30–60 seconds to be ready. Until then, logins return
 "temporarily unavailable".
@@ -138,9 +141,9 @@ Import the collection for the service you want to exercise:
 - `services/booking-service/postman/booking-service.postman_collection.json` — logs in through Kong, then covers booking creation, idempotent retry, retrieval, cancellation, history and availability.
 - `services/venue-service/postman/venue-service.postman_collection.json` — logs in through Kong as an Event Coordinator and Venue Staff, then covers venue options, listing, CRUD, operating-hours replacement, history and empty-hours validation.
 
-The booking collection defaults to the seeded coordinator and venue. The event
-collection defaults to the mock BFF credentials (`organiser@example.com` and
-`coordinator@example.com`).
+The booking collection defaults to the seeded coordinator and venue. Event
+requests have no Postman collection; use event-service's
+[OpenAPI file](../services/event-service/docs/openapi.yaml) or the website.
 
 ### B4. Useful addresses
 
@@ -167,11 +170,10 @@ copy .env.example .env      # macOS/Linux: cp .env.example .env
 
 Open `frontend/.env` and choose a mode:
 
-- `NUXT_AUTH_MODE=mock`. Mock users, no backend needed. Use this to see the
-  event pages with data: `organiser@example.com` or
-  `coordinator@example.com`, password `Password123!`.
-- `NUXT_AUTH_MODE=live`. Real login through the backend from Part B, with
+- `NUXT_AUTH_MODE=live` (the default). Real login through the backend from Part B, with
   the seed users (list below). Event requests, drafts and history use event-service and PostgreSQL. Role homes and grants are described in [the access matrix](access-matrix.md).
+- `NUXT_AUTH_MODE=mock` is a synthetic sign-in fixture for automated tests only.
+  It has no event data: every event page needs the real services from Part B.
 
 Leave `NUXT_API_BASE_URL=http://localhost:8000`. Leave the
 `NUXT_SESSION_PASSWORD` line commented out. Nuxt generates one on first
@@ -225,7 +227,7 @@ differs, note what you saw.
 | MT-02 | Log in as `sarah.tan@nexuslabs.sg` | Lands on **Your events** (empty list in live mode) |
 | MT-03 | Click the initials (top right), then **Sign out** | Shows Sarah Tan, `EVENT_ORGANISER`, her email. Sign out returns to /login. In pgAdmin, `auth_db.sessions`: her newest session now has `revokedAt` set |
 | MT-04 | Log in as `aisha.rahman@connectsphere.sg` | Lands on **Review queue** |
-| MT-05 | Log in as `hafiz.ismail@connectsphere.sg` (also try Venue Staff and Attendee) | Opens Technical Support `/support`, Venue Staff `/venue`, or Attendee `/attendee` |
+| MT-05 | Log in as `hafiz.ismail@connectsphere.sg` (also try Venue Staff and Attendee) | Opens Technical Support `/technical-requirements`, Venue Staff `/venue`, or Attendee `/attendances` |
 | MT-06 | Signed out, go to http://localhost:3000/ | Redirected to /login |
 | MT-07 | Log in as Aisha, then refresh the page | Still logged in |
 
@@ -240,7 +242,7 @@ differs, note what you saw.
 | MT-31 | Sign up again with the same email, then with `sarah.tan@nexuslabs.sg` | "A user with this email already exists" both times |
 | MT-32 | Log in as `test.attendee@example.com` / `Str0ng!Pass` | Opens Attendee home and its own profile |
 | MT-33 | In Swagger (3002), `POST /auth/register` with `"role": "TECHNICAL_SUPPORT_STAFF"` in the body | 400 with role guidance; no account created |
-| MT-34 | As Hafiz, `PUT /admin/settings` `{ "passwordMinLength": 12 }`, then reload /signup | The first rule now says "At least 12 characters", and an 8-character password is refused. Set it back to 8 |
+| MT-34 | Open http://localhost:8000/auth/password-policy, then /signup | The rules match the seeded `auth_db.auth_settings` row (minimum 8 characters, upper, lower, digit, special) |
 | MT-35 | `docker compose -f infra/docker-compose.yml restart keycloak`, wait a minute, log in as `test.attendee@example.com` | Still works: Keycloak kept the account in Postgres |
 
 ### Security rules (website)
@@ -250,46 +252,27 @@ differs, note what you saw.
 | MT-08 | Enter a wrong password for `kevin.ong@connectsphere.sg` **5 times**, then the right one | Still "Invalid credentials": the account is locked. After about 1 minute the right password works. (More than 10 attempts a minute from your machine gives a "too many requests" error from Kong. That's the separate rate limit.) |
 | MT-09 | In browser dev tools → Application → Cookies, look at the session cookie | Marked **HttpOnly**. Local/session storage contains no token |
 
-### Tech support admin (Swagger UI)
+### Controlled account setup (Swagger UI, internal key)
 
-Technical Support has a read-only user directory at `/support`; use Swagger at http://localhost:3002/docs for administrative mutations.
-Check that the server dropdown at the top shows `http://localhost:3002`.
+There is no in-app user, permission or settings administration (CS-10, CS-24 T02, CS-76). Technical Support's website home is the equipment review queue at `/technical-requirements`, with Manage equipment stock and Failed notifications tabs. Staff accounts and role permissions are seeded. Disabling or re-enabling an account is an operator command on auth-service, protected by the internal key.
 
-**Get a token (needed for MT-10 onwards):**
-
-1. Expand `POST /auth/login` → **Try it out**.
-2. Body: `{ "email": "hafiz.ismail@connectsphere.sg", "password": "Hafiz@CS11!" }` → **Execute**.
-3. Copy the `token` value from the response.
-4. Click **Authorize** (top right), paste the token, then Authorize → Close.
+Open http://localhost:3002/docs and check that the server dropdown shows `http://localhost:3002`. For the Internal routes, click **Authorize**, and under `internalApiKey` enter the `INTERNAL_API_KEY` value from compose (`change-me-dev-internal-key` locally).
 
 | # | Steps | Expected |
 |---|---|---|
-| MT-10 | `GET /admin/users`, search `tan` | Sarah Tan in the list. No `passwordHash` anywhere |
-| MT-11 | `GET /admin/settings` | `sessionTtlHours: 24`, `lockoutMaxFailures: 5`, … |
-| MT-12 | `PUT /admin/settings` with `{ "sessionTtlHours": 0 }` | 400 "Some settings are invalid", with details: "Session length (hours) must be a whole number from 1 to 720" |
-| MT-13 | `PUT /admin/settings` with `{ "lockoutMaxFailures": 3 }`. Then in Keycloak admin → realm **connectsphere** → Realm settings → Security defenses → Brute force detection | Keycloak shows max login failures **3**. (Set it back to 5 afterwards.) |
-| MT-14 | `POST /admin/users` with `{ "email": "test.user@connectsphere.sg", "firstName": "Test", "lastName": "User", "role": "ATTENDEE", "password": "Short1!" }` | 400 "Password does not meet the password rules" |
-| MT-15 | Same, with password `LongerPass1!` | 201 with the new user. Copy its `id` |
-| MT-16 | On the website, log in as `test.user@connectsphere.sg` / `LongerPass1!` | Logs in to Attendee home |
-| MT-17 | `PATCH /admin/users/{id}/role` with `{ "role": "EVENT_ORGANISER" }`, then in the browser where test.user is logged in, open http://localhost:3000/ | 400 if the Attendee has no organisation link. Seeded staff grants cannot be changed by this endpoint; use Organiser signup for a new organisation-backed account |
-| MT-18 | `PATCH /admin/users/{id}/status` with `{ "isActive": false }`, then refresh that browser tab | Logged out. Logging in again says "Invalid credentials". Re-enable with `true` |
-| MT-19 | `PATCH /admin/users/{Hafiz's own id}/role` (id `a1000000-0000-4000-8000-000000000011`) | 400 "You cannot change your own role" |
-| MT-20 | `GET /admin/audit-logs` | One entry per change you made above, newest first |
-
-### Permissions
-
-| # | Steps | Expected |
-|---|---|---|
-| MT-21 | Log in via Swagger as `aisha.rahman@connectsphere.sg` / `Aisha@CS05!`, Authorize with her token, `GET /admin/users` | **403** "You do not have permission to do this" |
-| MT-22 | As Hafiz again, `PUT /admin/roles/EVENT_COORDINATOR/permissions` with the current coordinator list **plus** `"users.view"` (see `GET /admin/permissions`) | 200. As Aisha, `GET /admin/users` remains403 because user administration is restricted to Technical Support. Put the list back afterwards |
-| MT-23 | As Hafiz, `PUT /admin/roles/TECHNICAL_SUPPORT_STAFF/permissions` with `{ "permissions": [] }` | 200, but `users.manage` and `permissions.manage` are still there (protected) |
+| MT-10 | Log in on the website as Hafiz (Technical Support) | Tabs: Review technical requests, Manage equipment stock, Failed notifications. No user, permission or settings screen |
+| MT-11 | Log in via Swagger `POST /auth/login` as Hafiz, then call `http://localhost:8000/admin/users` with his token (or open `/api/admin/users` in the logged-in browser) | **404**: the admin API no longer exists |
+| MT-12 | Sign up `test.attendee@example.com` (MT-30). In pgAdmin, copy its `user_db.users.id`. In Swagger, `PATCH /internal/users/{id}/status` with `{ "isActive": false }`, then refresh the browser where it is logged in | 200. Logged out; logging in again says "Invalid credentials". `auth_db.audit_logs` has `USER_DISABLED` by `controlled-setup` |
+| MT-13 | Same with `{ "isActive": true }`, then log in | 200. Login works again |
+| MT-14 | As Jordan (Lead), assign a submitted request to Aisha. Then `PATCH /internal/users/a1000000-0000-4000-8000-000000000005/status` (Aisha) with `{ "isActive": false }` | **409** `COORDINATOR_HAS_OPEN_EVENTS`, listing her open requests. Aisha can still log in |
+| MT-15 | Call the same route without the internal key | **403** |
 
 ### Database (pgAdmin4)
 
 | # | Steps | Expected |
 |---|---|---|
 | MT-24 | Open `auth_db` → `sessions` | `tokenHash` holds 64-character hashes, never the token itself |
-| MT-25 | Open `auth_db` → `auth_settings`, `role_permissions`, `audit_logs` | Rows match what you did in MT-10 to MT-23 |
+| MT-25 | Open `auth_db` → `role_permissions`, `audit_logs` | `role_permissions` holds the seeded grants only (Technical Support has `notifications.failures.view`, not `users.*`); `audit_logs` has the sign-up and status entries from MT-12 to MT-14 |
 
 ### Automated tests
 
@@ -307,7 +290,7 @@ docker compose -f infra/docker-compose.yml down -v     # stop and WIPE all data 
 ```
 
 After `down -v`, Keycloak also starts fresh from `infra/keycloak/connectsphere-realm.json`,
-and every signed-up or admin-created account is gone (redo B2 for the seed users).
+and every signed-up account is gone (redo B2 for the seed users).
 
 | Symptom | Fix |
 |---|---|
@@ -322,7 +305,6 @@ and every signed-up or admin-created account is gone (redo B2 for the seed users
 | `auth-service` exits with "Missing required environment variable" | Compose file edited? Compare with the repo version |
 | Postgres logs `$'\r': command not found` | `init-databases.sh` has Windows line endings. Run `git add --renormalize .` and re-clone, or convert the file to LF, then `down -v` and `up` |
 | Every login fails; browser dev tools show 500 "Empty password" | `frontend/.env` has `NUXT_SESSION_PASSWORD=` with nothing after it. Delete that line (or give it 32+ characters) and restart `npm run dev` |
-| Admin screens / `/api/admin/...` return 501 | Website is in mock mode. Set `NUXT_AUTH_MODE=live` |
 
 ## Persistent CS-11/29/27/44 branch
 

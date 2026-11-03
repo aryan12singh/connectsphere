@@ -62,7 +62,7 @@ describe('CS-26 — role and effective capability intersection', () => {
       EVENT_ORGANISER: ['event_requests.create', 'events.view', 'messages.send'],
       EVENT_COORDINATOR: ['event_requests.review', 'events.confirm', 'events.view', 'messages.send', 'venues.view', 'venue_bookings.create'],
       VENUE_STAFF: ['events.view', 'messages.send', 'venues.view', 'venues.manage', 'venue_bookings.decide'],
-      TECHNICAL_SUPPORT_STAFF: ['users.view', 'users.manage', 'permissions.manage', 'settings.manage', 'audit.view', 'events.view', 'messages.send', 'venues.view'],
+      TECHNICAL_SUPPORT_STAFF: ['notifications.failures.view', 'events.view', 'messages.send', 'venues.view'],
       ATTENDEE: ['events.view', 'messages.send', 'attendance.register'],
     }
     const actions = [...new Set(Object.values(allowed).flat())]

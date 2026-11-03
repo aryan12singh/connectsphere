@@ -56,3 +56,15 @@ TC05 additionally validates loss of all recognised roles on the internal session
 ## Safety Officer login regression — 17 October 2026, 04:11 UTC
 
 TC-CS10-18: a trusted recognized Safety Officer role with safety.view/safety.decide can obtain a sealed BFF session; no backend token appears in the response. Preserve denial of unknown/missing roles and the public signup restriction. The production browser found the omitted BFF role allowlist entry; this H3 regression reproduces the boundary independently.
+
+## Seven-role cases — Week 7 (CS-10)
+
+Recorded 3 November 2026 from the existing automated tests; dated results are in the Sprint 4 test sheet and CI artifacts.
+
+| Test Case ID | Scenario | Expected result | Automated test |
+|---|---|---|---|
+| TC-CS10-19 | Safety Officer opens a venue editing URL directly | Access denied; no venue powers | [CS-10.spec.ts](../../specs/CS-10.spec.ts) "TC-CS10-19 / 22 / 23 new roles are refused Coordinator, venue and each other's pages by typed URL" |
+| TC-CS10-20 | Every role × every action against the seven-role matrix; default seeded grants per new role (20b) | Each cell matches `services/utils/role-policy.js` and the [access matrix](../../../docs/access-matrix.md) | [CS-10.spec.ts](../../specs/CS-10.spec.ts) "TC-CS10-20 / TC-CS26-04 …" and "TC-CS10-20b …" |
+| TC-CS10-21 | Public sign-up or staff user creation tries to grant Safety Officer or Coordinator Lead | Refused (400 at auth-service; refused at the BFF) | [CS-10.spec.ts](../../specs/CS-10.spec.ts) "TC-CS10-21 …"; [identity.test.js](../../../services/auth-service/tests/identity.test.js) TC-CS26-06 loop |
+| TC-CS10-22 | Coordinator Lead tries to approve an assigned request, open Coordinator review, or read another user's request or private draft (22b) | Refused; nothing changes | [workflows.test.js](../../../services/event-service/tests/integration/workflows.test.js) "TC-CS10-22 …", "TC-CS10-22b …"; CS-10.spec.ts typed URL test |
+| TC-CS10-23 | Safety Officer tries to edit event request details | Refused; nothing changes | [workflows.test.js](../../../services/event-service/tests/integration/workflows.test.js) "TC-CS10-23 …"; CS-10.spec.ts typed URL test |

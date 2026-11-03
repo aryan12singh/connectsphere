@@ -6,14 +6,16 @@ Each story links its case specification and dated runs in `tests/records`, then 
 
 | Story | Title | Specified cases | Automated | Unit / BFF | Service | Browser | Records |
 |---|---|---:|---:|---:|---:|---:|---|
-| [CS-10](https://spmg8.atlassian.net/browse/CS-10) | Secure Login and Role-Based Navigation | 17 | 17 | 1 | 3 | 1 | [CS-10](../tests/records/CS-10) |
+| [CS-10](https://spmg8.atlassian.net/browse/CS-10) | Secure Login and Role-Based Navigation | 24 | 24 | 1 | 3 | 1 | [CS-10](../tests/records/CS-10) |
 | [CS-11](https://spmg8.atlassian.net/browse/CS-11) | Submit and View an Event Request | 25 | 24 | 1 | – | 1 | [CS-11](../tests/records/CS-11) |
-| [CS-12](https://spmg8.atlassian.net/browse/CS-12) | Review, Approve, Reject or Return an Assigned Event Request | – | – | 1 | – | – | Sprint sheet |
+| [CS-12](https://spmg8.atlassian.net/browse/CS-12) | Review, Approve, Reject or Return an Assigned Event Request | 7 | 7 | 1 | – | – | [CS-12](../tests/records/CS-12) |
 | [CS-15](https://spmg8.atlassian.net/browse/CS-15) | Configure Continuous Integration and Build Checks | 3 | CI runs | – | – | – | [CS-15](../tests/records/CS-15) |
 | [CS-26](https://spmg8.atlassian.net/browse/CS-26) | Register Accounts and Enforce Role-and-Event Permissions | 15 | 13 | 2 | 8 | 1 | [CS-26](../tests/records/CS-26) |
 | [CS-27](https://spmg8.atlassian.net/browse/CS-27) | Validate and Resubmit Returned Event Requests | 3 | 3 | 1 | – | 1 | [CS-27](../tests/records/CS-27) |
 | [CS-29](https://spmg8.atlassian.net/browse/CS-29) | Save and Resume a Draft Event Request | 4 | 3 | 1 | – | 1 | [CS-29](../tests/records/CS-29) |
-| [CS-30](https://spmg8.atlassian.net/browse/CS-30) | Lead Assignment and Reassignment of the Event Coordinator | 11 | 11 | 3 | – | – | [CS-30](../tests/records/CS-30) |
+| [CS-30](https://spmg8.atlassian.net/browse/CS-30) | Lead Assignment and Reassignment of the Event Coordinator | 13 | 11 | 3 | – | – | [CS-30](../tests/records/CS-30) |
+| [CS-31](https://spmg8.atlassian.net/browse/CS-31) | Confirm an Event When Essential Arrangements Are Ready | 13 | 8 | 1 | 2 | – | [CS-31](../tests/records/CS-31) |
+| [CS-32](https://spmg8.atlassian.net/browse/CS-32) | Maintain Event Status and Transition Rules | 12 | 10 | 1 | 1 | – | [CS-32](../tests/records/CS-32) |
 | [CS-33](https://spmg8.atlassian.net/browse/CS-33) | Maintain Venue Catalogue and Operating Information | 16 | 16 | 1 | 1 | 1 | [CS-33](../tests/records/CS-33) |
 | [CS-34](https://spmg8.atlassian.net/browse/CS-34) | View Venue Availability Calendar | 13 | 13 | 1 | 3 | 1 | [CS-34](../tests/records/CS-34) |
 | [CS-35](https://spmg8.atlassian.net/browse/CS-35) | Record Operational Venue Unavailability | 8 | 8 | 1 | 1 | – | [CS-35](../tests/records/CS-35) |
@@ -24,22 +26,22 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-40](https://spmg8.atlassian.net/browse/CS-40) | Record and Review Equipment and Technical Requirements | 18 | 17 | 2 | 4 | 1 | [CS-40](../tests/records/CS-40) |
 | [CS-41](https://spmg8.atlassian.net/browse/CS-41) | Check Equipment Availability and Operational Status | 14 | 11 | 2 | 6 | 1 | [CS-41](../tests/records/CS-41) |
 | [CS-42](https://spmg8.atlassian.net/browse/CS-42) | Reserve the Complete Equipment Request | 13 | 13 | 1 | 4 | 1 | [CS-42](../tests/records/CS-42) |
-| [CS-43](https://spmg8.atlassian.net/browse/CS-43) | View and Update Event Planning Information | – | – | 1 | – | – | Sprint sheet |
+| [CS-43](https://spmg8.atlassian.net/browse/CS-43) | View and Update Event Planning Information | 14 | 11 | 1 | – | – | [CS-43](../tests/records/CS-43) |
 | [CS-44](https://spmg8.atlassian.net/browse/CS-44) | View Event Activity and Change History | 3 | 2 | 1 | – | 1 | [CS-44](../tests/records/CS-44) |
-| [CS-45](https://spmg8.atlassian.net/browse/CS-45) | Review Event Changes and Reassess Affected Arrangements | – | – | 1 | – | – | Sprint sheet |
+| [CS-45](https://spmg8.atlassian.net/browse/CS-45) | Review Event Changes and Reassess Affected Arrangements | 14 | 10 | 1 | – | – | [CS-45](../tests/records/CS-45) |
 | [CS-46](https://spmg8.atlassian.net/browse/CS-46) | Release Equipment Reservations After Event Cancellation | 9 | 5 | – | 4 | 1 | [CS-46](../tests/records/CS-46) |
 | [CS-47](https://spmg8.atlassian.net/browse/CS-47) | View Confirmed Event Information | 9 | 9 | – | 1 | 2 | [CS-47](../tests/records/CS-47) |
 | [CS-48](https://spmg8.atlassian.net/browse/CS-48) | Configure Event Registration and Manage Registration Records | 12 | 10 | – | 7 | 1 | [CS-48](../tests/records/CS-48) |
 | [CS-49](https://spmg8.atlassian.net/browse/CS-49) | Configure Withdrawal Rules and Withdraw Registration | 13 | 8 | – | 5 | 1 | [CS-49](../tests/records/CS-49) |
-| [CS-50](https://spmg8.atlassian.net/browse/CS-50) | Deliver Event Lifecycle and Coordinator Assignment Notifications | 19 | 19 | 1 | 4 | – | [CS-50](../tests/records/CS-50) |
-| [CS-51](https://spmg8.atlassian.net/browse/CS-51) | Deliver Planning Decisions and Staff Action Notifications | 11 | 9 | – | 2 | – | [CS-51](../tests/records/CS-51) |
+| [CS-50](https://spmg8.atlassian.net/browse/CS-50) | Deliver Event Lifecycle and Coordinator Assignment Notifications | 19 | 19 | 2 | 4 | – | [CS-50](../tests/records/CS-50) |
+| [CS-51](https://spmg8.atlassian.net/browse/CS-51) | Deliver Planning Decisions and Staff Action Notifications | 12 | 9 | – | 2 | – | [CS-51](../tests/records/CS-51) |
 | [CS-52](https://spmg8.atlassian.net/browse/CS-52) | Notify Attendees of Registration Outcomes and Event Changes | 6 | 6 | – | 1 | 1 | [CS-52](../tests/records/CS-52) |
-| [CS-54](https://spmg8.atlassian.net/browse/CS-54) | Approve Event Cancellation and Release Related Commitments | – | – | 2 | – | – | Sprint sheet |
+| [CS-54](https://spmg8.atlassian.net/browse/CS-54) | Approve Event Cancellation and Release Related Commitments | 4 | 4 | 2 | – | – | [CS-54](../tests/records/CS-54) |
 | [CS-73](https://spmg8.atlassian.net/browse/CS-73) | Expand the CI pipeline | 3 | CI runs | – | – | – | [CS-73](../tests/records/CS-73) |
 | [CS-78](https://spmg8.atlassian.net/browse/CS-78) | Design and Verify Hold Expiry Scheduling and Clock Semantics | 15 | 15 | 1 | 1 | – | [CS-78](../tests/records/CS-78) |
 | [CS-79](https://spmg8.atlassian.net/browse/CS-79) | Finalize Release 1 CI, Coverage Gates and Integration Tests | 8 | CI runs | – | – | – | [CS-79](../tests/records/CS-79) |
-| [CS-81](https://spmg8.atlassian.net/browse/CS-81) | View the Unassigned Event Request Queue | – | – | 1 | 1 | – | Sprint sheet |
-| [CS-83](https://spmg8.atlassian.net/browse/CS-83) | Oversee Coordinator Assignments and Active Events | – | – | 1 | – | – | Sprint sheet |
+| [CS-81](https://spmg8.atlassian.net/browse/CS-81) | View the Unassigned Event Request Queue | 6 | 6 | 1 | 1 | – | [CS-81](../tests/records/CS-81) |
+| [CS-83](https://spmg8.atlassian.net/browse/CS-83) | Oversee Coordinator Assignments and Active Events | 11 | 7 | 1 | – | – | [CS-83](../tests/records/CS-83) |
 | [CS-84](https://spmg8.atlassian.net/browse/CS-84) | Configure Venue Setup and Turnaround Times | 33 | 27 | 1 | 1 | 2 | [CS-84](../tests/records/CS-84) |
 | [CS-85](https://spmg8.atlassian.net/browse/CS-85) | Apply Venue Buffers to Availability and Conflict Checks | 20 | 13 | 1 | 2 | 1 | [CS-85](../tests/records/CS-85) |
 | [CS-86](https://spmg8.atlassian.net/browse/CS-86) | Flag Existing Bookings That Conflict Under Buffer Rules | 27 | 23 | 1 | 2 | 1 | [CS-86](../tests/records/CS-86) |
@@ -52,7 +54,7 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-94](https://spmg8.atlassian.net/browse/CS-94) | Conduct the Operational Safety Check | 22 | 16 | 1 | – | 1 | [CS-94](../tests/records/CS-94) |
 | [CS-95](https://spmg8.atlassian.net/browse/CS-95) | Rework Arrangements After Safety Changes or Rejection | 22 | 17 | 1 | – | 1 | [CS-95](../tests/records/CS-95) |
 
-Totals: 629 specified cases in `tests/records`; 520 named by at least one automated test. CI tasks (CS-15, CS-73, CS-79) are proven by the [CI workflow](../.github/workflows/event-workflows.yml) runs.
+Totals: 720 specified cases in `tests/records`; 590 named by at least one automated test. CI tasks (CS-15, CS-73, CS-79) are proven by the [CI workflow](../.github/workflows/event-workflows.yml) runs.
 
 ## Files by story
 
@@ -70,7 +72,6 @@ Totals: 629 specified cases in `tests/records`; 520 named by at least one automa
 ### CS-12 — Review, Approve, Reject or Return an Assigned Event Request
 
 - Unit / component / BFF (Vitest): [CS-12.spec.ts](../tests/specs/CS-12.spec.ts)
-- Case IDs named in tests: TC-CS12-01, TC-CS12-02, TC-CS12-03, TC-CS12-04, TC-CS12-05, TC-CS12-06, TC-CS12-07
 
 ### CS-26 — Register Accounts and Enforce Role-and-Event Permissions
 
@@ -91,6 +92,16 @@ Totals: 629 specified cases in `tests/records`; 520 named by at least one automa
 ### CS-30 — Lead Assignment and Reassignment of the Event Coordinator
 
 - Unit / component / BFF (Vitest): [CS-30-assignment-rules.spec.ts](../tests/specs/CS-30-assignment-rules.spec.ts), [CS-30-transfer-request.spec.ts](../tests/specs/CS-30-transfer-request.spec.ts), [CS-30.spec.ts](../tests/specs/CS-30.spec.ts)
+
+### CS-31 — Confirm an Event When Essential Arrangements Are Ready
+
+- Unit / component / BFF (Vitest): [CS-32.spec.ts](../tests/specs/CS-32.spec.ts)
+- Service unit, contract and PostgreSQL (node --test, unittest): [completion.test.js](../services/event-service/tests/unit/completion.test.js), [transitions.test.js](../services/event-service/tests/unit/transitions.test.js)
+
+### CS-32 — Maintain Event Status and Transition Rules
+
+- Unit / component / BFF (Vitest): [CS-32.spec.ts](../tests/specs/CS-32.spec.ts)
+- Service unit, contract and PostgreSQL (node --test, unittest): [transitions.test.js](../services/event-service/tests/unit/transitions.test.js)
 
 ### CS-33 — Maintain Venue Catalogue and Operating Information
 
@@ -153,7 +164,6 @@ Totals: 629 specified cases in `tests/records`; 520 named by at least one automa
 ### CS-43 — View and Update Event Planning Information
 
 - Unit / component / BFF (Vitest): [CS-43.spec.ts](../tests/specs/CS-43.spec.ts)
-- Case IDs named in tests: TC-CS43-01, TC-CS43-02
 
 ### CS-44 — View Event Activity and Change History
 
@@ -163,7 +173,6 @@ Totals: 629 specified cases in `tests/records`; 520 named by at least one automa
 ### CS-45 — Review Event Changes and Reassess Affected Arrangements
 
 - Unit / component / BFF (Vitest): [CS-45.spec.ts](../tests/specs/CS-45.spec.ts)
-- Case IDs named in tests: TC-CS45-01, TC-CS45-02, TC-CS45-03, TC-CS45-04, TC-CS45-05, TC-CS45-06
 
 ### CS-46 — Release Equipment Reservations After Event Cancellation
 
@@ -187,7 +196,7 @@ Totals: 629 specified cases in `tests/records`; 520 named by at least one automa
 
 ### CS-50 — Deliver Event Lifecycle and Coordinator Assignment Notifications
 
-- Unit / component / BFF (Vitest): [CS-50.spec.ts](../tests/specs/CS-50.spec.ts)
+- Unit / component / BFF (Vitest): [CS-50-support-page.spec.ts](../tests/specs/CS-50-support-page.spec.ts), [CS-50.spec.ts](../tests/specs/CS-50.spec.ts)
 - Service unit, contract and PostgreSQL (node --test, unittest): [workflows.test.js](../services/event-service/tests/integration/workflows.test.js), [postgres.test.js](../services/notification-service/tests/integration/postgres.test.js), [test_notification_contract.py](../services/notification-service/tests/test_notification_contract.py), [notifications.test.js](../services/notification-service/tests/unit/notifications.test.js)
 
 ### CS-51 — Deliver Planning Decisions and Staff Action Notifications
@@ -202,7 +211,6 @@ Totals: 629 specified cases in `tests/records`; 520 named by at least one automa
 ### CS-54 — Approve Event Cancellation and Release Related Commitments
 
 - Unit / component / BFF (Vitest): [CS-54-cancellation-panel.spec.ts](../tests/specs/CS-54-cancellation-panel.spec.ts), [CS-54.spec.ts](../tests/specs/CS-54.spec.ts)
-- Case IDs named in tests: TC-CS54-01, TC-CS54-02, TC-CS54-03, TC-CS54-04
 
 ### CS-78 — Design and Verify Hold Expiry Scheduling and Clock Semantics
 
@@ -213,12 +221,10 @@ Totals: 629 specified cases in `tests/records`; 520 named by at least one automa
 
 - Unit / component / BFF (Vitest): [CS-81.spec.ts](../tests/specs/CS-81.spec.ts)
 - Service unit, contract and PostgreSQL (node --test, unittest): [notifications.test.js](../services/notification-service/tests/unit/notifications.test.js)
-- Case IDs named in tests: TC-CS81-01, TC-CS81-02, TC-CS81-03, TC-CS81-06, TC-CS81-06b, TC-CS81-06c
 
 ### CS-83 — Oversee Coordinator Assignments and Active Events
 
 - Unit / component / BFF (Vitest): [CS-83.spec.ts](../tests/specs/CS-83.spec.ts)
-- Case IDs named in tests: TC-CS83-01, TC-CS83-02
 
 ### CS-84 — Configure Venue Setup and Turnaround Times
 

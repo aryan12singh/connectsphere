@@ -17,7 +17,7 @@
     "test:hold-spike": "node tests/spikes/hold-expiry-proof.cjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^6.19.3",
