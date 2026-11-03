@@ -7,6 +7,7 @@ import { venuePayload, type VenueFormState } from '@/components/venue/venue-form
 import { venueSaveFailure } from '@/components/venue/venue-save-error'
 
 definePageMeta({ permission: 'venues.manage' })
+useHead({ title: 'New venue | ConnectSphere' })
 const { user } = useUserSession()
 const { data: optionData, error: optionsError } = await useFetch('/api/venues/options')
 const saving = ref(false)

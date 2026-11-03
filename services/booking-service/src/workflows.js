@@ -353,9 +353,17 @@ async function summary(req,eventId,{allowMissingEvent=false,transaction}={}) {
   return transaction!==undefined?project(transaction):store.withLocks([eventLock(eventId)],project);
 }
 
+// Equipment reads the venue window to check and reserve stock. The read is
+// valid for any live Event: after Planning the venue set is fixed, so a
+// Confirmed or Preparation Event still has a current window. Venue *changes*
+// keep the Planning-only guard above.
+const EQUIPMENT_READABLE=['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'];
+function equipmentReadable(context) {
+  if(!EQUIPMENT_READABLE.includes(context.status))fail(409,'EVENT_NOT_ACTIVE','Equipment can only be arranged for a Planning, Confirmed or Preparation Event');
+}
 async function equipmentAllocationContext(eventId) {
   const context=await planningContext(eventId);
-  planning(context);
+  equipmentReadable(context);
   const checkedAt=clock.now();
   const rows=await store.listBookings(undefined,{eventId});
   const current=rows.filter(row=>row.status==='CONFIRMED'
@@ -529,4 +537,4 @@ async function availability(req,query) {
   const checkedAt=clock.now();
   return {items:items.filter(row=>effective(row,checkedAt)),conflictDetection:'server',checkedAt:checkedAt.toISOString(),policy:{allowTouching:config.allowTouching}};
 }
-module.exports={currentUnavailability,createInTransaction,noticeContext,requestExtension,selectPrimaryVenue,create,decision,extend,replace,summary,equipmentAllocationContext,search,availability,recheck,staffRecheck,conflictReport,recheckInTransaction,version,activeHold,contextFor,planning,needs,gaps,checkedNeeds,conflicts,effective,windowFor,venueRequirements,venueLock,eventLock,fail};
+module.exports={equipmentReadable,currentUnavailability,createInTransaction,noticeContext,requestExtension,selectPrimaryVenue,create,decision,extend,replace,summary,equipmentAllocationContext,search,availability,recheck,staffRecheck,conflictReport,recheckInTransaction,version,activeHold,contextFor,planning,needs,gaps,checkedNeeds,conflicts,effective,windowFor,venueRequirements,venueLock,eventLock,fail};

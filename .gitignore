@@ -238,3 +238,6 @@ coverage/
 .fleet/
 .idea/
 .vscode/
+
+# Per-developer assistant tool settings. The shared .agents/ skills stay tracked.
+.opencode/

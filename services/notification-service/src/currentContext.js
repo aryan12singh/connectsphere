@@ -44,7 +44,10 @@ async function currentContext(message){
  if(message.type==='EventCancelled'){
   if(!p.eventId||!p.cancellationActionId||!Number.isInteger(p.eventVersion))return null;
   const proof=await read(config.eventServiceUrl,`/internal/events/${encodeURIComponent(p.eventId)}/cancellation-context?actionId=${encodeURIComponent(p.cancellationActionId)}`,true);
-  if(!proof||proof.eventId!==p.eventId||proof.eventVersion!==p.eventVersion||proof.cancellationActionId!==p.cancellationActionId||proof.status!=='CANCELLED')return null;
+  // A Coordinator cancellation proof reports its accepted version as eventVersion;
+  // the Cancelled Event version that EventCancelled carries is currentEventVersion.
+  const finalVersion=proof?.proofType==='ACCEPTED_INTENT'?proof.currentEventVersion:proof?.eventVersion;
+  if(!proof||proof.eventId!==p.eventId||finalVersion!==p.eventVersion||proof.cancellationActionId!==p.cancellationActionId||proof.status!=='CANCELLED')return null;
   if(p.eventRequestId&&proof.eventRequestId!==p.eventRequestId)return null;
  }
  if(message.type==='RequestReturned'&&(request?.status!=='RETURNED_FOR_AMENDMENT'||p.requestVersion&&request.requestVersion!==p.requestVersion))return null;

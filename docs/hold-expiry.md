@@ -132,7 +132,7 @@ node --experimental-strip-types tests/scripts/compile-test-run.ts \
 The report keeps missing cases Not Executed and records its layer. Raw JSON,
 coverage and logs remain outside Git or in CI artifacts. The existing Booking
 CI job runs the spike on every supported branch push/PR and archives both logs
-and JSON. It remains part of the existing required `Sprint 2 checks` aggregate.
+and JSON. It is a prerequisite of the `Required checks` job that branch protection requires.
 
 [CS-78 cases and dated runs](../tests/records/CS-78/test-cases.md) contain 17 domain
 checks (cases 01–05) and ten PostgreSQL scenarios (06–15). Case 07 exercises 12
@@ -154,6 +154,6 @@ The warning threshold is 24 hours. Creation inside that threshold queues VenueHo
 
 ## Production completion — 23 October 2026
 
-`holdNotifications.processDue` remains the sole production scanner. Its bounded `FOR UPDATE SKIP LOCKED` batch writes one `HOLD_WARNING` or `HOLD_EXPIRED` activity and deadline-specific outbox intent in one transaction. The scanner uses `clock_timestamp()` after obtaining rows. Creation records an immediately due short-hold warning as well. Approval, extension and edits acquire the same booking row lock, then recheck time after upstream work. A delayed scanner never extends effective occupancy.
+`holdNotifications.processDue` remains the sole production scanner. Its bounded `FOR UPDATE SKIP LOCKED` batch writes one `HOLD_WARNING` or `HOLD_EXPIRED` activity and deadline-specific outbox intent in one transaction. The scanner uses `clock_timestamp()` after obtaining rows. Overlapping scans can reach the same unchanged hold from a snapshot taken before another scan committed, so the deadline outbox insert (unique `actionKey`, duplicates skipped) is the claim: only the scan whose insert lands writes the activity row (TC-CS90-17, 2 November). Creation records an immediately due short-hold warning as well. Approval, extension and edits acquire the same booking row lock, then recheck time after upstream work. A delayed scanner never extends effective occupancy.
 
 The browser exposes Expired and submits a distinct fresh request after a new availability check. Old deadlines are suppressed at notification consumption after approval, extension, cancellation or resubmission. Restart/replay uses the same stored outbox ID and inbox deduplication. Tests label direct persisted-deadline fixtures separately from real elapsed-deadline checks; neither changes the production clock or starts another scheduler. Individual expiry never releases equipment or cancels the Event.

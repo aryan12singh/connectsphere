@@ -20,3 +20,4 @@ Stable case inventory. Current preconditions, steps, data and assertions remain 
 | TC-CS90-14 | AC1 | Warning goes to the current Coordinator after reassignment |
 | TC-CS90-15 | AC7 | Expiry doesn't cancel the event or release equipment |
 | TC-CS90-16 | AC3,AC4,AC7 | an expired hold resubmits to a distinct freshly checked request and no longer blocks readiness as an unresolved old request |
+| TC-CS90-17 | AC6,AC7 | overlapping deadline scans record exactly one expiry history row and one intent |

@@ -74,7 +74,7 @@ useHead({title:'Event request | ConnectSphere'})
 
    <ChangeProposalPanel v-if="canProposeChange" class="mt-6" :request-id="id" :version="loaded.version" :is-coordinator="canManageTechnicalRequirements" :is-organiser="loaded.organiserId===user?.id" @decided="afterChangeDecided" />
 
-   <CancellationPanel v-if="canCancel" class="mt-6" :request-id="id" :event-status="loaded.eventStatus" :is-coordinator="canManageTechnicalRequirements" :is-organiser="loaded.organiserId===user?.id" :pending-request="false" @done="afterChangeDecided" />
+   <CancellationPanel v-if="canCancel" class="mt-6" :request-id="id" :event-status="loaded.eventStatus" :is-coordinator="canManageTechnicalRequirements" :is-organiser="loaded.organiserId===user?.id" @done="afterChangeDecided" />
 
    <TransferRequestPanel v-if="canRequestTransfer" class="mt-6" :request-id="id" :version="loaded.version" @changed="afterChangeDecided" />
 

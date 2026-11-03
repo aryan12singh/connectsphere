@@ -3,6 +3,7 @@ import { watch } from 'vue'
 import VenueWorkspace from '@/components/venue/VenueWorkspace.vue'
 
 definePageMeta({ permission: 'venues.view' })
+useHead({ title: 'Venues | ConnectSphere' })
 const { data, error, refresh } = await useFetch('/api/venues', { key: 'venues' })
 const { showError } = useErrorAlert()
 watch(error, value => { if (value) showError(value, 'Unable to load venues') }, { immediate: true })

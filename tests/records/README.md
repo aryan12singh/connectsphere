@@ -1,5 +1,11 @@
 # Test records
 
+Each story folder holds its case specification (`test-cases.md`) and dated execution reports (`test-runs/`). The current outcome of every Sprint 4 case, with its evidence, is in the [Sprint 4 test sheet](https://docs.google.com/spreadsheets/d/1n7kRH5iPyHaxj5Rs41f53Shbn6TX-KXCdE7JcP9gQB8/edit#gid=1680394087). The [traceability index](../../docs/test-traceability.md) maps every story, including those without a folder here, to the automated tests that cover it. [The tests README](../README.md) explains the test layers.
+
+Read each report's source revision, actual result and test layer; a filename alone does not establish a pass. The sections below are the Sprint 3 checkpoint and are kept as recorded.
+
+## Sprint 3 checkpoint
+
 Start with [PR #13](https://github.com/aryan12singh/connectsphere/pull/13) for
 the current review and checks. Each story folder contains its case specification
 and selected dated executions. Read each report's source revision, actual result

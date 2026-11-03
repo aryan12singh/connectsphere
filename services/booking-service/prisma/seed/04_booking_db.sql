@@ -36,7 +36,7 @@ INSERT INTO "venue_booking_requests" (
     'b3000000-0000-4000-8000-000000000002',
     'a1000000-0000-4000-8000-000000000009',
     'Leadership Workshop', 'Venue staff confirmed the requested room',
-    '2026-10-21 02:00:00+00', '2026-10-21 06:00:00+00', 'Asia/Singapore',
+    '2027-01-20 02:00:00+00', '2027-01-20 06:00:00+00', 'Asia/Singapore',
     'CONFIRMED', 'seed-booking-003',
     'a1000000-0000-4000-8000-000000000009', 'VENUE_STAFF', '2026-09-25 04:10:00+00', 'Venue staff confirmed the requested room',
     '2026-09-25 04:07:00+00', '2026-09-25 04:10:00+00'
@@ -56,7 +56,7 @@ INSERT INTO "venue_booking_requests" (
     'b3000000-0000-4000-8000-000000000001',
     'a1000000-0000-4000-8000-000000000005',
     'Partner Briefing', 'Venue capacity is unavailable for this request',
-    '2026-10-28 01:00:00+00', '2026-10-28 05:00:00+00', 'Asia/Singapore',
+    '2027-01-27 01:00:00+00', '2027-01-27 05:00:00+00', 'Asia/Singapore',
     'UNAVAILABLE', 'seed-booking-005',
     'a1000000-0000-4000-8000-000000000008', 'VENUE_STAFF', '2026-09-25 04:20:00+00', 'Venue capacity is unavailable for this request',
     '2026-09-25 04:20:00+00', '2026-09-25 04:20:00+00'

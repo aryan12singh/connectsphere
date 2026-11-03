@@ -8,7 +8,7 @@ Commands work in **PowerShell** (Windows) and in bash/zsh (macOS/Linux)
 unless a step says otherwise. Run them from the repo root (the folder with
 `README.md`) unless the step says `cd` somewhere.
 
-For the current Sprint 2 CS-11/29/27/44 request workflow, use the
+For the event request workflow (CS-11/29/27/44 onwards), use the
 [isolated review recipe](event-review-run.md) first. It supplies a fresh
 PostgreSQL 16 project, Node 22 locked installs, parameterised ports, actual
 live-auth smoke and a restart check. The general development instructions and
@@ -196,7 +196,9 @@ Each seed user has their own password. The full list is in the row comments of
 | Event Organiser | daniel.lim@brightpath.edu.sg | `Daniel@CS02!` |
 | Event Coordinator | aisha.rahman@connectsphere.sg | `Aisha@CS05!` |
 | Event Coordinator | kevin.ong@connectsphere.sg | `Kevin@CS06!` |
+| Event Coordinator Lead | jordan.lim@connectsphere.sg | `Jordan@CS32!` |
 | Venue Staff | ravi.kumar@marinaconvention.sg | `Ravi@CS08!` |
+| Safety Officer | alex.chen@connectsphere.sg | `Alex@CS31!` |
 | Technical Support | hafiz.ismail@connectsphere.sg | `Hafiz@CS11!` |
 | Technical Support | chloe.ng@connectsphere.sg | `Chloe@CS12!` |
 | Attendee | ethan.goh@gmail.com | `Ethan@CS13!` |

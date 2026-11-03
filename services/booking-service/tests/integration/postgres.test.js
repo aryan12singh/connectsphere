@@ -449,3 +449,24 @@ test('TC-CS92-17 completed replacement proof binds both the exact approved booki
  assert.equal(await store.replacementCompleted(bookingId,originalBookingId),true);assert.equal(await store.replacementCompleted('other-booking',originalBookingId),false);assert.equal(await store.replacementCompleted(bookingId,'other-original'),false);
  t.diagnostic(JSON.stringify({caseId:'TC-CS92-17',layer:'PostgreSQL durable replacement proof',bookingId,originalBookingId,exact:true,otherBooking:false,otherOriginal:false}));
 });
+
+test('TC-CS90-17 PostgreSQL a deadline claimed after a scan snapshot records one expiry history and intent',async(t)=>{
+ const {processDue}=require('../../src/holdNotifications');
+ const hold=async()=>prisma.venueBookingRequest.create({data:{eventId:'race-event-'+randomUUID(),venueId:'race-venue-'+randomUUID(),requestedById:'coordinator',title:'Deadline race',reason:'Concurrent expiry scans',requestedStart:new Date('2028-12-01T02:00:00Z'),requestedEnd:new Date('2028-12-01T04:00:00Z'),idempotencyKey:randomUUID(),expiresAt:new Date(Date.now()-1000)}});
+ const counts=async id=>({history:await prisma.venueBookingActivity.count({where:{bookingId:id,action:'HOLD_EXPIRED'}}),intents:await prisma.bookingOutbox.count({where:{aggregateId:id,kind:'VenueHoldExpired'}})});
+ // Stale snapshot: another scan already wrote its history, and its outbox claim commits on a separate connection
+ // after this scan has selected and locked the unchanged hold.
+ const stale=await hold();let claimed=false;
+ await prisma.venueBookingActivity.create({data:{bookingId:stale.id,actorId:'hold-deadline-worker',actorRole:'SYSTEM',action:'HOLD_EXPIRED',reason:'Competing scan',fromStatus:'TENTATIVELY_HELD',toStatus:'TENTATIVELY_HELD',changes:{}}});
+ const interleaved={$transaction:fn=>prisma.$transaction(tx=>fn(new Proxy(tx,{get(target,key){if(key!=='$queryRaw')return target[key];return async(...args)=>{const rows=await target.$queryRaw(...args);if(!claimed&&rows.some(row=>row.id===stale.id)){claimed=true;await prisma.bookingOutbox.create({data:{actionKey:`deadline:${stale.id}:${stale.expiresAt.toISOString()}:VenueHoldExpired`,aggregateId:stale.id,kind:'VenueHoldExpired',payload:{bookingId:stale.id,expiresAt:stale.expiresAt.toISOString()}}});}return rows;};}})))};
+ await processDue(interleaved);assert.equal(claimed,true);assert.deepEqual(await counts(stale.id),{history:1,intents:1});
+ // Live contention: repeated parallel scans over fresh holds keep exactly one history row and one intent each.
+ const holds=await Promise.all(Array.from({length:6},hold));
+ // Scans take 20 rows by deadline, so older due holds from earlier cases are reached first; keep
+ // scanning in parallel until every fresh hold is handled, then require exactly one of each.
+ let rounds=0;
+ do{await Promise.all(Array.from({length:6},()=>processDue(prisma)));rounds++;}
+ while(rounds<3||rounds<20&&(await Promise.all(holds.map(row=>counts(row.id)))).some(c=>c.intents===0));
+ for(const row of holds)assert.deepEqual(await counts(row.id),{history:1,intents:1});
+ t.diagnostic(JSON.stringify({caseId:'TC-CS90-17',layer:'PostgreSQL concurrent deadline scans',staleSnapshot:await counts(stale.id),parallelHolds:holds.length,parallelScans:rounds*6}));
+});

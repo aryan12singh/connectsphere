@@ -10,12 +10,18 @@ async function processDue(prisma){
         AND (o.payload->>'expiresAt')::timestamptz=b."expiresAt")
     ORDER BY b."expiresAt",b.id LIMIT 20 FOR UPDATE OF b SKIP LOCKED`;
   const [{at}]=await tx.$queryRaw`SELECT clock_timestamp() AS at`;
+  let written=0;
   for(const row of rows){
    const kind=row.expiresAt<=at?'VenueHoldExpired':'VenueHoldExpiring',expiresAt=row.expiresAt.toISOString();
+   // The unique actionKey is the claim. A scan whose snapshot predates another
+   // scan's commit still locks this unchanged booking, so only the scan whose
+   // outbox insert lands records the history entry.
+   const {count}=await tx.bookingOutbox.createMany({data:[{id:randomUUID(),actionKey:`deadline:${row.id}:${expiresAt}:${kind}`,aggregateId:row.id,kind,payload:{bookingId:row.id,eventId:row.eventId,venueId:row.venueId,version:row.version,expiresAt,occurredAt:at.toISOString()}}],skipDuplicates:true});
+   if(!count)continue;
    await tx.venueBookingActivity.create({data:{id:randomUUID(),bookingId:row.id,actorId:'hold-deadline-worker',actorRole:'SYSTEM',action:kind==='VenueHoldExpired'?'HOLD_EXPIRED':'HOLD_WARNING',reason:kind==='VenueHoldExpired'?'Tentative hold deadline reached':'Tentative hold warning due',fromStatus:row.status,toStatus:row.status,changes:{expiresAt,after:{venueId:row.venueId,version:row.version}},occurredAt:at}});
-   await tx.bookingOutbox.upsert({where:{actionKey:`deadline:${row.id}:${expiresAt}:${kind}`},create:{id:randomUUID(),actionKey:`deadline:${row.id}:${expiresAt}:${kind}`,aggregateId:row.id,kind,payload:{bookingId:row.id,eventId:row.eventId,venueId:row.venueId,version:row.version,expiresAt,occurredAt:at.toISOString()}},update:{}});
+   written++;
   }
-  return rows.length;
+  return written;
  });
 }
 function start(){

@@ -1,32 +1,55 @@
 # connectsphere
 Event Planning and Venue Booking System for ConnectSphere Event Services. IS212 Software Project Management, AY2026/27 T1, Section G8.
 
+**Repository:** https://github.com/aryan12singh/connectsphere
+
+Release 1 covers the 20 core features from the Week 4 project instructions and the six Week 7 customer changes: event requests from draft to completion, Lead-controlled Coordinator assignment, venue search and booking with setup/turnaround buffers, multiple venues per Event, expiring holds, venue unavailability and replacement, equipment, the Safety Officer check, attendee registration and withdrawal, changes and cancellation, and notifications.
+
+## Architecture
+
+- **Frontend:** Nuxt 4 / Vue 3 / TypeScript with a server-side BFF (sealed-cookie session).
+- **Gateway and identity:** Kong 3.6 routes the public APIs; Keycloak 26 is the password authority.
+- **Services:** auth, user, event, venue, booking, equipment, attendance and notification. Each is Express 5 + Prisma 6 with its own PostgreSQL 16 database; services call each other only through private `/internal` APIs.
+- **Messaging:** RabbitMQ with a transactional outbox in each producer and a deduplicating inbox in notification-service.
+- **Roles:** Event Organiser, Event Coordinator, Event Coordinator Lead, Venue Staff, Technical Support Staff, Safety Officer and Attendee.
+
+See the [architecture overview](docs/connectsphere-architecture.md).
+
+## Repository layout
+
+```text
+frontend/            Nuxt app and its BFF (frontend/server), Playwright journeys (frontend/e2e)
+services/<name>/     one Express + Prisma service per bounded context, with its unit, contract and PostgreSQL tests
+gateway/             Kong declarative configuration
+infra/               Docker Compose stack, Keycloak realm and seed runner
+scripts/             live review and CI runners
+tests/               frontend specs, shared test helpers and scripts, and per-story test records
+docs/                design, decisions, API contract, test traceability and development log
+.github/workflows/   the CI pipeline
+.agents/skills/      shared guidance the team gives coding assistants (frontend conventions, test-driven development, test alignment)
+```
+
 ## Documentation
 
-- [Role and Event Access Matrix](docs/access-matrix.md) — which roles may view or change each protected resource, and known authorisation findings.
-- [Definition of Done](docs/DEFINITION_OF_DONE.md) — criteria every user story must satisfy before it is accepted.
-- [How to run and test](docs/how-to-run-and-test.md) — start the system from a clean clone and the manual test cases.
-- [Sprint 2 event workflow delivery](docs/sprint2/event-request-delivery.md) — implemented stories, verification, CI and remaining review gates.
-- [Isolated Sprint 2 review](docs/event-review-run.md) — Node 22, a fresh PostgreSQL 16 project, configurable ports and real live-auth/restart checks.
-- [Auth setup](docs/auth-setup.md) — how login, roles/permissions and the tech support admin API work.
-- [Event workflows and API mapping](docs/event-workflows.md) — persistence, transactions and request/Event history.
-- [Event workflow decisions](docs/event-workflow-decisions.md) — contract choices requiring team/customer review.
-- [Venue data model](docs/venue-data-model.md) — authoritative running tables, consultation review and remaining schema gaps.
-- [Venue policy decisions](docs/venue-policy-decisions.md) — pending Week 7 choices and affected stories.
-- [Sprint 3 integration and RabbitMQ handoff](docs/sprint3-integration-handoff.md) — current Venue/Safety/Equipment boundaries, Marcus's queue contract, existing-volume upgrades and the resolved venue-confirmation policy.
-- [Operational Safety UI](docs/safety-ui.md) — current Coordinator preparation, independent review/rework validation and the exact remaining integration handoff.
-- [Hold expiry and occupied windows](docs/hold-expiry.md) — reusable timing code, isolated PostgreSQL spike and its integration limits.
-- [Development log](docs/devlogs/DEVLOG.md) — decisions, verified progress and next dependencies, newest first.
+- [Definition of Done](docs/DEFINITION_OF_DONE.md) and [role and event access matrix](docs/access-matrix.md).
+- [How to run and test](docs/how-to-run-and-test.md): start from a clean clone, seed users and the manual test cases.
+- [Customer and PO decisions](docs/session3-decisions.md) and [venue policy decisions](docs/venue-policy-decisions.md).
+- [API contract](docs/api-contract.md), [event workflows](docs/event-workflows.md) and [event workflow decisions](docs/event-workflow-decisions.md).
+- [Venue data model](docs/venue-data-model.md), [hold expiry](docs/hold-expiry.md) and [Safety UI](docs/safety-ui.md).
+- [Service integration and RabbitMQ contract](docs/sprint3-integration-handoff.md).
+- [Test traceability](docs/test-traceability.md), [test layers](tests/README.md), [coverage policy](docs/coverage-policy.md), [Sprint 4 venue test map](docs/sprint4-venue-test-map.md) and [story test records](tests/records/README.md).
+- [Isolated live review](docs/event-review-run.md) and the [development log](docs/devlogs/DEVLOG.md).
 
 ## Run it locally
 
-Needs Docker Desktop and Node.js 22 for the verified locked workflow.
+Needs Docker Desktop and Node.js 22.
 
 ```bash
-# 1. Backend: Postgres, Keycloak, Kong, user-service, auth-service
+# 1. Backend: PostgreSQL, Keycloak, Kong, RabbitMQ and every service
 docker compose -f infra/docker-compose.yml up --build -d
 
-# 2. Seed data (once) — see docs/how-to-run-and-test.md, step B2
+# 2. Seed data (once)
+docker compose -f infra/docker-compose.yml run --rm seed
 
 # 3. Website
 cd frontend
@@ -35,38 +58,57 @@ cp .env.example .env        # Windows: copy .env.example .env
 npm run dev                 # http://localhost:3000
 ```
 
-Full steps, seed users and test cases: [docs/how-to-run-and-test.md](docs/how-to-run-and-test.md). Use the [isolated review recipe](docs/event-review-run.md) when testing migrations, synthetic fixtures or failure triggers.
+Seed users, useful addresses and troubleshooting are in [docs/how-to-run-and-test.md](docs/how-to-run-and-test.md).
 
-## Sprint 2 identity, venue and CI verification
+## Tests
 
-The existing event-workflow delivery now includes CS-10/CS-26 identity completion and CS-33/CS-34 venue repairs. [Delivery evidence](docs/sprint2/event-request-delivery.md), [access matrix](docs/access-matrix.md) and [auth setup](docs/auth-setup.md) describe the current behavior. Public signup supports Organiser (organisation required) and Attendee; internal roles remain seed-only. The original five role homes work; Sprint 3 adds the protected Safety Officer queue and decision workflow. and multi-role accounts switch in the account menu without a second login.
+Tests run at four layers: service unit and contract, service PostgreSQL integration, frontend unit/component/BFF (`tests/specs`) and live browser journeys (`frontend/e2e`). [tests/README.md](tests/README.md) explains what each layer proves. The [test traceability index](docs/test-traceability.md) maps every story to its specified cases and to the tests that cover them; per-story case specifications and dated runs are in [tests/records](tests/records/README.md).
 
-Use Node 22 and locked `npm ci` installs. Each service owns its PostgreSQL database; create disposable test databases only and apply migrations before integration checks. Auth/User/Venue/Booking tests refuse a database other than their matching `<service>_test` name. From each service folder:
+Use Node 22 and locked `npm ci` installs. Integration suites refuse any database other than their own `<service>_test`. From each service folder:
 
 ```bash
 npm ci
 npx prisma generate
-# Set DATABASE_URL to the isolated service's *_test database first.
+# Point DATABASE_URL at the service's *_test database first.
 npx prisma migrate deploy
 npm run test:coverage
 npm run test:integration
-# Venue/Booking also have HTTP contract checks:
-npm run test:contract
+npm run test:contract       # Venue, Booking, Event and Notification
 ```
 
-Auth requires the same Keycloak/User/internal-key environment names as `.env.example`; its isolated API suite fixtures the external identity services while testing real PostgreSQL sessions/grants. User integration needs `INTERNAL_API_KEY`. Event unit/source coverage and its PostgreSQL API suite run separately and both enforce thresholds. For Venue/Booking unit and Python contract fixtures use their checked-in default private test key; hosted credentials must not be used.
-
-Frontend checks use an isolated migrated event database plus explicit fixture authentication. From `frontend/`:
+From `frontend/`:
 
 ```bash
 npm ci
 npm run typecheck
 npm run typecheck:e2e
-# DATABASE_URL points only at the isolated event test database.
 NUXT_AUTH_MODE=mock npm run test:coverage
 NUXT_AUTH_MODE=live npm run build
 ```
 
-The [full browser runner](docs/event-review-run.md) builds a fresh Keycloak/User/Auth/Kong/PostgreSQL stack, exercises desktop/mobile and restarts without reseeding. JSON/HTML/coverage output belongs in CI artifacts or outside the checkout; [selected dated Markdown records](tests/records/README.md) remain in `tests/records`. The [Sprint 3 coverage policy](docs/coverage-policy.md) records the measured baseline, per-app/service floors and source scopes. Frontend floors are 65% statements/lines/functions and 60% branches; service unit and PostgreSQL floors are enforced independently. A below-threshold command fails locally and in CI.
+The [live review runner](docs/event-review-run.md) builds a fresh stack, runs the desktop and mobile browser journeys and restarts without reseeding. Coverage floors are 65% statements/lines/functions and 60% branches for the frontend, plus per-service unit and PostgreSQL floors; a command below its floor fails.
 
-[The workflow](.github/workflows/event-workflows.yml) has separate frontend and seven service checks, real PostgreSQL migrations/API tests, per-app source coverage artifacts and a live E2E job. Booking also runs the isolated CS-78 expiry/concurrency spike. Its required aggregate `Sprint 2 checks` rejects failed or skipped prerequisites. Explicit Bash/pipefail preserves test exit statuses through `tee`. It runs for PRs and pushes to `feat/aryan-sprint2-event-workflows`, `feat/aryan-sprint3-venue-safety` and `main`; a main run requires the reviewed PR to be merged. Independent approval, squash merge and green CI on that merge remain delivery gates.
+## Continuous integration
+
+The [CI workflow](.github/workflows/event-workflows.yml) runs on every pull request and on pushes to `main`:
+
+- **Frontend** and one job per service (**event-service**, **venue-service**, **booking-service** and so on), each with real PostgreSQL migrations and coverage;
+- **Live stack integration and restart:** host PostgreSQL suites, bus, Safety and maintenance acceptance, and a restart without reseeding;
+- **Live browser journeys (shard 1/4–4/4):** the Playwright desktop and mobile suite in four shards, each on its own fresh stack;
+- **Required checks:** the single check branch protection requires; it fails if any job failed, was skipped or was cancelled.
+
+Changes reach `main` through a reviewed, squash-merged pull request with green checks.
+
+## Course deliverables
+
+The Week 12 submission is a zip with numbered folders. This repository supplies folders 6 and 7 and the in-repo evidence for 2 and 3:
+
+| Folder | Deliverable | Where |
+|---|---|---|
+| 1 | Final product backlog | Jira export (submitted in the zip) |
+| 2 | System design (C4) | C4 diagrams in the zip; supporting design in [architecture](docs/connectsphere-architecture.md), [ERDs](docs/erd), [API contract](docs/api-contract.md) and the decision records |
+| 3 | Test cases and traceability | [Test traceability](docs/test-traceability.md), [tests/records](tests/records/README.md) and the Sprint test sheets |
+| 4 | Sprint meeting evidence | In the zip (boards, burndowns, retros, final-sprint recordings) |
+| 5 | Slide deck | In the zip (course template) |
+| 6 | Code, README, tests and CI | This repository |
+| 7 | README with repository link | This file |

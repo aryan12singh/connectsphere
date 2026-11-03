@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { apiErrorMessage } from '@/components/shared/api-error'
 
 // CS-54: the assigned Coordinator cancels an Event with a reason; the owning
 // Organiser can ask for cancellation. Releases happen afterwards and the Event
 // shows Cancelling until every release succeeds.
-const props = defineProps<{ requestId: string, eventStatus: string | null, isCoordinator: boolean, isOrganiser: boolean, pendingRequest: boolean }>()
+const props = defineProps<{ requestId: string, eventStatus: string | null, isCoordinator: boolean, isOrganiser: boolean }>()
 const emit = defineEmits<{ done: [] }>()
 const requestFetch = useRequestFetch()
 const reason = ref(''), confirmed = ref(false), pending = ref(false), error = ref(''), notice = ref('')
@@ -14,6 +14,17 @@ const actionId = ref(crypto.randomUUID())
 const cancelling = computed(() => props.eventStatus === 'CANCELLING')
 const cancelled = computed(() => props.eventStatus === 'CANCELLED')
 const open = computed(() => ['ARRANGEMENT_PENDING', 'CONFIRMED', 'PREPARATION'].includes(props.eventStatus ?? ''))
+const heading = computed(() => cancelled.value || cancelling.value ? 'Cancellation' : props.isCoordinator ? 'Cancel this Event' : 'Request cancellation')
+// The Organiser sees a waiting cancellation request instead of a second form.
+const pendingRequest = ref(false)
+async function loadPendingRequest() {
+  if (props.isCoordinator || !open.value) return
+  try {
+    const result = await requestFetch(`/api/events/${props.requestId}/change-requests`) as { items?: { scope?: string, status?: string }[] }
+    pendingRequest.value = (result?.items ?? []).some(item => item.scope === 'CANCELLATION' && item.status === 'PENDING')
+  } catch { pendingRequest.value = false }
+}
+onMounted(loadPendingRequest)
 async function submit() {
   if (pending.value || !reason.value.trim()) return
   pending.value = true; error.value = ''; notice.value = ''
@@ -24,6 +35,7 @@ async function submit() {
     } else {
       await requestFetch(`/api/events/${props.requestId}/change-requests`, { method: 'POST', body: { changeActionId: actionId.value, scope: 'CANCELLATION', reason: reason.value } })
       notice.value = 'Cancellation requested. The Coordinator will decide.'
+      pendingRequest.value = true
     }
     reason.value = ''; confirmed.value = false; actionId.value = crypto.randomUUID()
     emit('done')
@@ -33,7 +45,7 @@ async function submit() {
 </script>
 <template>
   <section aria-label="Cancel Event" class="grid gap-3 rounded-xl border p-4">
-    <h2 class="text-base font-semibold">{{ isCoordinator ? 'Cancel this Event' : 'Request cancellation' }}</h2>
+    <h2 class="text-base font-semibold">{{ heading }}</h2>
     <p v-if="cancelled" role="status" class="text-sm">This Event is cancelled. Its records are kept.</p>
     <p v-else-if="cancelling" role="status" class="text-sm">Cancelling: venue, equipment and registration releases are in progress. The Event becomes Cancelled when every release has succeeded.</p>
     <template v-else-if="open">

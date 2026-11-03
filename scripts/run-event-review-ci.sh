@@ -10,6 +10,18 @@ fi
 if [[ "$CSE2E_WORK_DIR" != /* || -e "$CSE2E_WORK_DIR" ]]; then
   echo 'Use a new absolute work directory; existing evidence is retained' >&2; exit 2
 fi
+# CSE2E_STAGE splits one review into parallel CI jobs, each on its own fresh stack:
+#   all (default)  every check below, in order
+#   integration    host PostgreSQL suites, bus/Safety/maintenance acceptance and restart smoke
+#   browser        Playwright journeys only; CSE2E_BROWSER_ARGS may add e.g. --shard=1/4
+STAGE="${CSE2E_STAGE:-all}"
+if [[ ! "$STAGE" =~ ^(all|integration|browser)$ ]]; then
+  echo 'CSE2E_STAGE must be all, integration or browser' >&2; exit 2
+fi
+BROWSER_ARGS="${CSE2E_BROWSER_ARGS:-}"
+if [[ "$STAGE" != browser && -n "$BROWSER_ARGS" ]]; then
+  echo 'CSE2E_BROWSER_ARGS applies only to the browser stage' >&2; exit 2
+fi
 if [[ "$(node -p 'process.versions.node.split(".")[0]')" != 22 ]]; then
   echo 'Use Node.js 22 for this reproducible runner' >&2; exit 2
 fi
@@ -56,6 +68,7 @@ export CSE2E_COMPOSE_FILE="$COMPOSE"
 export CSE2E_EVIDENCE_DIR="$EVIDENCE/browser"
 wait_http "$FRONTEND_BASE/login"
 export RABBITMQ_URL="amqp://connectsphere:connectsphere-dev-only@127.0.0.1:$((PORT_BASE + 5672))"
+if [[ "$STAGE" != browser ]]; then
 for database in attendance_test equipment_test; do
   compose exec -T postgres createdb -U connectsphere "$database"
 done
@@ -68,9 +81,17 @@ export CS_BUS_RESULT="$EVIDENCE/booking-notification.json"
 (cd frontend && CS_SAFETY_ACCEPTANCE=1 TEST_RESULTS_JSON="$EVIDENCE/safety-results.json" TEST_RECORD_STORIES=CS-93,CS-95 TEST_EVIDENCE_LAYER='Real Safety lifecycle, PostgreSQL reservations, Keycloak and RabbitMQ' npm run test:report -- ../tests/specs/CS-93.spec.ts ../tests/specs/CS-95.spec.ts --no-file-parallelism --reporter=default) 2>&1 | tee "$EVIDENCE/safety-integration.log"
 (cd frontend && CS_MAINTENANCE_ACCEPTANCE=1 TEST_RESULTS_JSON="$EVIDENCE/maintenance-results.json" TEST_RECORD_STORIES=CS-84 TEST_EVIDENCE_LAYER='Actual PostgreSQL before-commit Venue barrier and timeout recovery' npm run test:report -- ../tests/specs/CS-84.spec.ts --reporter=default) 2>&1 | tee "$EVIDENCE/maintenance-integration.log"
 node services/event-service/tests/smoke/live.cjs | tee "$EVIDENCE/live-smoke.log"
-(cd frontend && npm run test:e2e:report) | tee "$EVIDENCE/browser.log"
+fi
+if [[ "$STAGE" != integration ]]; then
+# Intentionally word-split: the value is a list of Playwright options.
+# shellcheck disable=SC2086
+(cd frontend && npm run test:e2e:report -- $BROWSER_ARGS) | tee "$EVIDENCE/browser.log"
+fi
+if [[ "$STAGE" != browser ]]; then
 compose restart event-service user-service auth-service venue-service booking-service attendance-service notification-service equipment-service rabbitmq frontend > "$EVIDENCE/restart.log" 2>&1
 node services/event-service/tests/smoke/live.cjs --verify-restart | tee "$EVIDENCE/restart-smoke.log"
+fi
+if [[ "$STAGE" != integration ]]; then
 python3 - "$EVIDENCE/browser/results.json" <<'PYRESULT'
 import json, sys
 r = json.load(open(sys.argv[1]))
@@ -79,3 +100,4 @@ expected_stubs = 0  # Current venue and confirmation projections have real journ
 assert s['unexpected'] == 0 and s['flaky'] == 0 and s['skipped'] == expected_stubs and s['expected'] > 0, s
 print('Browser results:', s)
 PYRESULT
+fi

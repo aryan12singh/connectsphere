@@ -85,3 +85,15 @@ test('EventCancelled attendee notice requires the exact terminal cancellation pr
   proof={...proof,status:'CANCELLED',eventVersion:7};assert.equal(await currentContext({...message('EventCancelled',p),aggregateType:'Event'}),null);
  }finally{global.fetch=native;}
 });
+
+test('EventCancelled after a Coordinator cancellation matches the final Event version, not the accepted one',async()=>{
+ const native=global.fetch;
+ const p={eventId:'event',eventRequestId:'request',eventVersion:3,cancellationActionId:'cancel-action'};
+ let proof={eventId:'event',eventRequestId:'request',eventVersion:2,currentEventVersion:3,proofType:'ACCEPTED_INTENT',cancellationActionId:'cancel-action',status:'CANCELLED'};
+ global.fetch=async url=>({ok:true,status:200,json:async()=>String(url).includes('cancellation-context')?proof:{id:'event',eventRequestId:'request',organiserId:'organiser',currentCoordinatorId:'coordinator',title:'Conference',status:'CANCELLED'}});
+ try{
+  assert.ok(await currentContext({...message('EventCancelled',p),aggregateType:'Event'}));
+  proof={...proof,currentEventVersion:4};assert.equal(await currentContext({...message('EventCancelled',p),aggregateType:'Event'}),null);
+  proof={...proof,currentEventVersion:3,status:'CANCELLING'};assert.equal(await currentContext({...message('EventCancelled',p),aggregateType:'Event'}),null);
+ }finally{global.fetch=native;}
+});

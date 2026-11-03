@@ -11,6 +11,11 @@ async function read(url, message = 'Current Event context is unavailable') {
   catch {
     throw Object.assign(new Error(message), { status: 503, code: 'EVENT_UNAVAILABLE' });
   }
+  if (response.status === 409) {
+    // A business refusal (for example a cancelled Event) is not an outage.
+    const payload = await response.json().catch(() => ({}));
+    throw Object.assign(new Error(payload?.error?.message || 'The Event is not in a state that allows this.'), { status: 409, code: payload?.error?.code || 'EVENT_STATE_CONFLICT' });
+  }
   if (!response.ok) throw Object.assign(new Error(message), { status: response.status === 404 ? 404 : 503, code: 'EVENT_UNAVAILABLE' });
   return response.json();
 }

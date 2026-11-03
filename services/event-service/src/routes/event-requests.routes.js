@@ -362,7 +362,10 @@ router.get('/:id/coordinator', requirePermission('events.view'), async (req, res
     if (!record.currentCoordinatorId) return res.json(null);
     const coordinator = await coordinatorById(record.currentCoordinatorId);
     if (!coordinator) return sendError(res, 503, 'DEPENDENCY_UNAVAILABLE', 'Coordinator details are unavailable');
-    return res.json(coordinator);
+    // S3-R44: the Organiser sees the Coordinator's name. user-service stores
+    // first and last names; return only the contact fields the page shows.
+    const name = coordinator.name || [coordinator.firstName, coordinator.lastName].filter(Boolean).join(' ') || coordinator.email || coordinator.id;
+    return res.json({ id: coordinator.id, name, email: coordinator.email || '' });
   } catch (error) { return next(error); }
 });
 
