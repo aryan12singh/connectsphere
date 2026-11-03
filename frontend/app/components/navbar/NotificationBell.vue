@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatDate } from '~~/lib/datetime'
 // CS-50: bell with unread badge and the user's own notices.
 // Clicking a notice marks it read (saved on the server) and opens its page.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -40,7 +41,7 @@ function timeAgo(value: string) {
   const minutes = Math.max(1, Math.round((Date.now() - new Date(value).getTime()) / 60_000))
   if (minutes < 60) return `${minutes} min ago`
   if (minutes < 24 * 60) return `${Math.round(minutes / 60)} h ago`
-  return new Date(value).toLocaleDateString()
+  return formatDate(value)
 }
 
 // Refresh the badge every minute while the page is open.
