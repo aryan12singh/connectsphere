@@ -18,7 +18,7 @@ Index of the automated cases for this story, taken from the test names in the co
 
 ## Differences from the sheet and cases not automated
 
-All cases run through the real BFF, Event Service and PostgreSQL. The slice built for CS-43 edits the description only, so the tests use the description where the sheet uses `contactPhone` (requests have no contact fields).
+All cases run through the real BFF, Event Service and PostgreSQL. The Coordinator edits the routine wording directly: description and purpose (3 November). Requests have no contact fields, so the tests use these where the sheet uses `contactPhone`. Every other field goes through a change proposal.
 
 - TC-CS43-02 in the sheet covers Venue and Technical Staff section edits. Those edits go through the booking and equipment workflows (CS-37/38, CS-40–42), not a planning section on the Event. The automated TC-CS43-02 covers refused fields, blank text and stale versions.
 - TC-CS43-03: the edit refusals are automated. The sheet also expects the Lead and Safety Officer to read the Event (200). As built, the Lead reads assigned work through the CS-83 oversight view (GET on an assigned request is 403), and the Safety Officer reads it through Safety review. That expectation needs a decision before it can be automated.

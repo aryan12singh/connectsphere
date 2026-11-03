@@ -144,6 +144,7 @@ services:
       KEYCLOAK_CLIENT_ID: auth-service
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-dev-auth-service-secret}
       USER_SERVICE_URL: http://user-service:3000
+      EVENT_SERVICE_URL: http://event-service:3000 # open-assignment check before deactivation
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-dev-internal-key}
       # Session length, lockout and password rules are NOT set here —
       # tech support changes them at runtime (PUT /admin/settings).

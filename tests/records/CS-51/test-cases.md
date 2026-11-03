@@ -34,6 +34,18 @@ with the repository runner `scripts/run-event-review-ci.sh`
 (see `docs/sprint3-integration-handoff.md`). Record the date, commit and
 result here.
 
+## AC3 and AC4: technical and equipment-flag notices (3 November)
+
+The Sprint 4 sheet's TC-CS51-08 (technical decision with next step) and TC-CS51-11 (redelivered technical decision) reuse IDs this record already gives to the Sprint 3 cases above, so these tests are named by AC instead.
+
+| AC | What it proves | Automation | Status |
+|---|---|---|---|
+| AC3 | Submitted request notifies every active Technical Support member, not the submitting Coordinator | `services/notification-service/tests/unit/technical-and-change-notifications.test.js` | Pass |
+| AC3 | Approved and rejected decisions reach the Coordinator (with reason) and Organiser (next step, no reason); redelivery gives one notice | same file | Pass |
+| AC3 | Reservation notifies the Coordinator and Organiser | same file | Pass |
+| AC3/AC4 | Equipment outbox rows (submission, decision, reservation, flag) are relayed; "not required" is suppressed | `services/equipment-service/tests/unit/domainOutbox.test.js` | Pass |
+| AC4 | Marking stock unavailable writes one notice action per Event whose active reservation overlaps, in the same transaction; a retried command adds none | `services/equipment-service/tests/integration/postgres.test.js`, `http.test.js` | Pass |
+| AC4 | Flag notice: Coordinator gets type, quantity and reason; Organiser gets the next action only | `technical-and-change-notifications.test.js` | Pass |
+
 ## Not covered yet
-- Technical request/decision/reservation notices (card AC3): no templates yet.
 - Cancellation and replacement notice types (card AC8 future types).

@@ -138,6 +138,21 @@ test('TC-CS46-06 technical revisions leave existing equipment reservations activ
   });
 });
 
+test('CS-51 AC4 marking stock unavailable records a notice action for each overlapping Event only', async () => {
+  const operations = require('../../src/operations');
+  const base = { requestVersion: 1, equipmentType: 'microphone', quantity: 1, active: true, actorId: 'support', sourceVersions: {}, createdAt: new Date().toISOString() };
+  operations._memory.reservations.push(
+    { ...base, id: 'flag-hit', eventRequestId: 'flag-request-hit', eventId: 'flag-event-hit', startAt: '2040-01-01T10:00:00.000Z', endAt: '2040-01-01T12:00:00.000Z' },
+    { ...base, id: 'flag-miss', eventRequestId: 'flag-request-miss', eventId: 'flag-event-miss', startAt: '2040-03-01T10:00:00.000Z', endAt: '2040-03-01T12:00:00.000Z' },
+  );
+  await withServer(async baseUrl => {
+    const response = await fetch(`${baseUrl}/equipment-operational-unavailability`, { method: 'POST', headers: actorHeaders('flag-support', 'TECHNICAL_SUPPORT_STAFF'), body: JSON.stringify({ equipmentType: 'microphone', quantity: 1, reason: 'Battery recall', startAt: '2040-01-01T11:00:00.000Z', endAt: '2040-01-01T13:00:00.000Z' }) });
+    assert.equal(response.status, 201);
+    const flags = operations._memory.outbox.filter(row => row.eventType === 'EquipmentUnavailable' && row.payload.equipmentType === 'microphone' && row.payload.startAt.startsWith('2040'));
+    assert.deepEqual(flags.map(row => [row.payload.eventRequestId, row.payload.eventId]), [['flag-request-hit', 'flag-event-hit']]);
+  });
+});
+
 test('TC-CS40-02 rejects invalid equipment with field feedback and no saved request', async () => {
   await withServer(async baseUrl => {
     const response = await fetch(`${baseUrl}/event-requests/event-invalid/technical-request`, {

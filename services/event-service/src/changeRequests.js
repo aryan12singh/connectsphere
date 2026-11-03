@@ -147,7 +147,7 @@ async function decide(actor,requestId,changeId,body){
   await tx.activityLog.create({data:{eventRequestId:request.id,action:'CHANGE_APPROVED',actorType:'USER',actorId:actor.id,fromStatus:event.status,toStatus:reopen?'ARRANGEMENT_PENDING':event.status,
    details:{changeId,scope:change.scope,affected:change.affected,note:reason||undefined,changes:diff,eventId:event.id}}});
   await tx.outbox.create({data:{aggregateType:'EventRequest',aggregateId:request.id,eventType:'EventChangeApproved',payload:{eventRequestId:request.id,eventId:event.id,changeId,
-   scope:change.scope,affected:change.affected,changedFields:Object.keys(diff),scheduleChanged:touchesSchedule,organiserId:request.organiserId,coordinatorId:actor.id,
+   scope:change.scope,affected:change.affected,changedFields:Object.keys(diff),scheduleChanged:touchesSchedule,reopened:reopen,organiserId:request.organiserId,coordinatorId:actor.id,
    eventVersion:event.version+1,requestVersion:request.version+1}}});
   return view(row);
  },{maxWait:10000,timeout:20000});

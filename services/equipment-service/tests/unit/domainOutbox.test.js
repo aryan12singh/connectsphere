@@ -24,7 +24,15 @@ test('Equipment release relay uses the shared outbox relay and equipment-owned d
   assert.equal(received.project.name, 'project');
 });
 
-test('Equipment release relay rejects malformed and unrelated outbox rows', () => {
-  assert.throws(() => project({ id: 'bad', eventType: 'EquipmentReserved', payload: {} }), /Invalid EquipmentReleased/);
+test('Equipment release relay rejects malformed rows and suppresses rows with no notice', () => {
+  assert.throws(() => project({ id: 'bad', eventType: 'EquipmentReserved', payload: {} }), /Invalid EquipmentReserved/);
   assert.throws(() => project({ id: 'bad', eventType: 'EquipmentReleased', payload: { eventId: 'event-1' } }), /Invalid EquipmentReleased/);
+  assert.equal(project({ id: 'nr', eventType: 'TechRequestDeclaredNotRequired', payload: { eventRequestId: 'r1' } }), null);
+});
+
+test('CS-51 AC3/AC4 technical request, decision, reservation and flag rows are relayed for notices', () => {
+  for (const eventType of ['TechRequestSubmitted', 'TechRequestDecided', 'EquipmentReserved', 'EquipmentUnavailable']) {
+    const row = { id: `m-${eventType}`, eventType, payload: { eventRequestId: 'r1', eventId: 'e1' } };
+    assert.deepEqual(project(row), { id: row.id, type: eventType, aggregateType: 'TechnicalRequest', aggregateId: 'r1', payload: row.payload });
+  }
 });

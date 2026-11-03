@@ -10,6 +10,7 @@ const { requirePermission } = require('../middleware/requirePermission');
 const { ROLES, isKnownPermission } = require('../lib/permissions');
 const { PUBLIC_ROLES } = require('../../../utils/role-policy');
 const userService = require('../clients/userService');
+const eventService = require('../clients/eventService');
 const keycloakAdmin = require('../clients/keycloakAdmin');
 const sessionService = require('../services/session.service');
 const permissionService = require('../services/permission.service');
@@ -77,6 +78,20 @@ router.patch('/users/:id/status', requirePermission('users.manage'), async (req,
 
   const existing = await userService.findUserById(req.params.id);
   if (!existing) return res.status(404).json({ error: 'User not found' });
+
+  // Session 3: the Lead reassigns every open Event before a Coordinator is
+  // deactivated. If event-service cannot answer, refuse rather than guess.
+  if (!isActive && (existing.roles ?? [existing.role]).includes('EVENT_COORDINATOR')) {
+    let open;
+    try { open = await eventService.openAssignments(existing.id); }
+    catch (error) {
+      console.error(`Open assignment check for ${existing.id} failed:`, error.message);
+      return res.status(503).json({ error: { code: 'DEPENDENCY_UNAVAILABLE', message: 'Could not check this Coordinator\'s open Events. Try again later.' } });
+    }
+    if (open.count > 0) {
+      return res.status(409).json({ error: { code: 'COORDINATOR_HAS_OPEN_EVENTS', message: `This Coordinator still has ${open.count} open event request(s). Ask the Coordinator Lead to reassign them first.`, requests: open.requests } });
+    }
+  }
 
   // Keycloak first: this is what actually blocks the password check.
   const keycloakId = await keycloakAdmin.findUserIdByEmail(existing.email);

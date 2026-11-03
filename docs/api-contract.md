@@ -294,6 +294,21 @@ The venue receipt includes `receiptId`, `resource:VENUE`, Event/request/action i
 
 TC-CS88-06 (2 November) verifies the integrated journey: public Coordinator cancellation, the CS-54 runner's venue and equipment releases, one final `CANCELLED` with one `EventCancelled`, and the Attendee notice. Public `Cancelling` remains until **every required resource receipt** completes; a venue receipt alone cannot complete the Event. For a Coordinator cancellation, `cancellation-context` reports the accepted version as `eventVersion` and the final Cancelled version as `currentEventVersion`; consumers of `EventCancelled` compare the final version. See the [cancellation handoff](sprint3-integration-handoff.md).
 
+## Technical, change and cancellation-request notices (CS-51, CS-45, CS-54)
+
+3 November 2026. Producers write these through their committed outbox; notification-service re-reads the current request (Organiser, current Coordinator, Event name) before delivering, and the message ID keeps redelivery to one notice per recipient.
+
+| Message (`type`) | Producer | Notices |
+| --- | --- | --- |
+| `TechRequestSubmitted` | Equipment (submission) | `NEW_TECHNICAL_REQUEST` to every active Technical Support member |
+| `TechRequestDecided` | Equipment (decision) | Approved: `TECHNICAL_APPROVED` (Coordinator) and `TECHNICAL_DECISION` (Organiser). Rejected: `TECHNICAL_REJECTED` with the reason (Coordinator), `TECHNICAL_DECISION` without it (Organiser) |
+| `EquipmentReserved` | Equipment (reservation) | `EQUIPMENT_RESERVED` to the Coordinator and Organiser |
+| `EquipmentUnavailable` | Equipment (operational unavailability), one per Event whose active reservation overlaps | `EQUIPMENT_UNAVAILABLE` with type, quantity and reason (Coordinator); `EQUIPMENT_CHANGE_NEEDED` without the reason (Organiser) |
+| `EventChangeApproved`, `EventChangeRejected` | Event (CS-45 decision) | `CHANGE_APPROVED` (says when the Event is back in planning) or `CHANGE_REJECTED` with the Coordinator's reason, to the Organiser |
+| `EventCancellationRequested` | Event (CS-54 Organiser request) | `CANCELLATION_REQUESTED` to the current Coordinator |
+
+`TechRequestDeclaredNotRequired` has no notice; the equipment relay suppresses it instead of retrying it.
+
 ## CS-52 attendee notification contract
 
 27 October 2026 (Marc). notification-service owns the Attendee templates; attendance-service owns the recipient list. Producers publish to `connectsphere.events` through their committed outbox; the outbox row ID is the message ID.

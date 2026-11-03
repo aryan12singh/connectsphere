@@ -13,6 +13,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import RequestQueue from '@/components/technical-requirements/RequestQueue.vue'
 import NotificationFailures from '@/components/shared/NotificationFailures.vue'
+import UserDirectory from '@/components/technical-requirements/UserDirectory.vue'
 
 const { can } = usePermissions()
 
@@ -230,6 +231,7 @@ useHead({ title: 'Manage technical availability | ConnectSphere' })
         <TabsTrigger value="review" :disabled="!pageReady" class="h-auto flex-none rounded-none px-3 py-2">Review technical requests</TabsTrigger>
         <TabsTrigger value="stock" :disabled="!pageReady" class="h-auto flex-none rounded-none px-3 py-2">Manage equipment stock</TabsTrigger>
         <TabsTrigger v-if="can('audit.view')" value="deliveries" :disabled="!pageReady" class="h-auto flex-none rounded-none px-3 py-2">Failed notifications</TabsTrigger>
+        <TabsTrigger v-if="can('users.view')" value="users" :disabled="!pageReady" class="h-auto flex-none rounded-none px-3 py-2">User directory</TabsTrigger>
       </TabsList>
 
       <TabsContent value="review" class="mt-5 w-full min-w-0 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
@@ -416,6 +418,11 @@ useHead({ title: 'Manage technical availability | ConnectSphere' })
       <!-- CS-50: deliveries that failed after 3 retries (audit.view). -->
       <TabsContent v-if="can('audit.view')" value="deliveries" class="mt-0 w-full min-w-0 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
         <Suspense><NotificationFailures /></Suspense>
+      </TabsContent>
+
+      <!-- Technical Support user directory (users.view; changes need users.manage). -->
+      <TabsContent v-if="can('users.view')" value="users" class="mt-0 w-full min-w-0 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
+        <UserDirectory />
       </TabsContent>
     </Tabs>
   </main>

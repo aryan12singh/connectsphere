@@ -2,8 +2,8 @@ import { beforeAll, afterAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { eventHarness, valid } from '../helpers/event-api-harness'
 
-// CS-43 — the assigned Coordinator corrects routine wording (description only
-// in this slice). Significant changes are CS-45 and are not covered here.
+// CS-43 — the assigned Coordinator corrects routine wording (description and
+// purpose). Significant changes are CS-45 and are not covered here.
 let api: Awaited<ReturnType<typeof eventHarness>>
 beforeAll(async () => { api = await eventHarness() })
 afterAll(async () => api?.close())
@@ -31,6 +31,19 @@ describe('CS-43 — TC-CS43-02 significant fields, blank text and stale versions
     expect((await edit(r.body.id, { description: '   ', version: r.body.version })).status).toBe(422)
     expect((await edit(r.body.id, { description: 'x', version: r.body.version - 1 })).status).toBe(409)
     expect(await api.db.activityLog.count({ where: { eventRequestId: r.body.id, action: 'COORDINATOR_EDITED' } })).toBe(0)
+  })
+})
+
+describe('CS-43 — TC-CS43-01 AC1 the assigned Coordinator also corrects the purpose', () => {
+  it('saves purpose and description together in one history entry, and refuses a blank purpose', async () => {
+    const r = await api.submitAssigned(valid)
+    expect((await edit(r.body.id, { purpose: '  ', version: r.body.version })).status).toBe(422)
+    const d = await edit(r.body.id, { purpose: 'Partner briefing', description: 'Updated agenda', version: r.body.version })
+    expect(d.status).toBe(200)
+    expect(d.body).toMatchObject({ purpose: 'Partner briefing', description: 'Updated agenda' })
+    const [log] = await api.db.activityLog.findMany({ where: { eventRequestId: r.body.id, action: 'COORDINATOR_EDITED' } })
+    expect(Object.keys((log.details as any).changes).sort()).toEqual(['description', 'purpose'])
+    expect((log.details as any).changes.purpose).toEqual({ old: valid.purpose, new: 'Partner briefing' })
   })
 })
 

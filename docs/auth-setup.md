@@ -206,8 +206,10 @@ permission on every call.
 
 The middleware routes each recognised role to its functional home and checks
 permission metadata on typed routes. Technical Support opens the equipment
-review queue at `/technical-requirements` and may read `/venue`; user
-administration has no website screen and stays in the Swagger API. Backend action-role and record guards apply on every call.
+review queue at `/technical-requirements` and may read `/venue`. Its User
+directory tab (`users.view`) lists accounts and, with `users.manage`,
+deactivates or reactivates them; creating accounts and changing roles stay in
+the Swagger API. Backend action-role and record guards apply on every call.
 
 ## 8. Running a service without Docker (optional)
 

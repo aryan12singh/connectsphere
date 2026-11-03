@@ -431,7 +431,7 @@ for (const method of ['put', 'patch']) router[method]('/:id', requirePermission(
   } catch (error) { return next(error); }
 });
 
-// CS-43: the assigned Coordinator corrects routine wording (description only for now).
+// CS-43: the assigned Coordinator corrects routine wording (description and purpose).
 router.post('/:id/coordinator-edit', requirePermission('event_requests.review'), async (req, res, next) => {
   try {
     if (await runTransactionalMutation(req, res, next, 'coordinatorEdit', req.params.id)) return;

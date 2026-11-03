@@ -34,11 +34,17 @@ const ATTENDEE_TYPES = [
   'RegistrationCreated', 'RegistrationWaitlisted', 'WaitlistOfferMade',
   'WaitlistOfferExpired', 'WaitlistOfferAccepted', 'RegistrationWithdrawn',
 ];
-const HANDLED = [...LIFECYCLE_TYPES, ...PLANNING_TYPES, ...ATTENDEE_TYPES, 'EventCancelled'];
+// CS-51 AC3/AC4: technical requests, decisions, reservations and equipment
+// flags from equipment-service.
+const TECHNICAL_TYPES = ['TechRequestSubmitted', 'TechRequestDecided', 'EquipmentReserved', 'EquipmentUnavailable'];
+// CS-45 / CS-54: change decisions and the Organiser's cancellation request.
+const CHANGE_TYPES = ['EventChangeApproved', 'EventChangeRejected', 'EventCancellationRequested'];
+const HANDLED = [...LIFECYCLE_TYPES, ...PLANNING_TYPES, ...TECHNICAL_TYPES, ...CHANGE_TYPES, ...ATTENDEE_TYPES, 'EventCancelled'];
 
 // Pages a notice may link to. Venue booking notices open the venue
 // workspace; a dedicated booking review page does not exist yet (CS-38).
 const VENUE_WORKSPACE = '/venue';
+const TECHNICAL_WORKSPACE = '/technical-requirements';
 
 /** The standard fields every notice carries (same shape for all types). */
 function standardData(message, extra = {}) {
@@ -203,6 +209,50 @@ async function planningNotices(message, { notice, name, usersWithRole }) {
     case 'BookingChanged':return affectedStaff('BOOKING_CHANGED',`The venue booking${venue} for ${name} changed and needs fresh Venue Staff review. Other rooms remain unchanged.`);
     case 'BookingRestored':return [notice(p.coordinatorId,'BOOKING_RESTORED',`Venue Staff confirmed restoration of the original booking${venue} for ${name}. Review current Safety readiness before proceeding.`,VENUE_WORKSPACE,extra),notice(p.organiserId,'BOOKING_RESTORED',`The original venue booking${venue} for ${name} has been restored by Venue Staff. Your Coordinator will review the next planning step.`,eventLink,extra)];
     case 'ReplacementApproved':return [notice(p.coordinatorId,'VENUE_REPLACEMENT_APPROVED',`The replacement${venue} for ${name} was approved. The original booking is retained as Replaced. Complete current Safety review before reconfirmation.`,VENUE_WORKSPACE,extra),notice(p.organiserId,'VENUE_REPLACEMENT_APPROVED',`A replacement venue${venue} for ${name} was approved. Your Coordinator is completing Safety review and reconfirmation.`,eventLink,extra)];
+    case 'TechRequestSubmitted':
+      // CS-51 AC3: every active Technical Support member learns about waiting work.
+      return toStaff('TECHNICAL_SUPPORT_STAFF', 'NEW_TECHNICAL_REQUEST', `New technical request for ${name}. Please review it.`, TECHNICAL_WORKSPACE);
+    case 'TechRequestDecided': {
+      if (p.status === 'REJECTED') {
+        const reason = p.decisionReason ? ` Reason: ${p.decisionReason}.` : '';
+        return [
+          notice(p.coordinatorId, 'TECHNICAL_REJECTED', `Technical requirements for ${name} were not approved.${reason} Update the requirements and submit them again.`, eventLink),
+          notice(p.organiserId, 'TECHNICAL_DECISION', `Technical requirements for ${name} were not approved. Your Coordinator is arranging the next step.`, eventLink),
+        ];
+      }
+      if (p.status === 'APPROVED') return [
+        notice(p.coordinatorId, 'TECHNICAL_APPROVED', `Technical requirements for ${name} were approved. Technical Support will reserve the equipment.`, eventLink),
+        notice(p.organiserId, 'TECHNICAL_DECISION', `Technical requirements for ${name} were approved.`, eventLink),
+      ];
+      return [];
+    }
+    case 'EquipmentReserved':
+      return [
+        notice(p.coordinatorId, 'EQUIPMENT_RESERVED', `Equipment for ${name} is reserved. Continue with the remaining planning steps.`, eventLink),
+        notice(p.organiserId, 'EQUIPMENT_RESERVED', `Equipment for ${name} is reserved.`, eventLink),
+      ];
+    case 'EquipmentUnavailable': {
+      // CS-51 AC4: the operational reason stays with the Coordinator; the
+      // Organiser is told the issue and next action only.
+      const what = p.equipmentType ? `${p.quantity || ''} ${p.equipmentType}`.trim() : 'Reserved equipment';
+      const reason = p.reason ? ` Reason: ${p.reason}.` : '';
+      const flagExtra = { equipmentType: p.equipmentType || null, quantity: p.quantity || null, startAt: p.startAt || null, endAt: p.endAt || null };
+      return [
+        notice(p.coordinatorId, 'EQUIPMENT_UNAVAILABLE', `${what} is no longer available during ${name}.${reason} Ask Technical Support to recheck the reservation before continuing.`, eventLink, flagExtra),
+        notice(p.organiserId, 'EQUIPMENT_CHANGE_NEEDED', `Some equipment for ${name} needs to be rechecked. Your Coordinator is arranging the next step.`, eventLink, flagExtra),
+      ];
+    }
+    case 'EventChangeApproved': {
+      const reopened = p.newStatus === 'ARRANGEMENT_PENDING' || p.reopened;
+      const next = reopened ? ' The Event is back in planning while the affected arrangements are reviewed again.' : '';
+      return [notice(p.organiserId, 'CHANGE_APPROVED', `The change to ${name} was approved.${next}`, eventLink)];
+    }
+    case 'EventChangeRejected': {
+      const reason = p.reason ? ` The Coordinator's reason: "${p.reason}"` : '';
+      return [notice(p.organiserId, 'CHANGE_REJECTED', `The change to ${name} was not approved. The current arrangements stay in place.${reason}`, eventLink, { reason: p.reason || null })];
+    }
+    case 'EventCancellationRequested':
+      return [notice(p.coordinatorId, 'CANCELLATION_REQUESTED', `The Organiser asked to cancel ${name}. Review the request and approve or reject it.`, eventLink)];
     case 'BookingRequested':
       // TC-CS51-03: every active Venue Staff member learns about waiting work.
       return toStaff('VENUE_STAFF', 'NEW_BOOKING_REQUEST', `New booking request for ${name}${venue}. Please review it.`, VENUE_WORKSPACE);
@@ -288,4 +338,4 @@ function badgeLabel(unread) {
   return unread > 99 ? '99+' : String(unread);
 }
 
-module.exports = { HANDLED, LIFECYCLE_TYPES, PLANNING_TYPES, ATTENDEE_TYPES, noticesFor, standardData, badgeLabel };
+module.exports = { HANDLED, LIFECYCLE_TYPES, PLANNING_TYPES, TECHNICAL_TYPES, CHANGE_TYPES, ATTENDEE_TYPES, noticesFor, standardData, badgeLabel };

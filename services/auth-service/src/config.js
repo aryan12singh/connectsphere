@@ -25,6 +25,10 @@ module.exports = {
   // Where to find user-service inside the Docker network.
   userServiceUrl: required('USER_SERVICE_URL'), // e.g. http://user-service:3000
 
+  // Asked before a staff account is disabled, so open Events are never left
+  // with an inactive Coordinator (Session 3, DEF-53-08).
+  eventServiceUrl: process.env.EVENT_SERVICE_URL || 'http://event-service:3000',
+
   // Shared secret for service-to-service calls (see middleware/internalOnly.js).
   internalApiKey: required('INTERNAL_API_KEY'),
 

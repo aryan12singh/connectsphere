@@ -13,7 +13,7 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-26](https://spmg8.atlassian.net/browse/CS-26) | Register Accounts and Enforce Role-and-Event Permissions | 15 | 13 | 2 | 8 | 1 | [CS-26](../tests/records/CS-26) |
 | [CS-27](https://spmg8.atlassian.net/browse/CS-27) | Validate and Resubmit Returned Event Requests | 3 | 3 | 1 | – | 1 | [CS-27](../tests/records/CS-27) |
 | [CS-29](https://spmg8.atlassian.net/browse/CS-29) | Save and Resume a Draft Event Request | 4 | 3 | 1 | – | 1 | [CS-29](../tests/records/CS-29) |
-| [CS-30](https://spmg8.atlassian.net/browse/CS-30) | Lead Assignment and Reassignment of the Event Coordinator | 11 | 11 | 3 | – | – | [CS-30](../tests/records/CS-30) |
+| [CS-30](https://spmg8.atlassian.net/browse/CS-30) | Lead Assignment and Reassignment of the Event Coordinator | 11 | 11 | 4 | – | – | [CS-30](../tests/records/CS-30) |
 | [CS-31](https://spmg8.atlassian.net/browse/CS-31) | Confirm an Event When Essential Arrangements Are Ready | 13 | 8 | 1 | 2 | – | [CS-31](../tests/records/CS-31) |
 | [CS-32](https://spmg8.atlassian.net/browse/CS-32) | Maintain Event Status and Transition Rules | 12 | 10 | 1 | 1 | – | [CS-32](../tests/records/CS-32) |
 | [CS-33](https://spmg8.atlassian.net/browse/CS-33) | Maintain Venue Catalogue and Operating Information | 16 | 16 | 1 | 1 | 1 | [CS-33](../tests/records/CS-33) |
@@ -34,7 +34,7 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-48](https://spmg8.atlassian.net/browse/CS-48) | Configure Event Registration and Manage Registration Records | 12 | 10 | – | 7 | 1 | [CS-48](../tests/records/CS-48) |
 | [CS-49](https://spmg8.atlassian.net/browse/CS-49) | Configure Withdrawal Rules and Withdraw Registration | 13 | 8 | – | 5 | 1 | [CS-49](../tests/records/CS-49) |
 | [CS-50](https://spmg8.atlassian.net/browse/CS-50) | Deliver Event Lifecycle and Coordinator Assignment Notifications | 19 | 19 | 2 | 4 | – | [CS-50](../tests/records/CS-50) |
-| [CS-51](https://spmg8.atlassian.net/browse/CS-51) | Deliver Planning Decisions and Staff Action Notifications | 11 | 9 | – | 2 | – | [CS-51](../tests/records/CS-51) |
+| [CS-51](https://spmg8.atlassian.net/browse/CS-51) | Deliver Planning Decisions and Staff Action Notifications | 12 | 9 | – | 2 | – | [CS-51](../tests/records/CS-51) |
 | [CS-52](https://spmg8.atlassian.net/browse/CS-52) | Notify Attendees of Registration Outcomes and Event Changes | 6 | 6 | – | 1 | 1 | [CS-52](../tests/records/CS-52) |
 | [CS-54](https://spmg8.atlassian.net/browse/CS-54) | Approve Event Cancellation and Release Related Commitments | 4 | 4 | 2 | – | – | [CS-54](../tests/records/CS-54) |
 | [CS-73](https://spmg8.atlassian.net/browse/CS-73) | Expand the CI pipeline | 3 | CI runs | – | – | – | [CS-73](../tests/records/CS-73) |
@@ -54,7 +54,7 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-94](https://spmg8.atlassian.net/browse/CS-94) | Conduct the Operational Safety Check | 22 | 16 | 1 | – | 1 | [CS-94](../tests/records/CS-94) |
 | [CS-95](https://spmg8.atlassian.net/browse/CS-95) | Rework Arrangements After Safety Changes or Rejection | 22 | 17 | 1 | – | 1 | [CS-95](../tests/records/CS-95) |
 
-Totals: 717 specified cases in `tests/records`; 590 named by at least one automated test. CI tasks (CS-15, CS-73, CS-79) are proven by the [CI workflow](../.github/workflows/event-workflows.yml) runs.
+Totals: 718 specified cases in `tests/records`; 590 named by at least one automated test. CI tasks (CS-15, CS-73, CS-79) are proven by the [CI workflow](../.github/workflows/event-workflows.yml) runs.
 
 ## Files by story
 
@@ -91,7 +91,7 @@ Totals: 717 specified cases in `tests/records`; 590 named by at least one automa
 
 ### CS-30 — Lead Assignment and Reassignment of the Event Coordinator
 
-- Unit / component / BFF (Vitest): [CS-30-assignment-rules.spec.ts](../tests/specs/CS-30-assignment-rules.spec.ts), [CS-30-transfer-request.spec.ts](../tests/specs/CS-30-transfer-request.spec.ts), [CS-30.spec.ts](../tests/specs/CS-30.spec.ts)
+- Unit / component / BFF (Vitest): [CS-30-assignment-rules.spec.ts](../tests/specs/CS-30-assignment-rules.spec.ts), [CS-30-transfer-request.spec.ts](../tests/specs/CS-30-transfer-request.spec.ts), [CS-30-user-directory.spec.ts](../tests/specs/CS-30-user-directory.spec.ts), [CS-30.spec.ts](../tests/specs/CS-30.spec.ts)
 
 ### CS-31 — Confirm an Event When Essential Arrangements Are Ready
 

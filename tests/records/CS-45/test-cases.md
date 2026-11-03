@@ -24,3 +24,7 @@ TC-CS45-01 to 06 are the IDs the tests were written under. The Sprint 4 sheet li
 - TC-CS45-20: covers the Event Service part (Planning again, Safety state STALE, open round superseded). Confirm being blocked without a current Safety round is unit-tested under TC-CS31-08.
 - Venue re-review is pull-based: booking-service compares each booking's requirements fingerprint and flags REQUIREMENTS_CHANGED (CS-86/CS-88 tests).
 - Not automated: TC-CS45-18 (sibling venue bookings stay approved), TC-CS45-22 (booking-service failure during apply), TC-CS45-23 (browser before/after view), TC-CS45-24 (an approved booking change releases only its old hold).
+
+### Decision notices (3 November)
+
+An approved or rejected change now notifies the Organiser (`CHANGE_APPROVED`, which says when the Event is back in planning, or `CHANGE_REJECTED` with the Coordinator's reason). Tests: `services/notification-service/tests/unit/technical-and-change-notifications.test.js`. The Event Service already wrote `EventChangeApproved` and `EventChangeRejected`; the approval now also carries `reopened`.

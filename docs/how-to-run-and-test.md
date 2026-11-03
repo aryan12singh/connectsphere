@@ -254,7 +254,7 @@ differs, note what you saw.
 
 ### Tech support admin (Swagger UI)
 
-Technical Support's website home is the equipment review queue at `/technical-requirements`. User administration has no website screen; use Swagger at http://localhost:3002/docs.
+Technical Support's website home is the equipment review queue at `/technical-requirements`. Its **User directory** tab lists accounts and deactivates or reactivates them; a Coordinator who still has open Events is refused until the Lead reassigns them (409 `COORDINATOR_HAS_OPEN_EVENTS`). Creating accounts, changing roles, permissions and settings use Swagger at http://localhost:3002/docs.
 Check that the server dropdown at the top shows `http://localhost:3002`.
 
 **Get a token (needed for MT-10 onwards):**

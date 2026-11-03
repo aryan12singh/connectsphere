@@ -43,3 +43,13 @@ Aryan selected least-recently-assigned fairness for equal workloads during this 
 ### Verification correction — 2026-10-07
 
 TC-CS30-03/04 follow current CS-11 read-only and same-request draft-submission criteria. The old scalar dashboard-refresh assertion omitted the Coordinator contact refresh needed to show the assignment immediately. It now strictly requires both `event-coordinator-req-1` and `organiser-events`; save-count, payload and read-only assertions remain. The reproduced 104/105 failed run is retained, followed by a new dated result. Earlier execution records remain historical evidence.
+
+### Deactivation guard (Session 3, DEF-53-08) — 3 November
+
+Before Technical Support deactivates a Coordinator, auth-service asks event-service for their open requests (`GET /internal/coordinators/{id}/open-assignments`, internal key only; open means Submitted, Returned, or Approved with the Event in Planning, Confirmed or Preparation). Any open request gives 409 `COORDINATOR_HAS_OPEN_EVENTS`, naming the requests, and the account, login and sessions stay unchanged. If event-service cannot answer, the request is refused with 503. Other roles are not checked.
+
+| What it proves | Automation |
+|---|---|
+| Refused with open Events; allowed after reassignment; refused when the check fails; other staff unaffected | `services/auth-service/tests/deactivation-guard.test.js` |
+| Open-assignment list includes open requests, excludes rejected ones, and needs the internal key | `services/event-service/tests/integration/workflows.test.js` |
+| The Technical Support User directory shows the refusal and keeps the account active | `tests/specs/CS-30-user-directory.spec.ts` |

@@ -121,19 +121,27 @@ async function mutation(req,mode,id){
    await outbox(db,r,mode==='assign'?'CoordinatorAssigned':'CoordinatorReassigned',actor,{fromCoordinatorId:from,coordinatorId:target});
   }
   if(mode==='coordinatorEdit'){
-   // CS-43: the assigned Coordinator may correct routine wording. Only the description
-   // for now; dates, venue, capacity and budget are significant changes (CS-45).
+   // CS-43 AC1/AC3: the assigned Coordinator edits the routine wording (description and
+   // purpose) directly. Dates, venue, capacity, layout and equipment are significant
+   // changes and go through a change proposal (CS-45).
    const open=r.status==='SUBMITTED'||(r.status==='APPROVED'&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(r.event?.status));
    if(!open)throw fail(409,'INVALID_TRANSITION','This request is closed and can no longer be edited');
-   const extra=Object.keys(body).filter(k=>!['description','version'].includes(k));
-   if(extra.length)throw fail(422,'VALIDATION_FAILED','Only the description can be edited here. Other changes need a change proposal',Object.fromEntries(extra.map(k=>[k,['Not editable here']])));
-   const text=typeof body.description==='string'?body.description.trim():'';
-   if(!text||text.length>5000)throw fail(422,'VALIDATION_FAILED','Description is required and must be 5000 characters or fewer',{description:['Description is required and must be 5000 characters or fewer']});
-   if(text===(r.description||''))throw fail(409,'NO_CHANGES','No changes made');
-   const old=r.description||'';
-   if(r.event)await db.event.update({where:{id:r.event.id},data:{description:text,version:{increment:1}}});
-   r=await db.eventRequest.update({where:{id:r.id},data:{description:text,version:{increment:1}},include:{event:true}});
-   await activity(db,r,'COORDINATOR_EDITED',actor,r.status,r.status,{changes:{description:{old,new:text}}});
+   const ROUTINE={description:5000,purpose:4000};
+   const extra=Object.keys(body).filter(k=>k!=='version'&&!(k in ROUTINE));
+   if(extra.length)throw fail(422,'VALIDATION_FAILED','Only the description and purpose can be edited here. Other changes need a change proposal',Object.fromEntries(extra.map(k=>[k,['Not editable here']])));
+   const given=Object.keys(ROUTINE).filter(k=>k in body);
+   if(!given.length)throw fail(422,'VALIDATION_FAILED','Description or purpose is required',{description:['Description is required and must be 5000 characters or fewer']});
+   const next={},changes={};
+   for(const k of given){
+    const text=typeof body[k]==='string'?body[k].trim():'';
+    const label=k==='description'?'Description':'Purpose';
+    if(!text||text.length>ROUTINE[k])throw fail(422,'VALIDATION_FAILED',`${label} is required and must be ${ROUTINE[k]} characters or fewer`,{[k]:[`${label} is required and must be ${ROUTINE[k]} characters or fewer`]});
+    if(text!==(r[k]||'')){next[k]=text;changes[k]={old:r[k]||'',new:text};}
+   }
+   if(!Object.keys(next).length)throw fail(409,'NO_CHANGES','No changes made');
+   if(r.event&&next.description)await db.event.update({where:{id:r.event.id},data:{description:next.description,version:{increment:1}}});
+   r=await db.eventRequest.update({where:{id:r.id},data:{...next,version:{increment:1}},include:{event:true}});
+   await activity(db,r,'COORDINATOR_EDITED',actor,r.status,r.status,{changes});
   }
   if(mode==='decision'){
    const action=body.action;if(!['APPROVE','RETURN','REJECT'].includes(action))throw fail(400,'BAD_REQUEST','Choose approve, return or reject');

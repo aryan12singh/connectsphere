@@ -19,6 +19,7 @@ export interface AdminUser {
   firstName: string
   lastName: string
   role: Role
+  roles?: Role[]
   company: string | null
   isActive: boolean
   createdAt: string

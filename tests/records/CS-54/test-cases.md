@@ -8,3 +8,7 @@ Index of the automated cases for this story, taken from the test names in the co
 | TC-CS54-02 | CS-54 — TC-CS54-02 the Organiser requests, the Coordinator decides | Frontend page, component or BFF (Vitest) | [CS-54.spec.ts](../../../tests/specs/CS-54.spec.ts) |
 | TC-CS54-03 | CS-54 — TC-CS54-03 Cancelled only after every release, announced once | Frontend page, component or BFF (Vitest) | [CS-54.spec.ts](../../../tests/specs/CS-54.spec.ts) |
 | TC-CS54-04 | CS-54 — TC-CS54-04 a cancelled or cancelling Event takes no more changes | Frontend page, component or BFF (Vitest) | [CS-54.spec.ts](../../../tests/specs/CS-54.spec.ts) |
+
+### Cancellation request notice (3 November)
+
+An Organiser's cancellation request notifies the current Coordinator (`CANCELLATION_REQUESTED`, AC1). The Organiser is not notified of their own request. Test: `services/notification-service/tests/unit/technical-and-change-notifications.test.js`.
