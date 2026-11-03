@@ -73,6 +73,8 @@ jobs:
         env:
           CS_COVERAGE_PROOF_DIR: ${{ runner.temp }}/coverage-gate-proof
         run: node tests/scripts/verify-coverage-gates.mjs
+      - name: Shared utility and test-script tests
+        run: node --test services/utils/*.test.js tests/scripts/traceability.test.cjs tests/scripts/record-browser-results.test.mjs
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
@@ -198,6 +200,9 @@ jobs:
         run: npm run test:contract --if-present 2>&1 | tee "$RUNNER_TEMP/http-contracts.txt"
       - name: PostgreSQL HTTP integration and source coverage
         run: npm run test:integration | tee "$RUNNER_TEMP/postgres-coverage.txt"
+      - name: Attendance PostgreSQL integration
+        if: matrix.service == 'attendance-service'
+        run: npm run test:postgres | tee "$RUNNER_TEMP/attendance-postgres.txt"
       - name: Hold expiry PostgreSQL spike
         if: matrix.service == 'booking-service'
         env:
@@ -214,6 +219,7 @@ jobs:
             services/${{ matrix.service }}/coverage/
             ${{ runner.temp }}/http-contracts.txt
             ${{ runner.temp }}/postgres-coverage.txt
+            ${{ runner.temp }}/attendance-postgres.txt
             ${{ runner.temp }}/hold-expiry.txt
             ${{ runner.temp }}/hold-expiry-results.json
 

@@ -190,14 +190,12 @@ test('TC-CS47-02 attendee and Organiser projections expose four effective venues
 
 test('TC-CS47-06 attendee projection displays only the effective replacement and unaffected confirmed venues', async () => {
   const eventId = `replacement-projection-${Date.now()}`;
-  const { excludeObsoleteBookings, getEffectiveVenues } = require('../../src/domain/venues');
-  const bookings = [
-    { venueId: 'venue-obsolete', bookingId: 'booking-old', venueName: 'Old Hall', status: 'CONFIRMED', approved: true, replacedBy: 'booking-new', startAt: '2026-11-15T10:00:00Z', endAt: '2026-11-15T12:00:00Z' },
-    { venueId: 'venue-replacement', bookingId: 'booking-new', venueName: 'Replacement Hall', status: 'CONFIRMED', approved: true, startAt: '2026-11-15T10:00:00Z', endAt: '2026-11-15T12:00:00Z' },
-    { venueId: 'venue-sibling', bookingId: 'booking-sibling', venueName: 'Unchanged Studio', status: 'CONFIRMED', approved: true, startAt: '2026-11-15T13:00:00Z', endAt: '2026-11-15T14:00:00Z' },
-    { venueId: 'venue-pending', bookingId: 'booking-pending', venueName: 'Pending Room', status: 'PENDING', approved: true },
+  // Booking's /internal/events/:id/public-venues already drops the replaced,
+  // pending and flagged bookings; Attendance stores and shows what it returns.
+  const effective = [
+    { id: 'venue-replacement', bookingId: 'booking-new', name: 'Replacement Hall', startAt: '2026-11-15T10:00:00Z', endAt: '2026-11-15T12:00:00Z' },
+    { id: 'venue-sibling', bookingId: 'booking-sibling', name: 'Unchanged Studio', startAt: '2026-11-15T13:00:00Z', endAt: '2026-11-15T14:00:00Z' },
   ];
-  const effective = getEffectiveVenues(excludeObsoleteBookings(bookings)).map((venue, index) => ({ ...venue, bookingId: index ? 'booking-sibling' : 'booking-new' }));
   await withServer(async baseUrl => {
     await storeSave({ ...confirmedEvent, id: eventId, eventId, venues: effective, primaryVenueId: 'venue-replacement', primaryVenueName: 'Replacement Hall' });
     await storeSaveRegistration({ eventId, userId: 'attendee-1', status: 'CONFIRMED', registeredAt: '2026-10-15T00:00:00Z' });
