@@ -10,3 +10,7 @@ Index of the automated cases for this story, taken from the test names in the co
 | TC-CS81-06 | TC-CS81-06 a new unassigned request notifies every active Lead with a queue link and tells the Organiser a Lead will assign | Service unit / HTTP contract | [notifications.test.js](../../../services/notification-service/tests/unit/notifications.test.js) |
 | TC-CS81-06b | TC-CS81-06b a request that already has a Coordinator sends no Lead notice, and a Lead lookup outage is retried then recorded as FAILED | Service unit / HTTP contract | [notifications.test.js](../../../services/notification-service/tests/unit/notifications.test.js) |
 | TC-CS81-06c | TC-CS81-06c delivery stores one Lead notice per Lead and a replay creates no duplicate | Service unit / HTTP contract | [notifications.test.js](../../../services/notification-service/tests/unit/notifications.test.js) |
+
+### Lead supervisory scopes (3 November)
+
+AC6: the intake notice goes to every active Lead. Per-Lead supervisory scopes are an agreed Not available for Release 1 (3 November team decision in [session3-decisions.md](../../../docs/session3-decisions.md)), so a scope-limited notice is not tested.

@@ -52,3 +52,7 @@ Deactivation is a controlled-setup command (`PATCH /internal/users/{id}/status` 
 |---|---|
 | Refused with open Events; allowed after reassignment; refused when the check fails; other staff unaffected; reactivation unchecked; internal key required and no `/admin` route | `services/auth-service/tests/deactivation-guard.test.js` |
 | Open-assignment list includes open requests, excludes rejected ones, and needs the internal key | `services/event-service/tests/integration/workflows.test.js` |
+
+### Lead supervisory scopes (3 November)
+
+TC-CS30-47 and TC-CS30-49 (two Leads with different scopes) are an agreed Not available for Release 1: supervisory scopes are not recorded (3 November team decision in [session3-decisions.md](../../../docs/session3-decisions.md)). Any Lead may assign any active Coordinator.

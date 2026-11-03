@@ -58,3 +58,7 @@ dead-letter queue and browser checks.
 ## Still open
 - Lead intake notice (CS-81): producer not built.
 - Delivery-time target (2 min): still a proposal on the card, so not a pass/fail gate.
+
+### Lead supervisory scopes (3 November)
+
+AC2: Lead notices are not limited by supervisory scope; scopes are an agreed Not available for Release 1 (3 November team decision in [session3-decisions.md](../../../docs/session3-decisions.md)).

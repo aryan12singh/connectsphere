@@ -13,7 +13,7 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-26](https://spmg8.atlassian.net/browse/CS-26) | Register Accounts and Enforce Role-and-Event Permissions | 15 | 13 | 2 | 8 | 1 | [CS-26](../tests/records/CS-26) |
 | [CS-27](https://spmg8.atlassian.net/browse/CS-27) | Validate and Resubmit Returned Event Requests | 3 | 3 | 1 | – | 1 | [CS-27](../tests/records/CS-27) |
 | [CS-29](https://spmg8.atlassian.net/browse/CS-29) | Save and Resume a Draft Event Request | 4 | 3 | 1 | – | 1 | [CS-29](../tests/records/CS-29) |
-| [CS-30](https://spmg8.atlassian.net/browse/CS-30) | Lead Assignment and Reassignment of the Event Coordinator | 11 | 11 | 3 | – | – | [CS-30](../tests/records/CS-30) |
+| [CS-30](https://spmg8.atlassian.net/browse/CS-30) | Lead Assignment and Reassignment of the Event Coordinator | 13 | 11 | 3 | – | – | [CS-30](../tests/records/CS-30) |
 | [CS-31](https://spmg8.atlassian.net/browse/CS-31) | Confirm an Event When Essential Arrangements Are Ready | 13 | 8 | 1 | 2 | – | [CS-31](../tests/records/CS-31) |
 | [CS-32](https://spmg8.atlassian.net/browse/CS-32) | Maintain Event Status and Transition Rules | 12 | 10 | 1 | 1 | – | [CS-32](../tests/records/CS-32) |
 | [CS-33](https://spmg8.atlassian.net/browse/CS-33) | Maintain Venue Catalogue and Operating Information | 16 | 16 | 1 | 1 | 1 | [CS-33](../tests/records/CS-33) |
@@ -54,7 +54,7 @@ Each story links its case specification and dated runs in `tests/records`, then 
 | [CS-94](https://spmg8.atlassian.net/browse/CS-94) | Conduct the Operational Safety Check | 22 | 16 | 1 | – | 1 | [CS-94](../tests/records/CS-94) |
 | [CS-95](https://spmg8.atlassian.net/browse/CS-95) | Rework Arrangements After Safety Changes or Rejection | 22 | 17 | 1 | – | 1 | [CS-95](../tests/records/CS-95) |
 
-Totals: 718 specified cases in `tests/records`; 590 named by at least one automated test. CI tasks (CS-15, CS-73, CS-79) are proven by the [CI workflow](../.github/workflows/event-workflows.yml) runs.
+Totals: 720 specified cases in `tests/records`; 590 named by at least one automated test. CI tasks (CS-15, CS-73, CS-79) are proven by the [CI workflow](../.github/workflows/event-workflows.yml) runs.
 
 ## Files by story
 
