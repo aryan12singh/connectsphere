@@ -136,3 +136,40 @@ export function intervalSegmentsForRange(bookings: CalendarBooking[], range: Cal
     return segments
   })
 }
+
+export type SegmentLane = { lane: number, lanes: number }
+
+export function segmentKey(segment: Pick<IntervalSegment, 'booking' | 'day'>): string {
+  return `${segment.booking.id}-${segment.day}`
+}
+
+// CS-91 AC3: blocks on the same day that overlap in time share the column side
+// by side, so an Unavailable window cannot hide the "Affected — alternative
+// required" booking underneath it. Blocks that only touch (end == start) do not overlap.
+export function segmentLanes(segments: IntervalSegment[]): Map<string, SegmentLane> {
+  const result = new Map<string, SegmentLane>()
+  const byDay = new Map<string, IntervalSegment[]>()
+  for (const segment of segments) byDay.set(segment.day, [...(byDay.get(segment.day) ?? []), segment])
+  for (const daySegments of byDay.values()) {
+    const sorted = [...daySegments].sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt) || Date.parse(b.endAt) - Date.parse(a.endAt))
+    let cluster: Array<{ segment: IntervalSegment, lane: number }> = []
+    let clusterEnd = -Infinity
+    const close = () => {
+      const lanes = cluster.reduce((max, item) => Math.max(max, item.lane + 1), 1)
+      for (const item of cluster) result.set(segmentKey(item.segment), { lane: item.lane, lanes })
+      cluster = []
+    }
+    for (const segment of sorted) {
+      const start = Date.parse(segment.startAt)
+      const end = Date.parse(segment.endAt)
+      if (cluster.length && start >= clusterEnd) { close(); clusterEnd = -Infinity }
+      const busy = new Set(cluster.filter(item => Date.parse(item.segment.endAt) > start).map(item => item.lane))
+      let lane = 0
+      while (busy.has(lane)) lane++
+      cluster.push({ segment, lane })
+      clusterEnd = Math.max(clusterEnd, end)
+    }
+    if (cluster.length) close()
+  }
+  return result
+}

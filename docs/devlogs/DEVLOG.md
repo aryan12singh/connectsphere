@@ -80,7 +80,7 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
-### 6 November 2026 — Aryan — CS-48 AC3 retest fail fixed (added to PR #38)
+### 6 November 2026 — Aryan — CS-48 AC3, CS-11 AC2 and CS-91 AC3 fixed (added to PR #38)
 
 The 5 Nov retest on a fresh main (73c4e38) passed 60 of the 65 Tester 5 and CS-51 cases (4 Not available: waiting list). CS-48 AC3 still failed: a registrant of a cancelled Event saw "Event not found".
 
@@ -88,7 +88,16 @@ The 5 Nov retest on a fresh main (73c4e38) passed 60 of the 65 Tester 5 and CS-5
 |---|---|---|
 | CS-48 AC3 | Attendance already answers 409 `EVENT_CANCELLED` (Kong log and a direct call confirmed it). The Nuxt route wraps that as `{ error: true, …, data: { error: { code } } }`. The page read `body.error ?? body.data.error`, and `error: true` is not nullish, so it never reached `data.error` and fell through to the not-found card. | `cancelledEventNotice()` in `lib/attendance-state.ts` takes the first object-valued `error` (`data.error`, then `error`) and only returns a notice for `EVENT_CANCELLED`. The page uses it. Unit tests cover the wrapped body captured in UAT, the unwrapped body, and other errors (404, 503, string flag, null). |
 
-No service or API change. Evidence: `Project Working Files/Evidence/uat-2026-11-05-retest/evidence/CS-48/AC3/`. Next: rerun UAT-CS48-AC3 on the merged build.
+No service or API change for CS-48 AC3. Evidence: `Project Working Files/Evidence/uat-2026-11-05-retest/evidence/CS-48/AC3/`.
+
+Two of Alan's fails were not covered by PR #37 and are fixed here too:
+
+| Case | Cause | Fix |
+|---|---|---|
+| CS-11 AC2 | For expected attendance 0 the number check set "Must be a positive whole number", then the submit check (`!data[f]`, and 0 is falsy) replaced it with "This field is required to submit". | The submit check uses `errors[f] ??=`, so the specific message stays. A missing value still gets the required message. Unit test in `services/event-service/tests/unit/validation.test.js`. |
+| CS-91 AC3 | Every venue calendar block was drawn full-width (`absolute inset-x-1`). An Unavailable window over the same hours covered the "Affected — alternative required" booking, so it could not be read or clicked. | `segmentLanes()` in `calendar-state.ts` gives overlapping blocks on the same day their own lane, side by side. Touching or separate blocks stay full width; setup/turnaround shading follows its booking. Tests in `tests/specs/CS-91-calendar-lanes.spec.ts`. |
+
+Checked locally with the Frontend and event-service CI job steps, and in the browser (calendar before/after on the same data). Next: rerun UAT-CS48-AC3, CS-11 AC2 and CS-91 AC3 on the merged build.
 
 ### 5 November 2026 — Aryan — Sprint 4 UAT fails fixed in one PR
 
