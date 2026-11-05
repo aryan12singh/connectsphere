@@ -238,7 +238,11 @@ test('TC-CS47-08 cancelled Event remains in the own-registration view but not th
     const own = await fetch(`${baseUrl}/registrations/${eventId}`, { headers });
     assert.equal(own.status, 200);
     assert.equal((await own.json()).status, 'CONFIRMED');
-    assert.equal((await fetch(`${baseUrl}/events/${eventId}`, { headers })).status, 404);
+    // CS-48 AC3: the registrant is told the Event was cancelled (not a generic 404).
+    const detail = await fetch(`${baseUrl}/events/${eventId}`, { headers });
+    assert.equal(detail.status, 409);
+    assert.equal((await detail.json()).error.code, 'EVENT_CANCELLED');
+    assert.equal((await fetch(`${baseUrl}/events/${eventId}`, { headers: actorHeaders('attendee-2', 'ATTENDEE') })).status, 404);
     assert.equal((await fetch(`${baseUrl}/registrations/${eventId}`, { headers: actorHeaders('attendee-2', 'ATTENDEE') })).status, 404);
   });
 });
@@ -502,4 +506,29 @@ test('TC-CS49-06 re-registration is governed by the Event Organiser setting and 
   assert.equal(rows.find(row => row.status === 'WITHDRAWN')?.withdrawnAt, withdrawn.withdrawnAt);
   assert.equal(rows.filter(row => row.status === 'CONFIRMED').length, 1);
   assert.equal(result.registration.status, 'CONFIRMED');
+});
+
+test('CS-48 AC3 a registered Attendee opening an Event that was later cancelled is told it was cancelled, not "not found"', async () => {
+  const projection = require('../../src/projection');
+  const eventClient = require('../../src/eventClient');
+  const original = { find: projection.find, planningContext: eventClient.planningContext };
+  const id = 'event-cancelled-cs48';
+  await storeSave({ ...confirmedEvent, id, eventId: id });
+  await require('../../src/store').createRegistration(id, 'attendee-cancelled');
+  // Live mode: the confirmed catalogue no longer lists it; Event reports CANCELLED.
+  projection.find = async () => null;
+  eventClient.planningContext = async eventId => ({ id: eventId, status: 'CANCELLED', title: 'Spring Gala', currentCoordinatorId: null });
+  try {
+    await withServer(async baseUrl => {
+      const registered = await fetch(`${baseUrl}/events/${id}`, { headers: actorHeaders('attendee-cancelled', 'ATTENDEE') });
+      assert.equal(registered.status, 409);
+      const body = await registered.json();
+      assert.equal(body.error.code, 'EVENT_CANCELLED');
+      assert.match(body.error.message, /cancelled/);
+      assert.equal(body.error.title, 'Spring Gala');
+      const stranger = await fetch(`${baseUrl}/events/${id}`, { headers: actorHeaders('attendee-stranger', 'ATTENDEE') });
+      assert.equal(stranger.status, 404);
+    });
+  }
+  finally { projection.find = original.find; eventClient.planningContext = original.planningContext; }
 });

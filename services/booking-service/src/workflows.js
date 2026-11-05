@@ -134,10 +134,23 @@ async function decision(req,id,body) {
       if(primary.bookingId===original.id)await store.setPrimaryVenue(current.eventId,saved,req.actor,primary,tx);
       await store.addOutbox(saved,'VenueReplacementApproved',{...noticeContext(context,venue,saved,req.actor),bookingId:saved.id,eventId:saved.eventId,venueId:saved.venueId,originalBookingId:original.id,originalVenueId:original.venueId,coordinatorId:context.currentCoordinatorId,actorId:req.actor.id,reason:body.reason.trim(),version:saved.version},tx);
     }
-    await store.addOutbox(saved,body.status==='CONFIRMED'?'VenueBookingApproved':'VenueBookingRejected',{...noticeContext(context,venue,saved,req.actor),bookingId:saved.id,eventId:saved.eventId,venueId:saved.venueId,coordinatorId:context.currentCoordinatorId,actorId:req.actor.id,reason:input.reason,version:saved.version},tx);
+    // CS-51 AC2/AC7: one approved room is not the whole Event. Count the other
+    // required rooms still waiting for a Venue Staff decision so the notice can
+    // say "… other required venue(s) are still pending." instead of sounding final.
+    const remainingRequired=body.status==='CONFIRMED'?await pendingRequiredRooms(saved,tx):undefined;
+    await store.addOutbox(saved,body.status==='CONFIRMED'?'VenueBookingApproved':'VenueBookingRejected',{...noticeContext(context,venue,saved,req.actor),bookingId:saved.id,eventId:saved.eventId,venueId:saved.venueId,coordinatorId:context.currentCoordinatorId,actorId:req.actor.id,reason:input.reason,version:saved.version,...(remainingRequired===undefined?{}:{remainingRequired})},tx);
     await recheckInTransaction(venue,req.actor,'Venue decision changed the effective commitments',tx,await store.transactionNow(tx));
     return changes.remember(req,`${id}/decision`,body,saved,tx);
   });
+}
+// Other required rooms of the same Event that are still on an active hold
+// (awaiting a decision). Superseded, cancelled, replaced, rejected and
+// expired rows no longer count as pending.
+async function pendingRequiredRooms(saved,tx) {
+  const at=await store.transactionNow(tx);
+  const rows=(await store.listBookings(tx,{eventId:saved.eventId})).filter(row=>row.eventId===saved.eventId);
+  const superseded=new Set(rows.map(row=>row.resubmittedFromId).filter(Boolean));
+  return rows.filter(row=>row.id!==saved.id && row.required && !superseded.has(row.id) && row.status==='TENTATIVELY_HELD' && effective(row,at)).length;
 }
 function extensionDeadline(current,body,occupied,at) {
   if ((current.extensionCount ?? 0)>=1) fail(409,'EXTENSION_LIMIT','This hold has already used its one extension');

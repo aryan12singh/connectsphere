@@ -41,6 +41,12 @@ async function authorizeRegistrationManagement(req, event) {
   return { allowed: organiser || coordinator, coordinator, context };
 }
 
+async function cancelledForRegistrant(eventId, userId) {
+  if (!(await store.findRegistration(eventId, userId))) return null;
+  const context = await eventClient.planningContext(eventId).catch(() => null);
+  return context?.status === 'CANCELLED' ? context : null;
+}
+
 router.get('/events', async (_req, res, next) => {
   try {
     const events = await projection.list();
@@ -52,7 +58,14 @@ router.get('/events', async (_req, res, next) => {
 router.get('/events/:id', async (req, res, next) => {
   try {
     const event = await projection.find(req.params.id);
-    if (!event) return sendError(res, 404, 'NOT_FOUND', 'Event not found.');
+    if (!event) {
+      // CS-48 AC3: the live catalogue only lists Confirmed Events. Someone who
+      // registered for an Event that was later cancelled gets the reason, not a
+      // generic "not found". Only the title and status are shared.
+      const cancelled = await cancelledForRegistrant(req.params.id, req.actor.id);
+      if (cancelled) return res.status(409).json({ error: { code: 'EVENT_CANCELLED', message: 'This Event has been cancelled. Registration is closed.', title: cancelled.title || null } });
+      return sendError(res, 404, 'NOT_FOUND', 'Event not found.');
+    }
     if (!isEventVisible(event.status)) return sendError(res, 404, 'NOT_FOUND', 'Event not found.');
     return res.json(filterAttendeeFields(await publicEventView(event)));
   }

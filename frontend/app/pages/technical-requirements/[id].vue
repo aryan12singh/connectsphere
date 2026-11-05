@@ -29,8 +29,8 @@ const eventRequestId = computed(() => String(route.params.id ?? ''))
 const snapshotVersion = computed(() => route.query.version ? Number(route.query.version) : null)
 const { user } = useUserSession()
 const canEdit = computed(() => user.value?.role === 'EVENT_COORDINATOR')
-const canReadReservations = computed(() => user.value?.role === 'TECHNICAL_SUPPORT_STAFF')
-type EquipmentReservationRecord = { id: string, eventId: string, equipmentType: string, quantity: number, active: boolean, releasedAt: string | null, releaseReason: string | null }
+const canReadReservations = computed(() => ['TECHNICAL_SUPPORT_STAFF', 'EVENT_COORDINATOR'].includes(String(user.value?.role)))
+type EquipmentReservationRecord = { id: string, eventId: string, equipmentType: string, quantity: number, startAt?: string, endAt?: string, active: boolean, releasedAt: string | null, releaseReason: string | null }
 const equipmentReservations = ref<EquipmentReservationRecord[]>([])
 if (canReadReservations.value) {
   const { data: reservationData } = await useFetch<{ reservations: EquipmentReservationRecord[] }>(
@@ -123,6 +123,18 @@ function removeRow(index: number) {
 
 function validate() {
   fieldError.value = ''
+  // CS-40 AC2: a line with an equipment type (or any quantity typed in) is a
+  // requested line, so quantity 0 or a fraction is reported as such instead of
+  // being silently dropped. A blank line, or a 0 line left over after ticking
+  // "not required" (TC-CS40-06), is ignored.
+  const entered = rows.value.filter(row => Number(row.quantity) !== 0 || (row.equipmentType && !notRequired.value))
+  for (const row of entered) {
+    const quantity = Number(row.quantity)
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      fieldError.value = 'Equipment quantities must be whole numbers of at least 1.'
+      return false
+    }
+  }
   const selected = rows.value.filter(row => Number(row.quantity) > 0)
   for (const row of selected) {
     const quantity = Number(row.quantity)
@@ -253,6 +265,7 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
           <li v-for="reservation in equipmentReservations" :key="reservation.id" class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border px-4 py-3">
             <div>
               <p class="font-medium">{{ reservation.equipmentType }} · {{ reservation.quantity }}</p>
+              <p v-if="reservation.startAt && reservation.endAt" class="mt-1 text-sm text-muted-foreground">Period: {{ formatDateTime(reservation.startAt) }} – {{ formatDateTime(reservation.endAt) }}</p>
               <p v-if="reservation.releasedAt" class="mt-1 text-sm text-muted-foreground">{{ reservation.releaseReason || 'Released' }} · {{ formatDateTime(reservation.releasedAt) }}</p>
             </div>
             <Badge v-if="reservation.active" class="bg-success-soft text-success">Reserved</Badge>

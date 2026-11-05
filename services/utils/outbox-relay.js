@@ -2,8 +2,14 @@ const {createTransport}=require('./domain-bus');
 function retryDelaySeconds(attempts){return Math.min(60,2**Math.min((attempts||0)+1,6));}
 // Each worker locks only rows in its service-owned database. A crash after the
 // broker confirms but before commit replays the SAME ID; the inbox deduplicates it.
+// The equipment outbox also stores audit-only intents (for example "not
+// required" declarations), so it relays only the types that have a notice.
+// CS-51 AC3/AC4: technical requests, decisions, reservations and equipment
+// flags must reach the bell, not just cancellation releases.
+const EQUIPMENT_RELAYED=['EquipmentReleased','TechRequestSubmitted','TechRequestDecided','EquipmentReserved','EquipmentUnavailable'];
+const OUTBOX_SCHEMAS={booking:{table:'booking_outbox',sent:'deliveredAt'},event:{table:'outbox',sent:'publishedAt'},attendance:{table:'attendance_outbox',sent:'deliveredAt'},equipment:{table:'outbox_events',sent:'publishedAt',filter:`AND "eventType" IN (${EQUIPMENT_RELAYED.map(type=>`'${type}'`).join(',')})`}};
 function startOutboxRelay({prisma,connect,config,source,project,log=console.error}){
- const schema={booking:{table:'booking_outbox',sent:'deliveredAt'},event:{table:'outbox',sent:'publishedAt'},attendance:{table:'attendance_outbox',sent:'deliveredAt'},equipment:{table:'outbox_events',sent:'publishedAt',filter:`AND "eventType" = 'EquipmentReleased'`}}[source];
+ const schema=OUTBOX_SCHEMAS[source];
  if(!schema)throw Error('Unknown outbox source');
  const bus=createTransport({connect,config,log});let stopped=false,timer,running;
  async function batch(){
@@ -33,4 +39,4 @@ function startOutboxRelay({prisma,connect,config,source,project,log=console.erro
  running=tick();
  return {stop:async()=>{stopped=true;clearTimeout(timer);await running;await bus.stop();},connected:bus.connected};
 }
-module.exports={startOutboxRelay,retryDelaySeconds};
+module.exports={startOutboxRelay,retryDelaySeconds,OUTBOX_SCHEMAS,EQUIPMENT_RELAYED};

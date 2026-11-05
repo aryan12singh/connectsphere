@@ -101,7 +101,8 @@ describe('CS-42 — confirmed reservation UI', () => {
       await flushPromises()
       expect(wrapper.findAll('button').some(button => button.text() === 'Reserved')).toBe(false)
       expect(wrapper.text()).not.toContain('Complete current equipment reservation saved.')
-      expect(wrapper.text()).toContain('Equipment is unavailable')
+      // CS-42 AC2: the user sees the plain outcome, never the raw service error.
+      expect(wrapper.text()).toContain('Unable to reserve all requested equipment.')
     }
     finally { wrapper.unmount() }
   })

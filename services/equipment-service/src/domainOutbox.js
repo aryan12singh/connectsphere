@@ -36,4 +36,4 @@ function start({ env = process.env, relay = startOutboxRelay, prisma } = {}) {
   });
 }
 
-module.exports = { project, start };
+module.exports = { project, start, NOTIFIED };

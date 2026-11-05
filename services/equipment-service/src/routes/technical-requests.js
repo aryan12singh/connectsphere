@@ -120,10 +120,13 @@ router.get('/event-requests/:eventRequestId/technical-request/history', async (r
   catch (error) { return next(error); }
 });
 
-router.get('/event-requests/:eventRequestId/equipment-reservations', requireRole('TECHNICAL_SUPPORT_STAFF'), async (req, res, next) => {
+// CS-42 AC3: Technical Support and the Event's current Coordinator can read
+// the reservation record (type, quantity, period, status).
+router.get('/event-requests/:eventRequestId/equipment-reservations', requireRole('TECHNICAL_SUPPORT_STAFF', 'EVENT_COORDINATOR'), async (req, res, next) => {
   try {
     const request = await store.findRequest(req.params.eventRequestId);
     if (!request) return sendError(res, 404, 'NOT_FOUND', 'Technical request not found.');
+    if (req.actor.role === 'EVENT_COORDINATOR' && !(await isCurrentCoordinator(req, request.eventRequestId))) return sendError(res, 403, 'FORBIDDEN', 'Only the currently assigned Coordinator may view this reservation history.');
     return res.json({ reservations: await operations.reservationsForRequest(req.params.eventRequestId) });
   }
   catch (error) { return next(error); }

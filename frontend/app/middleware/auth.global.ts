@@ -18,6 +18,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
   const { can } = usePermissions()
   if (to.meta?.permission && !can(to.meta.permission)) return navigateTo('/access-denied')
+  // CS-26 AC4: a user with several roles acts as their current Active role.
+  // Only someone acting as an Organiser may open the Organiser request form.
+  if (to.path === '/requests/new' && user.value?.role !== 'EVENT_ORGANISER') return navigateTo('/access-denied')
   if (to.path.startsWith('/requests/') || to.path.startsWith('/events/')) {
     if (!roles.some(role => role === 'EVENT_ORGANISER' || role === 'EVENT_COORDINATOR')) return navigateTo('/access-denied')
   }

@@ -24,6 +24,14 @@ const { data: event, error, refresh } = await useFetch<{
   organiserId: string | null, createdAt: string, updatedAt: string
 }>(`/api/attendances/events/${encodeURIComponent(eventId)}`)
 
+// CS-48 AC3: Attendance answers 409 EVENT_CANCELLED to someone registered for
+// an Event that was later cancelled, so the page can give that reason.
+const cancelledNotice = computed(() => {
+  const body = (error.value as { data?: any } | null)?.data
+  const detail = body?.error ?? body?.data?.error
+  return detail?.code === 'EVENT_CANCELLED' ? { message: String(detail.message || 'This Event has been cancelled. Registration is closed.'), title: detail.title ? String(detail.title) : '' } : null
+})
+
 const canViewEventRequest = computed(() => ['EVENT_COORDINATOR', 'EVENT_ORGANISER'].includes(user.value?.role ?? ''))
 const { data: eventHistory } = await useFetch<{ entity?: { eventRequestId?: string | null } }>(
   `/api/event-history/${encodeURIComponent(eventId)}`,
@@ -118,7 +126,17 @@ function formatStatus(status: string) {
       <ArrowLeftIcon :size="16" aria-hidden="true" />{{ eventRequestHref ? 'Back to event request' : 'Back to your events' }}
     </NuxtLink>
 
-    <Card v-if="error" class="mt-8 max-w-2xl" aria-labelledby="event-unavailable-heading">
+    <Card v-if="cancelledNotice" class="mt-8 max-w-2xl" aria-labelledby="event-cancelled-heading">
+      <CardHeader>
+        <CardTitle id="event-cancelled-heading" class="text-2xl">{{ cancelledNotice.title || 'Event cancelled' }}</CardTitle>
+      </CardHeader>
+      <CardContent class="grid gap-2">
+        <Badge class="w-fit border-transparent bg-muted text-muted-foreground">Cancelled</Badge>
+        <p role="status" class="text-sm leading-6 text-muted-foreground">{{ cancelledNotice.message }}</p>
+      </CardContent>
+    </Card>
+
+    <Card v-else-if="error" class="mt-8 max-w-2xl" aria-labelledby="event-unavailable-heading">
       <CardHeader>
         <CardTitle id="event-unavailable-heading" class="text-2xl">Event not found</CardTitle>
       </CardHeader>

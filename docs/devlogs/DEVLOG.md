@@ -80,6 +80,49 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 5 November 2026 — Aryan — Sprint 4 UAT fails fixed in one PR
+
+One branch fixes the UAT fails raised by Aryan, Javier, Alan and Marcus, and includes Marc's checklist refresh fix (entry below). Evidence for the original fails is in the UAT evidence folders (`evidence/CS-xx/ACx/`).
+
+| Case | Cause | Fix |
+|---|---|---|
+| CS-51 AC3, AC4 | `services/utils/outbox-relay.js` relayed only `EquipmentReleased` from the equipment outbox, so technical request, decision, reservation and equipment-flag notices were stored but never sent. | The equipment relay sends the notified types (`EQUIPMENT_RELAYED`). Audit-only rows such as "not required" declarations stay unsent. |
+| CS-51 AC2, AC7 | The notice template adds "… other required venue(s) are still pending." only when the message has `remainingRequired`, and no service set it. | Booking approval counts the Event's other required rooms still on an active hold and sends `remainingRequired`. |
+| CS-40 AC2 | Lines with quantity 0 were dropped before validation, so the form showed the generic "Specify equipment…" message. | Any line with a type or quantity entered is checked: "Equipment quantities must be whole numbers of at least 1." |
+| CS-42 AC2 | A shortfall showed the raw `[POST] … 409` text. | "Unable to reserve all requested equipment." plus each short line. |
+| CS-42 AC3 | Reservation history was Technical-Support-only and had no period. | The current Coordinator can read it (checked in equipment-service), and each row shows its period. |
+| CS-48 AC1 | The browser's `min="1"` check fired before the app's. | `novalidate` on the limit form, so the app shows "Enter a positive whole number." |
+| CS-48 AC3 | Live mode lists only Confirmed Events, so a registrant saw "Event not found" for a cancelled Event. | Attendance answers a registrant with 409 `EVENT_CANCELLED` (title and status only). The page shows "This Event has been cancelled. Registration is closed." TC-CS47-08 was updated: it had pinned the old 404. |
+| CS-33 AC2 | Per-day `operatingHours.N.time` errors were listed once per operating day. | They collapse to one inline hours error, and the banner de-duplicates messages. |
+| CS-33 AC4, CS-84 AC5 | Venue history showed only time, actor and reason. | `lib/venue-history.ts` lists the changed fields from `changes.before/after`, e.g. "Capacity: 40 → 50", "Setup: 0 min → 30 min". |
+| CS-36 AC5 | "Find alternatives" sent `includeSource=true`, so the original venue stayed in the results. | Alternatives and replacements always exclude the original venue. Only resubmitting an expired hold searches it again. |
+| CS-31 AC2 | "Add another venue" opened the form below the Safety preparation card, out of view. | The form scrolls into view and focuses its first field when it opens. |
+| CS-26 AC4 | The `/requests/new` guard checked all of a user's roles, not the Active role. | The route and the BFF create endpoint require the Active role to be Organiser. |
+| Event page TypeError | See Marc's entry below. | Marc's `EventReadinessDashboard.vue`. |
+
+**Not changed:**
+- CS-41 AC5 and CS-85 AC5, where the equipment period includes setup and turnaround. The team's clarification is that the equipment booking does take the venue buffer into account, so the current behaviour is kept. The UAT guide's expected result should be updated to match.
+
+**Tests added:**
+- `services/utils/outbox-relay.test.js`: every notified technical type is relayed.
+- `services/booking-service/tests/unit/approvalPending.test.js`: 1 room pending after the first of two approvals, 0 after the last, and no count on a rejection.
+- `services/attendance-service/tests/integration/http.test.js`: a cancelled Event gives its reason to the registrant and a 404 to others.
+- `tests/specs/venue-history.spec.ts`: capacity and buffer before → after.
+
+**Next:**
+- Retest the listed UAT cases on a fresh stack.
+- Fresh stacks will now also notify Technical Support about the two seeded technical requests, because their outbox rows are sent at last.
+
+### 5 November 2026 — Marc — Event page checklist refresh fix (UAT)
+
+Found in UAT: after a venue action on the Event page, `npm run dev` showed `TypeError: dashboard.value?.refresh is not a function`, and the Arrangements checklist stayed stale until a manual reload.
+- **Cause:** `EventReadinessDashboard.vue` is an async `<script setup>` (it `await`s `useFetch`) and called `defineExpose({ refresh })` after those awaits. Vue only puts what is exposed before the first await on the parent's template ref, so `pages/events/[id].vue` never saw `refresh`.
+- **Fix:** `defineExpose({ refresh })` now sits before the first await, with a comment explaining why. `refresh()` is a hoisted function and only runs after setup has finished. No other component exposes after an await.
+- **Verified:**
+  - A minimal Vue 3.5 reproduction confirms that `refresh` is missing when exposed after an await and present when exposed before it.
+  - The compiled component now calls `__expose` before its first `withAsyncContext`.
+- Retest UAT-CS31/CS43 on the Event page: request a venue and check the checklist updates without a reload.
+
 ### 2 November 2026 — Aryan — CI stability, CS-88 whole-Event cancellation
 
 **CS-90 duplicate expiry history.** `CS-90.spec.ts` intermittently counted 11
