@@ -6,6 +6,8 @@ export default defineVitestConfig({
   test: {
     environment: 'nuxt',
     include: ['tests/specs/**/*.{test,spec}.{ts,js}'],
+    // Literal fixture dates must not go stale: start each run on a fixed calendar.
+    setupFiles: ['tests/helpers/test-clock.setup.ts'],
     coverage: {
       provider: 'v8',
       include: ['frontend/app/**/*.{ts,vue}', 'frontend/server/**/*.{ts,js}', 'frontend/lib/**/*.ts'],

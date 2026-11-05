@@ -113,6 +113,26 @@ One branch fixes the UAT fails raised by Aryan, Javier, Alan and Marcus, and inc
 - Retest the listed UAT cases on a fresh stack.
 - Fresh stacks will now also notify Technical Support about the two seeded technical requests, because their outbox rows are sent at last.
 
+**CI follow-up and test-reliability audit (same PR).**
+
+*PR CI failure:* TC-CS41-11 failed on desktop and mobile because it asserted the raw `[POST]` alert. That raw text is exactly what CS-42 AC2 removes, so this was a stale assertion, not a flake. It now expects "Unable to reserve all requested equipment." and that no `[POST]` text is shown. Every other browser test passed on its first try (retries are 0, and no test was flaky).
+
+*Why main went red after green PRs:*
+- **95dee66 (#35)** failed on `socket hang up` in CS-90: an idle kept-alive socket was reused after the server closed it. #36 fixed writes only. About 120 direct `context.get(...)` reads were still exposed, so `session()` contexts now resend a read once on a dropped connection. Writes still go through `mutation()` with the same idempotency key. Error responses and refused connections are never retried.
+- **Cancelled main runs.** `cancel-in-progress` also applied to pushes to main, so a later merge could cancel the earlier commit's run (5ae521f was cancelled) and hide its failure. Main runs are no longer cancelled; PR runs still are.
+- **Older failures** (773938c, 4572069, 3ec1f0c, 3797bca) came from the pre-#34 single E2E job.
+- **Unchanged:** branch protection was already correct (up to date with main, "Required checks" gate, admins included).
+
+*Calendar date bomb:* many unit and component tests use literal future dates (Events on 21 Dec 2026, requests on 20 Nov 2026). With the clock set to 15 Jan 2027 and no code change, 15 service unit tests and 79 frontend spec tests failed. Fixes:
+- `tests/helpers/test-clock.cjs` pins the calendar for in-memory service unit tests and vitest. It does nothing until the real date passes 12 Nov 2026, then starts each process at that instant and lets it tick. With the clock at 15 Jan 2027, all service unit suites pass and vitest matches main exactly.
+- The PostgreSQL integration runner does not load the pin, because the database keeps real time. The one PG suite with near-term dates (booking `postgres.test.js`) moved to 2037, which has the same calendar as 2026. Its results on a local PostgreSQL 16 were identical before and after.
+- The browser suite already uses 2028+ or relative dates.
+- `services/utils/test-clock.test.js` proves the pin's behaviour.
+- A weekly scheduled CI run on main (Sunday 18:00 UTC) catches anything calendar- or environment-dependent within a week, instead of on someone's PR.
+
+*Left for the team:*
+- Branch protection allows force pushes to main. Turning that off is a repository setting, not code.
+
 ### 5 November 2026 — Marc — Event page checklist refresh fix (UAT)
 
 Found in UAT: after a venue action on the Event page, `npm run dev` showed `TypeError: dashboard.value?.refresh is not a function`, and the Arrangements checklist stayed stale until a manual reload.

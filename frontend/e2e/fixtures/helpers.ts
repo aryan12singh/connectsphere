@@ -70,7 +70,30 @@ export async function session(request: APIRequest, email = emails.owner) {
     .map(header => header.value.split(';')[0]).join('; ')
   expect(cookie).not.toBe('')
   await context.dispose()
-  return request.newContext({ baseURL, extraHTTPHeaders: { cookie, origin: new URL(baseURL).origin } })
+  return resendReadsOnDrop(await request.newContext({ baseURL, extraHTTPHeaders: { cookie, origin: new URL(baseURL).origin } }))
+}
+
+// Main run 41640060819 failed on "socket hang up" before any assertion: the
+// server had closed an idle kept-alive socket the client then reused. Writes go
+// through mutation() (same idempotency key). Reads change nothing, so a read
+// that loses its connection is simply sent again once. HTTP error responses and
+// refused connections (a deliberately stopped service) are never retried.
+export function resendReadsOnDrop(context: APIRequestContext): APIRequestContext {
+  const get = context.get.bind(context)
+  const fetch = context.fetch.bind(context)
+  const once = async <T>(send: () => Promise<T>) => {
+    try { return await send() }
+    catch (error) {
+      if (!connectionDropped.test(String((error as Error)?.message))) throw error
+      return send()
+    }
+  }
+  context.get = ((url: string, options?: any) => once(() => get(url, options))) as APIRequestContext['get']
+  context.fetch = ((url: any, options?: any) => {
+    const method = String(options?.method ?? (typeof url === 'string' ? 'GET' : url.method?.() ?? 'GET')).toUpperCase()
+    return method === 'GET' || method === 'HEAD' ? once(() => fetch(url, options)) : fetch(url, options)
+  }) as APIRequestContext['fetch']
+  return context
 }
 
 export const test = baseTest.extend<{ owner: APIRequestContext }>({

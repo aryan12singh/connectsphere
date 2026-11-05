@@ -96,7 +96,9 @@ test('TC-CS41-11: Support availability UI shows dated line results and survives 
   const reserveResponse = page.waitForResponse(response => response.url().includes(`/api/equipment/requests/${event.id}/reserve`) && response.request().method() === 'POST')
   await reserveButton.click()
   expect((await reserveResponse).status()).toBe(409)
-  await expect(page.getByRole('alert').filter({ hasText: '[POST]' })).toBeVisible()
+  // CS-42 AC2: the shortfall is explained in plain words, never as the raw API error.
+  await expect(page.getByRole('alert').filter({ hasText: 'Unable to reserve all requested equipment.' })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: '[POST]' })).toHaveCount(0)
   await page.reload()
   await page.getByRole('button', { name: new RegExp(`Event request ${event.id}`) }).click()
   await expect(page.getByRole('table', { name: 'Equipment availability' })).toContainText('Projector')
