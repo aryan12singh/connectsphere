@@ -80,6 +80,16 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 6 November 2026 — Aryan — CS-48 AC3 retest fail fixed (added to PR #38)
+
+The 5 Nov retest on a fresh main (73c4e38) passed 60 of the 65 Tester 5 and CS-51 cases (4 Not available: waiting list). CS-48 AC3 still failed: a registrant of a cancelled Event saw "Event not found".
+
+| Case | Cause | Fix |
+|---|---|---|
+| CS-48 AC3 | Attendance already answers 409 `EVENT_CANCELLED` (Kong log and a direct call confirmed it). The Nuxt route wraps that as `{ error: true, …, data: { error: { code } } }`. The page read `body.error ?? body.data.error`, and `error: true` is not nullish, so it never reached `data.error` and fell through to the not-found card. | `cancelledEventNotice()` in `lib/attendance-state.ts` takes the first object-valued `error` (`data.error`, then `error`) and only returns a notice for `EVENT_CANCELLED`. The page uses it. Unit tests cover the wrapped body captured in UAT, the unwrapped body, and other errors (404, 503, string flag, null). |
+
+No service or API change. Evidence: `Project Working Files/Evidence/uat-2026-11-05-retest/evidence/CS-48/AC3/`. Next: rerun UAT-CS48-AC3 on the merged build.
+
 ### 5 November 2026 — Aryan — Sprint 4 UAT fails fixed in one PR
 
 One branch fixes the UAT fails raised by Aryan, Javier, Alan and Marcus, and includes Marc's checklist refresh fix (entry below). Evidence for the original fails is in the UAT evidence folders (`evidence/CS-xx/ACx/`).

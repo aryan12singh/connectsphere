@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useUserSession } from '#imports'
-import { canReregister, currentRegistration } from '~~/lib/attendance-state'
+import { cancelledEventNotice, canReregister, currentRegistration } from '~~/lib/attendance-state'
 
 const route = useRoute()
 const eventId = String(route.params.id ?? '')
@@ -26,11 +26,7 @@ const { data: event, error, refresh } = await useFetch<{
 
 // CS-48 AC3: Attendance answers 409 EVENT_CANCELLED to someone registered for
 // an Event that was later cancelled, so the page can give that reason.
-const cancelledNotice = computed(() => {
-  const body = (error.value as { data?: any } | null)?.data
-  const detail = body?.error ?? body?.data?.error
-  return detail?.code === 'EVENT_CANCELLED' ? { message: String(detail.message || 'This Event has been cancelled. Registration is closed.'), title: detail.title ? String(detail.title) : '' } : null
-})
+const cancelledNotice = computed(() => cancelledEventNotice((error.value as { data?: unknown } | null)?.data))
 
 const canViewEventRequest = computed(() => ['EVENT_COORDINATOR', 'EVENT_ORGANISER'].includes(user.value?.role ?? ''))
 const { data: eventHistory } = await useFetch<{ entity?: { eventRequestId?: string | null } }>(
