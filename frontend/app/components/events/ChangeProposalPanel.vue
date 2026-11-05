@@ -26,7 +26,7 @@ onMounted(load)
 function fieldsFromForm() {
   const out: Record<string, unknown> = {}
   for (const k of ['eventName', 'description', 'proposedDate', 'startTime', 'endTime', 'venueType'] as const) if (form[k].trim()) out[k] = form[k].trim()
-  for (const k of ['expectedAttendance', 'minimumCapacity'] as const) if (form[k].trim()) out[k] = Number(form[k])
+     for (const k of ['expectedAttendance', 'minimumCapacity'] as const) if (String(form[k] ?? '').trim()) out[k] = Number(form[k])
   return out
 }
 const hasFields = computed(() => Object.keys(fieldsFromForm()).length > 0)

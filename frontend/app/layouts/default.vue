@@ -57,7 +57,7 @@ watch(isDark, (dark) => {
           <NuxtLink v-if="can('assignments.view')" to="/queue" class="text-muted-foreground">Unassigned queue</NuxtLink>
           <NuxtLink v-if="!isTechnicalStaff && can('safety.view')" to="/safety-checks" class="text-muted-foreground">Safety checks</NuxtLink>
           <NuxtLink v-if="can('technical.review')" to="/technical-requirements" class="text-muted-foreground">Technical Review</NuxtLink>
-          <NuxtLink v-if="!isTechnicalStaff && (can('venue_bookings.decide') || can('technical.review'))" to="/technical-requirements/preparation" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">Preparation</NuxtLink>
+          <NuxtLink v-if="can('venue_bookings.decide') || can('technical.review')" to="/technical-requirements/preparation" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">Preparation</NuxtLink>
           <NuxtLink v-if="!isTechnicalStaff" :to="roleHome(user?.role ?? '')" class="text-muted-foreground">Home</NuxtLink>
           <NuxtLink
             v-if="isEventRole && can('events.view')"

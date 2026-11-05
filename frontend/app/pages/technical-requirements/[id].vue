@@ -60,6 +60,14 @@ const displayed = computed(() => selectedSnapshot.value?.snapshot ?? existing.va
 const isHistoricalSnapshot = computed(() => selectedSnapshot.value !== null)
 const requestNotFound = computed(() => Number((requestError.value as { statusCode?: number, status?: number } | null)?.statusCode ?? (requestError.value as { status?: number } | null)?.status) === 404)
 const requestUnavailable = computed(() => Boolean(requestError.value && !requestNotFound.value))
+// CS-95: a 404 only means "start a new request" for the Coordinator. Other roles (Technical Support, Safety)
+// cannot create one, and the Coordinator gets EVENT_NOT_FOUND for an unknown ID, so both see a not-found
+// message instead of an empty form.
+const requestErrorCode = computed(() => {
+  const body = (requestError.value as { data?: { error?: { code?: string }, data?: { error?: { code?: string } } } } | null)?.data
+  return body?.data?.error?.code ?? body?.error?.code
+})
+const requestMissingForViewer = computed(() => requestNotFound.value && (!canEdit.value || requestErrorCode.value === 'EVENT_NOT_FOUND'))
 const types = computed(() => typesData.value?.equipmentTypes ?? [])
 
 type Venue = { id: string, name: string }
@@ -220,7 +228,8 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
   <main class="mx-auto flex w-full max-w-4xl flex-col gap-8 px-5 py-8 md:px-8">
     <div class="flex flex-col gap-2">
       <Button as-child variant="ghost" size="sm" class="w-fit px-0">
-        <NuxtLink :to="`/requests/${eventRequestId}`">← Back to event request</NuxtLink>
+        <NuxtLink v-if="requestMissingForViewer" :to="canEdit ? '/' : '/technical-requirements'">{{ canEdit ? '← Back to Events' : '← Back to Technical Review' }}</NuxtLink>
+        <NuxtLink v-else :to="`/requests/${eventRequestId}`">← Back to event request</NuxtLink>
       </Button>
       <div class="flex flex-col gap-1">
         <h1 class="text-3xl font-semibold">{{ isHistoricalSnapshot ? `Technical requirements · Version ${selectedSnapshot?.version}` : 'Technical requirements' }}</h1>
@@ -229,7 +238,8 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
     <p v-if="venuesError" class="text-xs text-destructive">Venues could not be loaded.</p>
     </div>
 
-    <p v-if="requestUnavailable" role="alert" class="text-destructive">Could not load technical requirements. Check access or try again.</p>
+    <p v-if="requestMissingForViewer" role="alert" class="text-destructive">{{ canEdit ? 'Event not found. Check the link or open the Event from Events.' : 'Technical request not found. Check the link or open it from Technical Review.' }}</p>
+    <p v-else-if="requestUnavailable" role="alert" class="text-destructive">Could not load technical requirements. Check access or try again.</p>
     <p v-else-if="typesError" role="alert" class="text-destructive">Equipment types are unavailable right now.</p>
 
     <Card v-if="historyVersions.length">
@@ -275,7 +285,7 @@ useHead({ title: 'Technical requirements | ConnectSphere' })
       </CardContent>
     </Card>
 
-    <form v-if="!requestUnavailable && !typesError" class="flex flex-col gap-6" @submit.prevent="submit">
+    <form v-if="!requestUnavailable && !requestMissingForViewer && !typesError" class="flex flex-col gap-6" @submit.prevent="submit">
       <fieldset :disabled="!pageReady || readOnly" aria-label="Technical requirements" class="m-0 flex min-w-0 flex-col gap-6 border-0 p-0">
       <Card>
         <CardHeader>

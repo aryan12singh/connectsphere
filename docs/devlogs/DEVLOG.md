@@ -80,6 +80,40 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
+### 6 November 2026 — Aryan — CS-48 AC3, CS-11 AC2, CS-91 AC3, the Event page Safety panel and two CS-95 Technical Support gaps fixed (added to PR #38)
+
+The 5 Nov retest on a fresh main (73c4e38) passed 60 of the 65 Tester 5 and CS-51 cases (4 Not available: waiting list). CS-48 AC3 still failed: a registrant of a cancelled Event saw "Event not found".
+
+| Case | Cause | Fix |
+|---|---|---|
+| CS-48 AC3 | Attendance already answers 409 `EVENT_CANCELLED` (Kong log and a direct call confirmed it). The Nuxt route wraps that as `{ error: true, …, data: { error: { code } } }`. The page read `body.error ?? body.data.error`, and `error: true` is not nullish, so it never reached `data.error` and fell through to the not-found card. | `cancelledEventNotice()` in `lib/attendance-state.ts` takes the first object-valued `error` (`data.error`, then `error`) and only returns a notice for `EVENT_CANCELLED`. The page uses it. Unit tests cover the wrapped body captured in UAT, the unwrapped body, and other errors (404, 503, string flag, null). |
+
+No service or API change for CS-48 AC3. Evidence: `Project Working Files/Evidence/uat-2026-11-05-retest/evidence/CS-48/AC3/`.
+
+Two of Alan's fails were not covered by PR #37 and are fixed here too:
+
+| Case | Cause | Fix |
+|---|---|---|
+| CS-11 AC2 | For expected attendance 0 the number check set "Must be a positive whole number", then the submit check (`!data[f]`, and 0 is falsy) replaced it with "This field is required to submit". | The submit check uses `errors[f] ??=`, so the specific message stays. A missing value still gets the required message. Unit test in `services/event-service/tests/unit/validation.test.js`. |
+| CS-91 AC3 | Every venue calendar block was drawn full-width (`absolute inset-x-1`). An Unavailable window over the same hours covered the "Affected — alternative required" booking, so it could not be read or clicked. | `segmentLanes()` in `calendar-state.ts` gives overlapping blocks on the same day their own lane, side by side. Touching or separate blocks stay full width; setup/turnaround shading follows its booking. Tests in `tests/specs/CS-91-calendar-lanes.spec.ts`. |
+
+The second half of Javier's Event page item is fixed too:
+
+| Case | Cause | Fix |
+|---|---|---|
+| Event page Safety panel (Javier) | The Safety preparation panel (`SafetyWorkspace`) loads its own Safety view. After a venue action, `EventVenueArrangements` re-fetched only its booking summary, so the panel showed "no venue booking" until a reload. The TypeError half was fixed in PR #37. | After each venue action `EventVenueArrangements` re-fetches its Safety data and bumps a `revision` prop; `SafetyWorkspace` reloads when it changes. Its own Safety actions still reload it once, not twice. Test: `tests/specs/CS-93-safety-panel-refresh.spec.ts` (fails on the old component). |
+
+Two CS-95 gaps for Technical Support (Hafiz) found during UAT:
+
+| Case | Cause | Fix |
+|---|---|---|
+| CS-95 AC6: no menu link to Staff preparation | The route guard lets `technical.review` into `/technical-requirements/preparation`, but the top menu link had an extra `!isTechnicalStaff` condition, so Technical Support could only reach it by typing the address. | The link shows for anyone the page allows (`venue_bookings.decide` or `technical.review`). |
+| Unknown technical request address | `/technical-requirements/<anything>` (e.g. `/preparations`) treated the text as a request ID. The 404 meant "no request yet", so every role got an empty form. | Technical Support and Safety (who cannot create requests) now see "Technical request not found." with a link back to Technical Review. For the Coordinator, the BFF checks that the Event exists on a 404 and returns `EVENT_NOT_FOUND` if not, so a made-up ID shows "Event not found."; a real Event with no request still opens the empty form to create one. |
+
+Tests: `tests/specs/CS-95-technical-support-preparation.spec.ts` (the menu and not-found cases fail on the old code). Browser check on the UAT data as Hafiz and Aisha: menu link, `/preparations`, a made-up ID, a real request, and a real Event with no request.
+
+Checked locally with the Frontend and event-service CI job steps, and in the browser (calendar before/after on the same data; Safety panel updates after a venue request without a reload). Next: rerun UAT-CS48-AC3, CS-11 AC2, CS-91 AC3, the Event page check and CS-95 AC6 on the merged build.
+
 ### 5 November 2026 — Aryan — Sprint 4 UAT fails fixed in one PR
 
 One branch fixes the UAT fails raised by Aryan, Javier, Alan and Marcus, and includes Marc's checklist refresh fix (entry below). Evidence for the original fails is in the UAT evidence folders (`evidence/CS-xx/ACx/`).

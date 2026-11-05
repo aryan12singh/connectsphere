@@ -63,7 +63,8 @@ function normalise(input,previous={},complete=false){
  if(data.registrationOpensAt&&data.registrationClosesAt&&new Date(data.registrationClosesAt)<=new Date(data.registrationOpensAt))errors.registrationClosesAt=['Registration closing must be after opening'];
  if(!data.registrationEnabled){data.registrationOpensAt=null;data.registrationClosesAt=null;}
  if(complete){
-  for(const f of ['eventName','purpose','timeZone','venueType','expectedAttendance'])if(!data[f])errors[f]=['This field is required to submit'];
+  // CS-11 AC2: keep a specific error (e.g. attendance 0 → 'Must be a positive whole number') instead of replacing it.
+  for(const f of ['eventName','purpose','timeZone','venueType','expectedAttendance'])if(!data[f])errors[f]??=['This field is required to submit'];
   if(!data.startAt){errors.startAt??=['Start date and time are required'];if(!data.proposedDate)errors.proposedDate=['Date is required'];if(!data.startTime)errors.startTime=['Start time is required'];}
   if(!data.endAt){errors.endAt??=['End date and time are required'];if(!data.endTime)errors.endTime=['End time is required'];}
   if(data.preferredLayout?.toUpperCase()==='OTHER'&&!data.venueRequirements)errors.venueRequirements=['Describe the other layout needed'];

@@ -25,3 +25,10 @@ test('CS29/11: adding a zone to an instant-only incomplete draft preserves its o
  const submitted=normalise(form,zoned,true);
  assert.equal(submitted.startAt.toISOString(),draft.startAt.toISOString());assert.equal(submitted.endAt.toISOString(),draft.endAt.toISOString());
 });
+test('CS-11 AC2: attendance 0 on submit reports the positive whole number rule, not a missing field',()=>{
+ const fields=body=>{try{normalise(body,{},true);}catch(e){return e.details?.fields??e.fields;}assert.fail('expected validation failure');};
+ assert.deepEqual(fields({...valid,expectedAttendance:0}).expectedAttendance,['Must be a positive whole number']);
+ assert.deepEqual(fields({...valid,expectedAttendance:-3}).expectedAttendance,['Must be a positive whole number']);
+ assert.deepEqual(fields({...valid,expectedAttendance:null}).expectedAttendance,['This field is required to submit']);
+ const {expectedAttendance,...missing}=valid;assert.deepEqual(fields(missing).expectedAttendance,['This field is required to submit']);
+});
