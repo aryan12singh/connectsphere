@@ -16,9 +16,11 @@ test('TC-CS41-11: Support availability UI shows dated line results and survives 
   const primaryNavigation = page.getByRole('navigation', { name: 'Primary' })
   const primaryLinks = primaryNavigation.getByRole('link')
   if (await page.evaluate(() => window.innerWidth >= 1024)) {
-    await expect(primaryLinks).toHaveCount(2)
+    // CS-95: Technical Support also records Staff preparation, so Preparation is in their menu.
+    await expect(primaryLinks).toHaveCount(3)
     await expect(primaryLinks.nth(0)).toHaveAccessibleName('Technical Review')
-    await expect(primaryLinks.nth(1)).toHaveAccessibleName('Venues')
+    await expect(primaryLinks.nth(1)).toHaveAccessibleName('Preparation')
+    await expect(primaryLinks.nth(2)).toHaveAccessibleName('Venues')
   }
   const tabList = page.getByRole('tablist', { name: 'Technical availability views' })
   if (await page.evaluate(() => window.innerWidth >= 1024)) {
