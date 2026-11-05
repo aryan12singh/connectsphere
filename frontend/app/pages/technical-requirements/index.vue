@@ -212,7 +212,14 @@ async function reserve() {
       refreshWarning.value = 'Equipment reservation saved. Reload to refresh the request list.'
     }
     if (selected.value?.eventRequestId !== target.eventRequestId || selected.value.version !== target.version) actionResult.value = ''
-  } catch (error) { actionError.value = error instanceof Error ? error.message : 'Unable to reserve all requested equipment.' }
+  } catch (error) {
+    // CS-42 AC2: never show the raw "[POST] /api/... 409" text. A shortfall
+    // reserves nothing, so say so and name every short line when known.
+    const body = (error as { data?: any })?.data
+    const lines: Array<{ equipmentType: string, shortfall: number }> = body?.error?.lines ?? body?.lines ?? body?.data?.error?.lines ?? []
+    const short = lines.filter(line => line.shortfall > 0).map(line => `${equipmentLabel(line.equipmentType)} is short by ${line.shortfall}`)
+    actionError.value = `Unable to reserve all requested equipment.${short.length ? ` ${short.join('; ')}.` : ''}`
+  }
   finally { saving.value = false }
 }
 

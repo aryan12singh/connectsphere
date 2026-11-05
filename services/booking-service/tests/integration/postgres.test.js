@@ -21,26 +21,26 @@ global.fetch = async (url, options) => {
   if (options?.method==='DELETE' && String(url).includes('/internal/venues/')) return {ok:true,status:204};
   if (String(url).includes('/booking-access') && assignmentUnavailable) throw new Error('Isolated upstream outage');
   if (String(url).includes('/booking-access')) return { ok: assigned && String(url).includes('/assigned-event/'), status: assigned && String(url).includes('/assigned-event/') ? 200 : 403, json: async () => ({ id: 'assigned-event' }) };
-  if (String(url).includes('/planning-context')) return {ok:true,status:200,json:async()=>({id:'assigned-event',eventRequestId:'request-fixture',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',organiserId:'organiser',startAt:'2026-10-01T00:00:00.000Z',endAt:'2026-12-31T23:59:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',venueType:'PHYSICAL',accessibilityNeeds:[],venueRequirements:'',equipmentNeeds:[],...(planningOverrides.get(decodeURIComponent(new URL(url).pathname.split('/')[3])) || {})})};
+  if (String(url).includes('/planning-context')) return {ok:true,status:200,json:async()=>({id:'assigned-event',eventRequestId:'request-fixture',status:'ARRANGEMENT_PENDING',currentCoordinatorId:'coordinator',organiserId:'organiser',startAt:'2037-10-01T00:00:00.000Z',endAt:'2037-12-31T23:59:00.000Z',timeZone:'Asia/Singapore',expectedAttendance:80,preferredLayout:'THEATRE',venueType:'PHYSICAL',accessibilityNeeds:[],venueRequirements:'',equipmentNeeds:[],...(planningOverrides.get(decodeURIComponent(new URL(url).pathname.split('/')[3])) || {})})};
   if (String(url).endsWith('/buffer-lock')) {const id=decodeURIComponent(new URL(url).pathname.split('/')[3]),before=await (await global.fetch(new URL('/venues/'+id+'/internal',url))).json(),saved={...before,version:before.buffersLockedAt?before.version:before.version+1,buffersLockedAt:before.buffersLockedAt || new Date().toISOString()};venueOverrides.set(id,saved);return {ok:true,status:200,json:async()=>saved};}
   if (String(url).includes('/venues/') && String(url).endsWith('/internal')) {const id=decodeURIComponent(new URL(url).pathname.split('/')[2]);return {ok:true,status:200,json:async()=>({id,name:'Isolated venue',version:1,capacity:100,venueType:'PHYSICAL',isActive:true,setupMinutes:0,turnaroundMinutes:0,supportedLayouts:['THEATRE'],facilities:[],accessibilityTags:[],timeZone:'Asia/Singapore',operatingHours:['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].map(weekday=>({weekday,isClosed:false,opensAt:'00:00',closesAt:'23:59'})),...(venueOverrides.get(id) || {})})};}
   return nativeFetch(url, options);
 };
 const headers = { authorization: 'Bearer isolated-fixture', 'idempotency-key': randomUUID() };
-const values = { eventId: 'assigned-event', venueId: 'pg-venue', title: 'Early local Monday', reason: 'PG calendar verification', startAt: '2026-12-20T16:30:00Z', endAt: '2026-12-20T17:30:00Z', timeZone: 'Asia/Singapore', status: 'TENTATIVELY_HELD' };
+const values = { eventId: 'assigned-event', venueId: 'pg-venue', title: 'Early local Monday', reason: 'PG calendar verification', startAt: '2037-12-20T16:30:00Z', endAt: '2037-12-20T17:30:00Z', timeZone: 'Asia/Singapore', status: 'TENTATIVELY_HELD' };
 before(async () => { await prisma.eventPrimaryVenue.deleteMany(); await prisma.venueBookingRequest.deleteMany(); api = await start(require('../../src/app')); });
 after(async () => { global.fetch = nativeFetch; await api?.close(); await prisma.$disconnect(); });
 test('TC-CS34-07 UTC query for the complete local day returns its early Monday booking', async () => {
   actor = { id: 'coordinator', role: 'EVENT_COORDINATOR', roles: ['EVENT_COORDINATOR'], permissions: [...defaults.EVENT_COORDINATOR] };
   const created = await api.http('/venue-bookings', { method: 'POST', headers, body: values });
   assert.equal(created.status, 201); booking = created.body;
-  const result = await api.http('/venue-bookings/availability?venueId=pg-venue&startAt=2026-12-20T16:00:00Z&endAt=2026-12-21T16:00:00Z', { headers });
+  const result = await api.http('/venue-bookings/availability?venueId=pg-venue&startAt=2037-12-20T16:00:00Z&endAt=2037-12-21T16:00:00Z', { headers });
   assert.equal(result.status, 200); assert.equal(result.body.items[0].id, booking.id);
   assert.equal(await prisma.venueBookingActivity.count({ where: { bookingId: booking.id } }), 1);
 });
 test('TC-CS34-12 Technical Support reads availability but cannot decide or create', async () => {
   actor = { id: 'support', role: 'TECHNICAL_SUPPORT_STAFF', roles: ['TECHNICAL_SUPPORT_STAFF'], permissions: ['venues.view', 'venue_bookings.decide', 'venue_bookings.create'] };
-  const result = await api.http('/venue-bookings/availability?venueId=pg-venue&startAt=2026-12-20T16:00:00Z&endAt=2026-12-21T16:00:00Z', { headers });
+  const result = await api.http('/venue-bookings/availability?venueId=pg-venue&startAt=2037-12-20T16:00:00Z&endAt=2037-12-21T16:00:00Z', { headers });
   assert.equal(result.status, 200);
   assert.equal((await api.http('/venue-bookings', { method: 'POST', headers, body: { ...values, status: 'BLOCKED' } })).status, 403);
   assert.equal((await api.http(`/venue-bookings/${booking.id}`, { method: 'PUT', headers, body: { ...values, status: 'CONFIRMED' } })).status, 403);
@@ -84,7 +84,7 @@ test('TC-CS26-14 Event assignment outage returns 503 without booking or history 
 test('TC-CS35-01 operational block persists audit data and appears for even a one-second range overlap', async () => {
   actor = { id: 'venue-staff', role: 'VENUE_STAFF', roles: ['VENUE_STAFF'], permissions: [...defaults.VENUE_STAFF] };
   const values = { venueId: 'pg-venue', title: 'Maintenance', reason: 'Isolated baseline model check',
-    startAt: '2026-12-22T12:00:00Z', endAt: '2026-12-22T13:00:00Z', timeZone: 'Asia/Singapore', status: 'BLOCKED' };
+    startAt: '2037-12-22T12:00:00Z', endAt: '2037-12-22T13:00:00Z', timeZone: 'Asia/Singapore', status: 'BLOCKED' };
   const created = await api.http('/venue-bookings', { method: 'POST', headers: { ...headers, 'idempotency-key': randomUUID() }, body: values });
   assert.equal(created.status, 201);
   const saved = await prisma.venueBookingRequest.findUnique({ where: { id: created.body.id }, include: { activity: true } });
@@ -92,15 +92,15 @@ test('TC-CS35-01 operational block persists audit data and appears for even a on
   assert.equal(saved.activity.length, 1); assert.equal(saved.activity[0].actorId, actor.id);
   assert.equal(saved.activity[0].reason, values.reason);
   const range = (start, end) => `/venue-bookings/availability?venueId=pg-venue&startAt=${start}&endAt=${end}`;
-  const overlapping = await api.http(range('2026-12-22T12:59:59Z', '2026-12-22T13:00:01Z'), { headers });
+  const overlapping = await api.http(range('2037-12-22T12:59:59Z', '2037-12-22T13:00:01Z'), { headers });
   assert.equal(overlapping.status, 200); assert.ok(overlapping.body.items.some(item => item.id === created.body.id));
-  const touching = await api.http(range('2026-12-22T13:00:00Z', '2026-12-22T13:00:01Z'), { headers });
+  const touching = await api.http(range('2037-12-22T13:00:00Z', '2037-12-22T13:00:01Z'), { headers });
   assert.equal(touching.status, 200); assert.ok(!touching.body.items.some(item => item.id === created.body.id));
   // This proves calendar retrieval, not the CS-39 prevention of competing writes.
 });
 
 function coordinatorActor() {actor={id:'coordinator',role:'EVENT_COORDINATOR',roles:['EVENT_COORDINATOR'],permissions:[...defaults.EVENT_COORDINATOR]};}
-function independentValues(venueId) {return {...values,venueId,startAt:'2026-12-21T02:00:00.000Z',endAt:'2026-12-21T04:00:00.000Z'};}
+function independentValues(venueId) {return {...values,venueId,startAt:'2037-12-21T02:00:00.000Z',endAt:'2037-12-21T04:00:00.000Z'};}
 test('TC-CS85-18 PostgreSQL rejects a repeated-hour closure without booking, activity or outbox effects',async()=>{
   coordinatorActor();const venueId='pg-dst-'+randomUUID();
   const hours=closesAt=>['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'].map(weekday=>({weekday,isClosed:false,opensAt:'01:00',closesAt}));
@@ -250,7 +250,7 @@ test('TC-CS37-19 PostgreSQL outbox failure rolls back the hold and its history',
 async function inheritedPgPair() {
   coordinatorActor();const venueId='pg-inherited-'+randomUUID(),rooms=[];
   for(let i=0;i<2;i++){
-    const held=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+i},body:{...independentValues(venueId),startAt:i?'2026-12-21T04:15:00.000Z':'2026-12-21T02:00:00.000Z',endAt:i?'2026-12-21T06:00:00.000Z':'2026-12-21T04:00:00.000Z'}});assert.equal(held.status,201);
+    const held=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+i},body:{...independentValues(venueId),startAt:i?'2037-12-21T04:15:00.000Z':'2037-12-21T02:00:00.000Z',endAt:i?'2037-12-21T06:00:00.000Z':'2037-12-21T04:00:00.000Z'}});assert.equal(held.status,201);
     actor={id:'staff',role:'VENUE_STAFF',roles:['VENUE_STAFF'],permissions:[...defaults.VENUE_STAFF]};
     const approved=await api.http(`/venue-bookings/${held.body.id}/decision`,{method:'PUT',headers,body:{version:1,status:'CONFIRMED',reason:'Verify inherited room'}});assert.equal(approved.status,200);rooms.push(approved.body);coordinatorActor();
   }
@@ -335,7 +335,7 @@ test('TC-CS41-13 Booking internal allocation projection is private, versioned an
   actor={id:'staff',role:'VENUE_STAFF',roles:['VENUE_STAFF'],permissions:[...defaults.VENUE_STAFF]};
   assert.equal((await api.http(`/venue-bookings/${confirmed.body.id}/decision`,{method:'PUT',headers,body:{version:1,status:'CONFIRMED',reason:'Current room'}})).status,200);
   coordinatorActor();
-  const expired=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+'expired'},body:{...independentValues(venueId),startAt:'2026-12-23T02:00:00.000Z',endAt:'2026-12-23T03:00:00.000Z'}});
+  const expired=await api.http('/venue-bookings',{method:'POST',headers:{...headers,'idempotency-key':venueId+'expired'},body:{...independentValues(venueId),startAt:'2037-12-23T02:00:00.000Z',endAt:'2037-12-23T03:00:00.000Z'}});
   assert.equal(expired.status,201);
   await prisma.venueBookingRequest.update({where:{id:expired.body.id},data:{expiresAt:new Date(Date.now()-1000)}});
   const path='/internal/events/assigned-event/equipment-allocation-context';
@@ -365,7 +365,7 @@ test('Booking readiness persists one exact proof, fences changed resources and r
   planningOverrides.set(eventId,{id:eventId,safetyToken:token,safetyGeneration:1,safetyState:'PREPARING'});
   const context=await (await global.fetch('http://fixture/internal/events/'+eventId+'/planning-context')).json();
   const requirements=require('../../src/workflows').venueRequirements(context);
-  const room=await prisma.venueBookingRequest.create({data:{eventId,venueId,requestedById:'coordinator',idempotencyKey:randomUUID(),title:'Ready room',reason:'Proof fixture',status:'CONFIRMED',requestedStart:new Date('2026-12-21T02:00:00Z'),requestedEnd:new Date('2026-12-21T04:00:00Z'),expectedAttendance:80,layout:'THEATRE',requirements,requirementsFingerprint:require('../../src/store').fingerprint(requirements),venueVersion:1}});
+  const room=await prisma.venueBookingRequest.create({data:{eventId,venueId,requestedById:'coordinator',idempotencyKey:randomUUID(),title:'Ready room',reason:'Proof fixture',status:'CONFIRMED',requestedStart:new Date('2037-12-21T02:00:00Z'),requestedEnd:new Date('2037-12-21T04:00:00Z'),expectedAttendance:80,layout:'THEATRE',requirements,requirementsFingerprint:require('../../src/store').fingerprint(requirements),venueVersion:1}});
   const base='/internal/events/'+eventId+'/readiness';
   const prepared=await api.http(base+'/prepare',{method:'POST',headers:internal,body:{token,generation:1}});
   assert.equal(prepared.status,200);assert.equal(prepared.body.venueReady,true);
@@ -392,7 +392,7 @@ test('Booking venue search validates source versions and ranks complete matches 
   const sample=await (await global.fetch('http://fixture/venues/'+venueId+'/internal')).json();
   catalogueItems=[{...sample,name:'Alpha complete',address:'Central',facilities:['MIC']},{...sample,id:venueId+'partial',name:'Beta partial',facilities:[]},{...sample,id:venueId+'inactive',isActive:false}];
   const base='/venue-bookings/events/assigned-event/venue-search';
-  const found=await api.http(base+'?startAt=2026-12-27T02:00:00Z&endAt=2026-12-27T03:00:00Z&facilities=MIC',{headers});
+  const found=await api.http(base+'?startAt=2037-12-27T02:00:00Z&endAt=2037-12-27T03:00:00Z&facilities=MIC',{headers});
   assert.equal(found.status,200);assert.deepEqual(found.body.items.map(row=>row.match),['FULL','PARTIAL']);
   assert.equal((await api.http(base+'?location=unmatched',{headers})).body.total,0);
   for(const query of ['startAt=bad','expectedAttendance=invalid','startAt=2020-01-01T00:00:00Z','bookingId=','bookingId=missing'])assert.ok([404,422].includes((await api.http(base+'?'+query,{headers})).status));

@@ -45,6 +45,12 @@ interface SafetyView {
 const props = defineProps<{ eventId: string, statusOverride?: string | null }>()
 const { user } = useUserSession()
 
+// Expose refresh() before the first await below. In an async <script setup>,
+// anything exposed after an await is missing from the parent's template ref,
+// so the Event page could not refresh this checklist after a venue action.
+// refresh() is a hoisted function and only runs after setup has finished.
+defineExpose({ refresh })
+
 const { data: summary, error: summaryError, refresh: refreshSummary } = await useFetch<EventSummary>(
   () => `/api/bookings/events/${encodeURIComponent(props.eventId)}/summary`,
   { watch: [() => props.eventId] },
@@ -122,8 +128,6 @@ function eventTime() {
 async function refresh() {
   await Promise.all([refreshSummary(), refreshSafety()])
 }
-
-defineExpose({ refresh })
 </script>
 
 <template>

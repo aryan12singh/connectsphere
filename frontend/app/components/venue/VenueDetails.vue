@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatDateTime } from '~~/lib/datetime'
+import { venueChangeLines } from '~~/lib/venue-history'
 import { computed, onMounted, ref, watch } from 'vue'
 import { BoxesIcon, Building2Icon, HashIcon, HistoryIcon, LayoutGridIcon } from '@lucide/vue'
 
@@ -12,7 +13,7 @@ const ready = ref(false)
 const expanded = ref(false)
 onMounted(() => { ready.value = true })
 watch(() => props.venue.id, () => { expanded.value = false })
-const allHistory = computed(() => (data.value as { items?: Array<{ id: string, occurredAt?: string, actorId?: string, action?: string, reason?: string }> } | null)?.items ?? [])
+const allHistory = computed(() => (data.value as { items?: Array<{ id: string, occurredAt?: string, actorId?: string, action?: string, reason?: string, changes?: any }> } | null)?.items ?? [])
 watch(() => allHistory.value.length, count => { if (count <= 3) expanded.value = false })
 const history = computed(() => expanded.value ? allHistory.value : allHistory.value.slice(0, 3))
 const historyId = computed(() => `venue-history-${props.venue.id}`)
@@ -25,6 +26,6 @@ const historyId = computed(() => `venue-history-${props.venue.id}`)
     <div><h3 class="flex items-center gap-2 font-medium"><LayoutGridIcon class="size-4 text-primary" />Supported layouts</h3><ul class="mt-2 list-disc space-y-1 pl-5"><li v-for="layout in venue.supportedLayouts ?? []" :key="layout">{{ layout[0] + layout.slice(1).toLowerCase() }}</li></ul></div>
     <div><h3 class="flex items-center gap-2 font-medium"><BoxesIcon class="size-4 text-primary" />Amenities available in this venue</h3><p class="mt-2 text-xs text-muted-foreground">Equipment</p><ul class="mt-1 list-disc space-y-1 pl-5"><li v-for="facility in venue.facilities ?? []" :key="facility">{{ facility.replaceAll('_', ' ').toLowerCase() }}</li></ul><p class="mt-3 text-xs text-muted-foreground">Accessibility tags</p><ul class="mt-1 list-disc space-y-1 pl-5"><li v-for="tag in venue.accessibilityTags ?? []" :key="tag">{{ tag.replaceAll('_', ' ').toLowerCase() }}</li></ul></div>
     <div><h3 class="flex items-center gap-2 font-medium"><HashIcon class="size-4 text-primary" />Venue ID</h3><p class="mt-2 break-all">{{ venue.id }}</p></div>
-    <div><h3 class="flex items-center gap-2 font-medium"><HistoryIcon class="size-4 text-primary" />Version history</h3><ol :id="historyId" class="mt-3 grid gap-4 border-l border-border pl-4"><li v-for="entry in history" :key="entry.id"><p>{{ entry.occurredAt ? formatDateTime(entry.occurredAt) : 'Latest' }}</p><p class="mt-1 text-muted-foreground">{{ entry.actorId || 'Venue team' }}</p><p class="mt-1">{{ entry.reason || entry.action }}</p></li><li v-if="history.length === 0" class="text-muted-foreground">No version history available.</li></ol><button v-if="allHistory.length > 3" type="button" :disabled="!ready" :aria-expanded="expanded" :aria-controls="historyId" class="mt-4 rounded-2xl bg-primary px-3 py-1.5 text-xs text-primary-foreground" @click="expanded = !expanded">{{ expanded ? 'Show recent history' : 'Show full history' }}</button></div>
+    <div><h3 class="flex items-center gap-2 font-medium"><HistoryIcon class="size-4 text-primary" />Version history</h3><ol :id="historyId" class="mt-3 grid gap-4 border-l border-border pl-4"><li v-for="entry in history" :key="entry.id"><p>{{ entry.occurredAt ? formatDateTime(entry.occurredAt) : 'Latest' }}</p><p class="mt-1 text-muted-foreground">{{ entry.actorId || 'Venue team' }}</p><p class="mt-1">{{ entry.reason || entry.action }}</p><ul v-if="venueChangeLines(entry.changes).length" class="mt-1 grid gap-0.5 text-xs text-muted-foreground" aria-label="Changed values"><li v-for="line in venueChangeLines(entry.changes)" :key="line">{{ line }}</li></ul></li><li v-if="history.length === 0" class="text-muted-foreground">No version history available.</li></ol><button v-if="allHistory.length > 3" type="button" :disabled="!ready" :aria-expanded="expanded" :aria-controls="historyId" class="mt-4 rounded-2xl bg-primary px-3 py-1.5 text-xs text-primary-foreground" @click="expanded = !expanded">{{ expanded ? 'Show recent history' : 'Show full history' }}</button></div>
   </section>
 </template>

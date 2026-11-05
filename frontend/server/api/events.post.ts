@@ -84,6 +84,11 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 403, statusMessage: 'Cross-origin request denied' })
     }
   }
+  // CS-26 AC4: a user with several roles creates requests only while acting as
+  // an Organiser (their current Active role), not while acting as an Attendee.
+  const session = await requireUserSession(event)
+  if (session.user?.role !== 'EVENT_ORGANISER')
+    throw createError({ statusCode: 403, statusMessage: 'Switch to your Organiser role to create an event request.' })
   const body = await readBody<EventRequestForm & { saveAs?: unknown }>(event)
   const headers = idempotencyHeaders(event) ?? { 'Idempotency-Key': randomUUID() }
   const input = toEventServiceInput(body)

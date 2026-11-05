@@ -141,7 +141,8 @@ async function saveWithdrawalPolicy() {
             </CardHeader>
 
             <CardContent v-if="isCoordinator" class="px-5 pb-5 pt-5 md:px-6 md:pb-6">
-              <form @submit.prevent="saveLimit">
+              <!-- CS-48 AC1: novalidate so the app (not the browser) explains an invalid limit. -->
+              <form novalidate @submit.prevent="saveLimit">
                 <label for="registration-limit" class="block text-sm font-medium">Set registration limit</label>
                 <p id="registration-limit-help" class="mt-1 text-sm text-muted-foreground">Use a positive whole number.</p>
                 <div class="mt-3 flex flex-col gap-3 sm:flex-row">

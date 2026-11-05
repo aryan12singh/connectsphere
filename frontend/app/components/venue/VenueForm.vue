@@ -54,13 +54,31 @@ function submit() {
   emit('submit', createVenueForm(form))
 }
 
+// The service reports hours per day (operatingHours.0.time, .1.time, …). The
+// form edits one shared schedule, so those collapse into the one hours field.
+const fieldKey = (field: string) => field.startsWith('operatingHours.') ? 'operatingHours' : field
+
 function errorFor(field: string) {
-  return props.errors?.[field]?.[0]
+  return Object.entries(props.errors ?? {}).find(([key]) => fieldKey(key) === field)?.[1]?.[0]
 }
 
+const hasErrors = computed(() => Object.values(props.errors ?? {}).some(list => list?.length))
 const inlineErrorFields = new Set(['address', 'capacity', 'setupMinutes', 'turnaroundMinutes', 'timeZone', 'operatingHours', 'form'])
-const errorSummary = computed(() => Object.entries(props.errors ?? {})
-  .flatMap(([field, messages]) => inlineErrorFields.has(field) ? messages.slice(1) : messages))
+// CS-33 AC2: list each problem once. A closing time before opening time used to
+// repeat once per operating day.
+const errorSummary = computed(() => {
+  const shownInline = new Set<string>()
+  const messages: string[] = []
+  for (const [field, list] of Object.entries(props.errors ?? {})) {
+    const key = fieldKey(field)
+    for (const message of list) {
+      if (inlineErrorFields.has(key) && !shownInline.has(key)) { shownInline.add(key); continue }
+      if (inlineErrorFields.has(key) && message === errorFor(key)) continue
+      if (!messages.includes(message)) messages.push(message)
+    }
+  }
+  return messages
+})
 
 function toggle(values: string[], value: string, checked: boolean | 'indeterminate') {
   const index = values.indexOf(value)
@@ -87,9 +105,9 @@ function updateOperatingTime(type: 'opensAt' | 'closesAt', value: string | numbe
       <slot name="title" />
     </div>
 
-    <div v-if="errorSummary.length" role="alert" class="rounded-xl border border-destructive p-4 text-sm text-destructive">
+    <div v-if="hasErrors" role="alert" class="rounded-xl border border-destructive p-4 text-sm text-destructive">
       <p class="font-medium">Please correct these venue details.</p>
-      <ul class="mt-2 list-disc space-y-1 pl-5"><li v-for="(message, index) in errorSummary" :key="index">{{ message }}</li></ul>
+      <ul v-if="errorSummary.length" class="mt-2 list-disc space-y-1 pl-5"><li v-for="(message, index) in errorSummary" :key="index">{{ message }}</li></ul>
     </div>
 
     <fieldset :disabled="!ready || saving" class="grid min-w-0 gap-6 border-0 p-0" aria-label="Venue details form">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed,onMounted,onUnmounted,reactive,ref,watch } from 'vue'
+import { computed,nextTick,onMounted,onUnmounted,reactive,ref,watch } from 'vue'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -81,15 +81,21 @@ async function requestExtension(room:Room){
 function criteria(){const zone=data.value?.event.timeZone || 'Asia/Singapore';return {startAt:calendarWallTimeToIso(form.startAt,zone),endAt:calendarWallTimeToIso(form.endAt,zone),expectedAttendance:Number(form.attendance),layout:form.layout,facilities:[...form.facilities],accessibilityNeeds:[...form.accessibility]}}
 const canChangeSource=computed(()=>sourceRoom.value && ['TENTATIVELY_HELD','REJECTED','CONFIRMED'].includes(sourceRoom.value.status))
 function fillForm(room?:Room){const event=data.value?.event;if(!event)return;form.startAt=calendarIsoToWallTime(room?.startAt || event.startAt,event.timeZone);form.endAt=calendarIsoToWallTime(room?.endAt || event.endAt,event.timeZone);form.attendance=room?.expectedAttendance ?? event.expectedAttendance;form.layout=room?.layout || event.preferredLayout || (event.venueType==='VIRTUAL'?'VIRTUAL':'');form.facilities=[...(room?.facilities || [])];form.accessibility=[...new Set([...(event.accessibilityNeeds || []),...(room?.accessibilityNeeds || [])])];form.location='';form.reason='';matches.value=null;message.value=''}
+// CS-31 AC2: the search form sits below the Safety preparation card, so bring
+// it into view (and focus its first field) whenever it opens.
+const searchForm=ref<HTMLFormElement|null>(null)
+watch(open,async value=>{if(!value)return;await nextTick();const el=searchForm.value;if(!el)return;el.scrollIntoView?.({behavior:'smooth',block:'start'});(el.querySelector('input,select') as HTMLElement|null)?.focus?.({preventScroll:true})})
 function toggleSearch(){if(!ready.value || posting.value)return;invalidateSearch();if(open.value && !sourceRoom.value){open.value=false;return}sourceRoom.value=null;fillForm();open.value=true}
 async function findAlternatives(room:Room,mode:'change'|'replacement'|'resubmit'='change'){if(!ready.value || !canReview.value || posting.value || loading.value)return;searchMode.value=mode;sourceRoom.value=room;open.value=true;fillForm(room);await search()}
+// CS-36 AC5: alternatives and replacements never offer the booking's own
+// venue; only resubmitting an expired hold searches its original venue again.
 async function search(){
   if(!ready.value || !canReview.value || loading.value)return
   const generation=++searchGeneration,eventId=props.eventId
   loading.value=true;message.value='';matches.value=null
   try{
     const c=criteria()
-    const result=await requestFetch<{items:Match[]}>(`/api/bookings/events/${encodeURIComponent(eventId)}/venue-search`,{query:{...c,facilities:c.facilities.join(','),accessibilityNeeds:c.accessibilityNeeds.join(','),location:form.location,...(sourceRoom.value?{bookingId:sourceRoom.value.id,bookingVersion:sourceRoom.value.version,includeSource:searchMode.value!=='replacement'}:{})}})
+    const result=await requestFetch<{items:Match[]}>(`/api/bookings/events/${encodeURIComponent(eventId)}/venue-search`,{query:{...c,facilities:c.facilities.join(','),accessibilityNeeds:c.accessibilityNeeds.join(','),location:form.location,...(sourceRoom.value?{bookingId:sourceRoom.value.id,bookingVersion:sourceRoom.value.version,includeSource:searchMode.value==='resubmit'}:{})}})
     if(generation===searchGeneration && eventId===props.eventId && open.value && canReview.value)matches.value=result.items
   }catch(caught){if(generation===searchGeneration){showError(caught,'Unable to search venues');message.value='Refresh the booking and check its times and requirements, then retry.'}}
   finally{loading.value=false}
@@ -182,7 +188,7 @@ async function release(room:Room){
         <div v-if="room.replacementBookingId" class="replacement-comparison grid gap-3 rounded-xl border p-3 sm:grid-cols-2"><p>Original: {{ room.venueName }} — Affected</p><p>Replacement: {{ data.items.find(item=>item.id===room.replacementBookingId)?.venueName }} — awaiting fresh Staff approval. Withdraw the pending replacement before Staff can restore the original.</p></div><p v-if="room.originalBookingId" class="text-sm">Replacement for booking {{ room.originalBookingId }}</p>
 
       </Card>
-      <form v-if="open && canReview" class="grid gap-5 rounded-[18px] border border-border p-5 md:p-6" @submit.prevent="search">
+      <form v-if="open && canReview" ref="searchForm" aria-label="Venue search" class="grid gap-5 rounded-[18px] border border-border p-5 md:p-6" @submit.prevent="search">
         <h3 class="text-lg font-semibold">{{ sourceRoom ? `Alternatives for ${sourceRoom.venueName || sourceRoom.venueId}` : 'Find a venue for this room' }}</h3><p class="text-sm text-muted-foreground">Times must fit within the event. Availability is checked again when you request the room.</p><p v-if="sourceRoom && !canChangeSource" class="text-sm">This booking is retained. Review suitable alternatives with Venue Staff before arranging a replacement.</p>
         <div class="grid gap-4 sm:grid-cols-2"><label class="grid gap-1 text-sm">Room start ({{ data.event.timeZone }})<Input v-model="form.startAt" type="datetime-local" required /></label><label class="grid gap-1 text-sm">Room end ({{ data.event.timeZone }})<Input v-model="form.endAt" type="datetime-local" required /></label><label for="room-attendance" class="grid gap-1 text-sm">Room attendance<Input id="room-attendance" v-model.number="form.attendance" type="number" min="1" step="1" required /></label><label for="room-layout" class="grid gap-1 text-sm">Room layout<select id="room-layout" v-model="form.layout" required class="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"><option v-if="data.event.venueType === 'VIRTUAL'" value="VIRTUAL">No physical layout (virtual)</option><option v-for="option in options?.supportedLayouts ?? []" :key="option.value" :value="option.value">{{ option.label }}</option></select></label></div>
         <div class="grid gap-4 sm:grid-cols-2"><fieldset class="grid gap-2"><legend class="mb-2 text-sm font-medium">Required facilities</legend><label v-for="option in options?.facilities ?? []" :key="option.value" class="flex gap-2 text-sm"><input v-model="form.facilities" type="checkbox" :value="option.value" />{{ option.label }}</label></fieldset><fieldset class="grid gap-2"><legend class="mb-2 text-sm font-medium">Accessibility needs</legend><label v-for="option in options?.accessibilityTags ?? []" :key="option.value" class="flex gap-2 text-sm"><input v-model="form.accessibility" type="checkbox" :value="option.value" />{{ option.label }}</label></fieldset></div>

@@ -89,6 +89,24 @@ describe('CS-40 — Technical requirements frontend', () => {
     finally { wrapper.unmount() }
   })
 
+  it('UAT-CS40-AC2 a chosen equipment line with quantity 0 gets the whole-number message, not the empty-request message', async () => {
+    fixture.data = ref(null)
+    fixture.error = ref(null)
+    fixture.user.value = { id: 'coordinator-1', role: 'EVENT_COORDINATOR' }
+    fixture.fetch.mockReset()
+    const module = await import('../../frontend/app/pages/technical-requirements/[id].vue').catch(() => null)
+    const wrapper = await mountSuspended(module!.default)
+    try {
+      await chooseEquipment(wrapper, 'projector')
+      await wrapper.get('input[aria-label="projector quantity"]').setValue('0')
+      await wrapper.get('textarea#placement-details').setValue('Front of hall')
+      await wrapper.get('form').trigger('submit')
+      expect(fixture.fetch).not.toHaveBeenCalled()
+      expect(wrapper.get('[role="alert"]').text()).toContain('Equipment quantities must be whole numbers of at least 1.')
+    }
+    finally { wrapper.unmount() }
+  })
+
   it('TC-CS40-09 shows an assigned Safety Officer the submitted request read-only', async () => {
     fixture.data = ref({ eventRequestId: 'event-40', version: 2, status: 'APPROVED', equipment: [{ equipmentType: 'projector', quantity: 2 }], supportRequired: false, supportDetails: '', placementDetails: 'Front of hall', notRequired: false, decisionReason: null })
     fixture.error = ref(null)
