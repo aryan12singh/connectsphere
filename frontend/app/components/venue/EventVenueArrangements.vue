@@ -20,9 +20,13 @@ const emit=defineEmits<{changed:[status?:string]}>()
 const {user}=useUserSession(),{showError}=useErrorAlert()
 const requestFetch=useRequestFetch()
 const {data,error,refresh}=await useFetch<Summary>(()=>`/api/bookings/events/${encodeURIComponent(props.eventId)}/summary`,{watch:[()=>props.eventId]})
-const {data:safetyData}=await useFetch<any>(()=>`/api/safety/events/${encodeURIComponent(props.eventId)}`,{watch:[()=>props.eventId]})
+const {data:safetyData,refresh:refreshSafety}=await useFetch<any>(()=>`/api/safety/events/${encodeURIComponent(props.eventId)}`,{watch:[()=>props.eventId]})
+// Bumped after each venue action so the Safety preparation panel reloads with the new holds and approvals.
+const safetyRevision=ref(0)
 const {data:options}=await useFetch<{supportedLayouts?:Option[];facilities?:Option[];accessibilityTags?:Option[]}>('/api/venues/options')
-async function refreshAndNotify(status?:string){await refresh();emit('changed',status)}
+async function refreshAndNotify(status?:string){await Promise.all([refresh(),refreshSafety()]);safetyRevision.value++;emit('changed',status)}
+// The Safety panel already reloaded itself after its own action; only refresh the arrangements.
+async function onSafetyChanged(status?:string){await refresh();emit('changed',status)}
 watch(error,value=>{if(value)showError(value,'Unable to load venue arrangements')},{immediate:true})
 const canReview=computed(()=>!error.value&&data.value?.event.id===props.eventId&&data.value?.event.currentCoordinatorId===user.value?.id&&['ARRANGEMENT_PENDING','CONFIRMED','PREPARATION'].includes(data.value?.event.status||''))
 const canArrange=computed(()=>!error.value && data.value?.event.id===props.eventId && data.value.event.status==='ARRANGEMENT_PENDING' && !['PREPARING','PENDING','APPROVED'].includes(data.value.event.safetyState || '') && data.value.event.currentCoordinatorId===user.value?.id)
@@ -169,7 +173,7 @@ async function release(room:Room){
       <Alert v-if="data.event.status==='CANCELLING'" role="status"><p class="col-start-2">Cancelling — resource releases are in progress. The Event will be marked Cancelled only when all required releases finish.</p></Alert>
       <template v-else>
       <section class="grid gap-3 rounded-[18px] border border-border p-4 text-sm"><p role="status" class="font-medium">{{ data.venueReady ? 'All required venues are approved for the current requirements.' : 'Venue arrangements are outstanding.' }}</p><ul v-if="data.outstanding.length" id="venue-outstanding" class="grid gap-1 text-muted-foreground"><li v-for="item in data.outstanding" :key="item.bookingId ?? 'none'">{{ item.venueName || item.bookingId || 'Venue booking' }}: {{ item.reasons.map(r => r.replaceAll('_',' ').toLowerCase()).join(', ') }}</li></ul><section v-if="data.attendancePlan" aria-label="Attendance allocations" class="grid gap-1 border-t border-border pt-3"><p>Event attendance: {{ data.attendancePlan.expectedAttendance }}. Each simultaneous session must account for this total; room capacities are not added across the day.</p><p v-for="session in data.attendancePlan.sessions" :key="session.startAt" class="text-muted-foreground">{{ format(session.startAt) }}–{{ format(session.endAt) }}: {{ session.allocated ?? 'Unverified' }} allocated<span v-if="session.reason"> — {{ session.reason.replaceAll('_',' ').toLowerCase() }}</span></p></section><p class="border-t border-border pt-3 text-muted-foreground">Technical/support approval and a current Safety Officer review are also required before preparation.</p></section>
-      <SafetyWorkspace v-if="safetyData?.event" :event-id="props.eventId" @changed="refreshAndNotify" />
+      <SafetyWorkspace v-if="safetyData?.event" :event-id="props.eventId" :revision="safetyRevision" @changed="onSafetyChanged" />
       <CoordinatorSafetyPreparation v-else-if="data.event.id === props.eventId && data.event.currentCoordinatorId === user?.id" :event-id="props.eventId" :event-title="data.event.title" :rooms="data.items" :venue-ready="data.venueReady" :outstanding="data.outstanding" />
       <p v-if="!data.primaryVenue?.bookingId" class="text-sm text-muted-foreground">Choose a primary attendee location. Other rooms remain part of the Event.</p>
       <p v-else-if="!data.primaryVenue.available" role="alert" class="text-sm">The selected primary location needs review before publication.</p>

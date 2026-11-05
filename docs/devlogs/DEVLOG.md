@@ -80,7 +80,7 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 
 ## Entries
 
-### 6 November 2026 — Aryan — CS-48 AC3, CS-11 AC2 and CS-91 AC3 fixed (added to PR #38)
+### 6 November 2026 — Aryan — CS-48 AC3, CS-11 AC2, CS-91 AC3 and the Event page Safety panel fixed (added to PR #38)
 
 The 5 Nov retest on a fresh main (73c4e38) passed 60 of the 65 Tester 5 and CS-51 cases (4 Not available: waiting list). CS-48 AC3 still failed: a registrant of a cancelled Event saw "Event not found".
 
@@ -97,7 +97,13 @@ Two of Alan's fails were not covered by PR #37 and are fixed here too:
 | CS-11 AC2 | For expected attendance 0 the number check set "Must be a positive whole number", then the submit check (`!data[f]`, and 0 is falsy) replaced it with "This field is required to submit". | The submit check uses `errors[f] ??=`, so the specific message stays. A missing value still gets the required message. Unit test in `services/event-service/tests/unit/validation.test.js`. |
 | CS-91 AC3 | Every venue calendar block was drawn full-width (`absolute inset-x-1`). An Unavailable window over the same hours covered the "Affected — alternative required" booking, so it could not be read or clicked. | `segmentLanes()` in `calendar-state.ts` gives overlapping blocks on the same day their own lane, side by side. Touching or separate blocks stay full width; setup/turnaround shading follows its booking. Tests in `tests/specs/CS-91-calendar-lanes.spec.ts`. |
 
-Checked locally with the Frontend and event-service CI job steps, and in the browser (calendar before/after on the same data). Next: rerun UAT-CS48-AC3, CS-11 AC2 and CS-91 AC3 on the merged build.
+The second half of Javier's Event page item is fixed too:
+
+| Case | Cause | Fix |
+|---|---|---|
+| Event page Safety panel (Javier) | The Safety preparation panel (`SafetyWorkspace`) loads its own Safety view. After a venue action, `EventVenueArrangements` re-fetched only its booking summary, so the panel showed "no venue booking" until a reload. The TypeError half was fixed in PR #37. | After each venue action `EventVenueArrangements` re-fetches its Safety data and bumps a `revision` prop; `SafetyWorkspace` reloads when it changes. Its own Safety actions still reload it once, not twice. Test: `tests/specs/CS-93-safety-panel-refresh.spec.ts` (fails on the old component). |
+
+Checked locally with the Frontend and event-service CI job steps, and in the browser (calendar before/after on the same data; Safety panel updates after a venue request without a reload). Next: rerun UAT-CS48-AC3, CS-11 AC2, CS-91 AC3 and the Event page check on the merged build.
 
 ### 5 November 2026 — Aryan — Sprint 4 UAT fails fixed in one PR
 
