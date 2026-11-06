@@ -10,7 +10,7 @@ the venue/Safety feature behavior and Q2 interpretation are unchanged.
 
 ## Delivered
 
-- [Measured policy](../coverage-policy.md): frontend 65% statements/lines/functions
+- [Measured policy](../testing/coverage-policy.md): frontend 65% statements/lines/functions
   and 60% branches; separate native Node line/branch/function floors for all seven
   service unit and PostgreSQL suites. Source scopes and limitations are explicit.
 - Event excludes test files and includes shared role helpers. Event/Equipment

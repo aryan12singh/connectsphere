@@ -36,8 +36,8 @@ No PR or story closure is part of this publication.
   governs privacy. Snapshotless imports anchor to the earliest known snapshot;
   only records with no snapshot retain the existing current-venue fallback.
 
-The [BFF contract](../frontend-bff-venue-booking.md),
-[model](../venue-data-model.md), [clock research](../hold-expiry.md), Swagger,
+The [BFF contract](../architecture/frontend-bff-venue-booking.md),
+[model](../architecture/venue-data-model.md), [clock research](../decisions/hold-expiry.md), Swagger,
 blue case specifications and dated yellow records are current. This phase adds
 no schema migration or machine-generated JSON to Git.
 

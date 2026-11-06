@@ -1,6 +1,6 @@
 # CS-83 — Oversee Coordinator Assignments and Active Events: test cases
 
-Index of the automated cases for this story, taken from the test names in the code (3 November 2026). The Sprint 4 test sheet holds the scenario, data and dated results; the [traceability index](../../../docs/test-traceability.md) maps every story.
+Index of the automated cases for this story, taken from the test names in the code (3 November 2026). The Sprint 4 test sheet holds the scenario, data and dated results; the [traceability index](../../../docs/testing/test-traceability.md) maps every story.
 
 | Test Case ID | Automated test | Layer | File |
 |---|---|---|---|
@@ -18,4 +18,4 @@ All cases run through the real BFF, Event Service and PostgreSQL. Events are mov
 
 - TC-CS83-03 is a browser case in the sheet. The automated test covers the same rule at the API: only reassign is offered, the Lead cannot edit, and reassigning with the listed version moves the Event.
 - TC-CS83-10: the outstanding labels are the ones Event Service knows ("Venue and technical arrangements", "Safety review", "Event confirmation"). Separate venue and equipment items join with the CS-32 checklist.
-- Not automated: TC-CS83-06 (the at-risk highlight is waiting on the team/PO decision named in AC3), and TC-CS83-07, TC-CS83-08 and TC-CS83-11: agreed Not available for Release 1 (3 November team decision in [session3-decisions.md](../../../docs/session3-decisions.md)). Supervisory scopes are not recorded, so every Lead sees every active Event.
+- Not automated: TC-CS83-06 (the at-risk highlight is waiting on the team/PO decision named in AC3), and TC-CS83-07, TC-CS83-08 and TC-CS83-11: agreed Not available for Release 1 (3 November team decision in [session3-decisions.md](../../../docs/decisions/session3-decisions.md)). Supervisory scopes are not recorded, so every Lead sees every active Event.

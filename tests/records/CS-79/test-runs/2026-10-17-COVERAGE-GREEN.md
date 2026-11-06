@@ -25,7 +25,7 @@ Source: `chore/cs79-coverage-gates` working tree based on main `7867f24`; Node 2
 | user-service | 6 | 70.26 / 75.00 / 53.33 | 5 | 81.30 / 59.57 / 60.00 |
 | venue-service | 43 | 55.66 / 73.73 / 50.86 | 13 | 69.82 / 57.82 / 71.77 |
 
-Both frontend typechecks and the production build pass. Existing contracts also pass (Event 2, Venue 11, Booking 14, Notification 12 and Equipment 8). Source scopes and configured floors are in [the policy](../../../../docs/coverage-policy.md); no cross-service or unit/PG aggregate is claimed.
+Both frontend typechecks and the production build pass. Existing contracts also pass (Event 2, Venue 11, Booking 14, Notification 12 and Equipment 8). Source scopes and configured floors are in [the policy](../../../../docs/testing/coverage-policy.md); no cross-service or unit/PG aggregate is claimed.
 
 Raw execution evidence: external `sprint3-evidence/2026-10-17-cs79-coverage`, `Local-Gated-Verification.json`, service `*-gated-*.log`, `frontend-gated*` and `proof-local-v2` (report wrapper) and `proof-local-v3-npm` (actual npm command). CI retains equivalent reports in its existing service/frontend artifacts, including the separate coverage-gate-proof directory.
 

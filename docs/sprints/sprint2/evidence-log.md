@@ -5,7 +5,7 @@ Collected 7–8 October 2026, Asia/Singapore. Tested **main `46a2bf305c68273149e
 This is the dated Sprint 2 verification record, not a current Sprint 3 backlog
 snapshot. Later consolidation/readiness is linked on [CS-96, comment 10177](https://spmg8.atlassian.net/browse/CS-96?focusedCommentId=10177).
 CS-28/72 are superseded by CS-12/69, CS-89 by CS-37, CS-82 by CS-30 and CS-80 by
-CS-10. The newest [DEVLOG entry](../devlogs/DEVLOG.md) records the actual active
+CS-10. The newest [DEVLOG entry](../../devlogs/DEVLOG.md) records the actual active
 Sprint 3 state. Earlier figures/statuses below remain historical evidence.
 
 ## Shared artifacts
@@ -62,6 +62,6 @@ Six future stories (CS-93/94/95/31/47/51), 26 proposed points, moved from Sprint
 
 ## Ongoing progress routine
 
-Follow [DEVLOG](../devlogs/DEVLOG.md) every 2–3 days: story/AC/test, revision/PR, actual result and evidence, blocker, owner and next check. CS-96 tracks artifact publication and actual team adoption. CS-77 tracks PO-approved Figma annotations for requirements, UI edits and displayed data. The Word meeting template records ten actual daily updates plus planning, refinement, review, retro and transition. Attendance, PO decisions and adoption are blank until the team supplies them.
+Follow [DEVLOG](../../devlogs/DEVLOG.md) every 2–3 days: story/AC/test, revision/PR, actual result and evidence, blocker, owner and next check. CS-96 tracks artifact publication and actual team adoption. CS-77 tracks PO-approved Figma annotations for requirements, UI edits and displayed data. The Word meeting template records ten actual daily updates plus planning, refinement, review, retro and transition. Attendance, PO decisions and adoption are blank until the team supplies them.
 
-Use the [isolated replay recipe](../event-review-run.md) and the matching CI environment. Full logs/JSON/images stay in the shared archive or CI artifacts; only lean dated records are committed. Local runtime configuration and preserved synthetic database volumes remain outside the shareable archive. No reset/reseed was used in the retained-ID verification.
+Use the [isolated replay recipe](../../guides/event-review-run.md) and the matching CI environment. Full logs/JSON/images stay in the shared archive or CI artifacts; only lean dated records are committed. Local runtime configuration and preserved synthetic database volumes remain outside the shareable archive. No reset/reseed was used in the retained-ID verification.

@@ -43,7 +43,7 @@ Jira's supplemental case table (comment 10135) governs cases 01–07 and their r
 
 Cases 01/03/04/05/08/09 also passed in both viewport projects. These results prove the named assertions, not every broader manual procedure in the historical table. Case 03 checks truthful registration navigation, not CS-48 registration delivery. Case 08 uses a persisted cancelled-Event fixture, not the missing CS-54 cancellation saga. Case 09 checks a controlled responsive empty state, not the whole loading/error matrix. The two-room case 02 alone is not proof of the historical four-room/Organiser procedure.
 
-At this checkpoint, [PR #18](https://github.com/aryan12singh/connectsphere/pull/18) is not yet merged. The [integration map](../../../docs/sprint4-venue-test-map.md) and [original images/raw verification](https://drive.google.com/drive/folders/1mUowew2lG7Swu8EAh946DhmsM904nQUt) retain the proof levels and actual source revisions. Independent manual/PO acceptance and green merged-main CI remain separate gates.
+At this checkpoint, [PR #18](https://github.com/aryan12singh/connectsphere/pull/18) is not yet merged. The [integration map](../../../docs/testing/sprint4-venue-test-map.md) and [original images/raw verification](https://drive.google.com/drive/folders/1mUowew2lG7Swu8EAh946DhmsM904nQUt) retain the proof levels and actual source revisions. Independent manual/PO acceptance and green merged-main CI remain separate gates.
 
 ## Original specification — 20 October 2026
 

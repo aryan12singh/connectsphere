@@ -23,7 +23,7 @@ If running locally is a problem, open the PR's GitHub Actions run, expand the no
 
 ## Part B — live registration notice (AC1, TC-CS52-01)
 
-1. Start the full stack and load the seed, as in `docs/how-to-run-and-test.md`:
+1. Start the full stack and load the seed, as in `docs/guides/how-to-run-and-test.md`:
    `docker compose -f infra/docker-compose.yml up --build -d`.
 2. Start the frontend (`cd frontend`, `npm run dev`, with `NUXT_AUTH_MODE=live` in `.env`). Open http://localhost:3000.
 3. Sign in as the Attendee `ethan.goh@gmail.com` / `Ethan@CS13!`.

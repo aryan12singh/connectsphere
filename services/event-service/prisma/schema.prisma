@@ -11,7 +11,7 @@
 // stores the result.
 //
 // Cross-service ids (organiserId, coordinatorId, …) are plain strings with no
-// FK — see docs/development-log/dev-log.md.
+// FK — see docs/devlogs/DEVLOG.md.
 //
 // Times: instants are `timestamptz`. An event's start/end are stored as
 // instants plus the IANA `timeZone` the organiser chose, so the UI can show

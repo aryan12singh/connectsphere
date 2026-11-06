@@ -57,7 +57,7 @@ into **Authorize**.
 cd frontend
 DATABASE_URL=postgresql://connectsphere:connectsphere@localhost:5432/event_db NUXT_AUTH_MODE=mock \
 NUXT_SESSION_PASSWORD=isolated-ci-cookie-password-at-least-32-characters npx vitest run CS-10 CS-26 CS-50
-# services (needs the *_test databases, see docs/how-to-run-and-test.md)
+# services (needs the *_test databases, see docs/guides/how-to-run-and-test.md)
 cd ../services/auth-service && npm run test:coverage              # TC-CS26-05/06/07, TC-CS10-21
 cd ../event-service && DATABASE_URL=postgresql://connectsphere:connectsphere@localhost:5432/event_test npm run test:integration   # TC-CS10-22/23, TC-CS50-06
 cd ../notification-service && npm run test:unit && npm run test:contract   # CS-50/51 notice rules
@@ -86,7 +86,7 @@ cd ../notification-service && npm run test:unit && npm run test:contract   # CS-
 |---|---|---|---|
 | **TC-CS10-18** new roles land correctly | Log in as Jordan Lim (Lead), then as Alex Chen (Safety Officer) | Lead → **/queue** "Unassigned Queue"; Safety Officer → **/safety-checks** "Pending Safety Checks" | Both landings with URL |
 | **TC-CS10-19** Safety Officer can't edit venues | As Alex: look at the top menu (no Venues / Edit venue); then type `http://localhost:3000/venue` and `/venue/<any venue id>` | Menu shows only Safety checks + Home; both URLs → **Access Denied**. (The sheet's `/venues/V1/edit` is illustrative; the app's page is `/venue/<id>`) | Menu; Access Denied |
-| **TC-CS10-20** 7-role matrix | Run the frontend command above | "TC-CS10-20 / TC-CS26-04 every role x every action…" passes; table in `docs/access-matrix.md` | Test run + matrix table |
+| **TC-CS10-20** 7-role matrix | Run the frontend command above | "TC-CS10-20 / TC-CS26-04 every role x every action…" passes; table in `docs/architecture/access-matrix.md` | Test run + matrix table |
 | **TC-CS10-21** can't self-register as Safety Officer | Swagger `POST /auth/register` with a new email and `"role": "SAFETY_OFFICER"` (repeat with `EVENT_COORDINATOR_LEAD`) | **400**; logging in with that email fails (no account) | Request/response |
 | **TC-CS10-22** Lead can't approve | As Jordan: type `/requests/<a submitted request id>` | Access Denied. Server side: event-service test `TC-CS10-22` (403, status/version unchanged) | Access Denied + test run |
 | **TC-CS10-23** Safety Officer can't edit event details | As Alex: type `/requests/<id>` | Access Denied. Server side: `TC-CS10-23` (403/404, attendance unchanged) | Access Denied + test run |
@@ -142,7 +142,7 @@ Live through RabbitMQ on main. RabbitMQ UI: http://localhost:15672
 | **TC-CS51-02** venue made unavailable | Coordinator holds a venue; Ravi blocks that time on the venue calendar | Coordinator: "…no longer available… kept and marked for replacement…". Sarah: "…needs to be replaced…" with no internal reason. Note for the record: main flags the booking `BUFFER_CONFLICT`; the sheet expects `NEEDS_REPLACEMENT` (agree with Aryan/PO) | Both bells |
 | **TC-CS51-03** new request notice for staff | Coordinator requests a venue; Ravi (and Grace) open the bell → click | "New booking request for …"; opens `/venue`. Note: there's no `/venue-bookings/<id>/review` page, so the workspace opens instead | Bell + page |
 | **TC-CS51-04** Organiser sees no internal notices | After 01–02, Sarah's bell | No "buffer conflict"/"no longer available" notices and no "Maintenance"/reason text | Bell |
-| **TC-CS51-05** extension moves the warning | Coordinator **Request hold extension**; Ravi **Approve extension** | Coordinator: "Venue Staff extended the tentative hold … to <new time>". The warning-timing rule is booking-service's (`docs/hold-expiry.md`) | Bells |
+| **TC-CS51-05** extension moves the warning | Coordinator **Request hold extension**; Ravi **Approve extension** | Coordinator: "Venue Staff extended the tentative hold … to <new time>". The warning-timing rule is booking-service's (`docs/decisions/hold-expiry.md`) | Bells |
 | **TC-CS51-06** Safety change request goes only to the affected area | Coordinator sends for Safety; Alex requests changes, area **Equipment**, reason "Cable run blocks exit" | Coordinator + Sarah + Technical Support notified (with the comment); Venue Staff **not** | Four bells |
 | **TC-CS51-07** 24 h warning time | Owned by the hold scheduler; screenshot the booking-service hold test run (`npm run test:hold-spike`) | Passes | Test run |
 | Return with comments (card AC1) | Coordinator, Review queue → type "Add layout" in *Reason / amendment comments* → **Ask for amendments** | Sarah: "…returned for changes. The Coordinator's comments: "Add layout"" | Bell |
@@ -153,7 +153,7 @@ Live through RabbitMQ on main. RabbitMQ UI: http://localhost:15672
 
 | Criterion | How to show it | Screenshot |
 |---|---|---|
-| Policy recorded (metric, scope, exclusions, floors) | `docs/coverage-policy.md` | Floors table |
+| Policy recorded (metric, scope, exclusions, floors) | `docs/testing/coverage-policy.md` | Floors table |
 | Coverage failures fail CI | GitHub → **Actions** → latest main run of "event-workflows" → all jobs green; open the frontend job → "Verify coverage failures propagate…" step | Run summary; that step's log |
 | Floors enforced per app/service | Locally `cd frontend && npm run test:coverage` (prints statements/branches/functions/lines; fails if under 65/60/65/65). Each service's `npm run test:coverage` / `test:integration` has `--test-coverage-*` floors in its `package.json` | Coverage summary |
 | Week 7 slices tested continuously | The same CI run includes seven-role access (CS-10 spec), notifications, buffers, holds, Safety | Job list |

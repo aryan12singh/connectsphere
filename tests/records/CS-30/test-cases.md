@@ -55,4 +55,4 @@ Deactivation is a controlled-setup command (`PATCH /internal/users/{id}/status` 
 
 ### Lead supervisory scopes (3 November)
 
-TC-CS30-47 and TC-CS30-49 (two Leads with different scopes) are an agreed Not available for Release 1: supervisory scopes are not recorded (3 November team decision in [session3-decisions.md](../../../docs/session3-decisions.md)). Any Lead may assign any active Coordinator.
+TC-CS30-47 and TC-CS30-49 (two Leads with different scopes) are an agreed Not available for Release 1: supervisory scopes are not recorded (3 November team decision in [session3-decisions.md](../../../docs/decisions/session3-decisions.md)). Any Lead may assign any active Coordinator.

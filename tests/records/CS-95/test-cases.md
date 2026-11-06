@@ -2,7 +2,7 @@
 
 Blue section. Date of Creation: 2026-10-13T20:47:00+08:00.
 
-Source: [CS-95](https://spmg8.atlassian.net/browse/CS-95), reconciled with the [Session 3 customer answers](../../../docs/session3-decisions.md), rows2–3/17/45–51, on 14 October 2026. The current acceptance criteria below supersede contradictory historical examples. CS-77 still owns the reviewed API/state mapping; no mock represents a delivered role, API, reservation, notice or Safety transition. These specifications do not establish execution or acceptance.
+Source: [CS-95](https://spmg8.atlassian.net/browse/CS-95), reconciled with the [Session 3 customer answers](../../../docs/decisions/session3-decisions.md), rows2–3/17/45–51, on 14 October 2026. The current acceptance criteria below supersede contradictory historical examples. CS-77 still owns the reviewed API/state mapping; no mock represents a delivered role, API, reservation, notice or Safety transition. These specifications do not establish execution or acceptance.
 
 ## Acceptance criteria
 
@@ -16,7 +16,7 @@ Source: [CS-95](https://spmg8.atlassian.net/browse/CS-95), reconciled with the [
 
 ## Preserved source cases — historical snapshot
 
-The raw rows below retain their original examples byte-for-byte. They are historical source proposals, not current policy or execution results. TC-CS95-01/06/07's automatic reopening or blanket rejection flags are superseded by recorded Coordinator-directed action and scoped venue rejection. New execution follows the current criteria and [Safety integration boundary](../../../docs/safety-ui.md); no historical row is a current approval-reset requirement.
+The raw rows below retain their original examples byte-for-byte. They are historical source proposals, not current policy or execution results. TC-CS95-01/06/07's automatic reopening or blanket rejection flags are superseded by recorded Coordinator-directed action and scoped venue rejection. New execution follows the current criteria and [Safety integration boundary](../../../docs/architecture/safety-ui.md); no historical row is a current approval-reset requirement.
 
 | TC ID | Type · Level | AC | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Assertions | Intent | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -53,7 +53,7 @@ These added component cases deliberately cover only the available UI/validation 
 
 ## Session 3 requirements — 14 October 2026
 
-Source: `docs/session3-decisions.md`, rows26/17/46/47/49/51. Earlier expected automatic reapproval wording is superseded by Coordinator-directed review; existing historical runs are preserved. Decision cases now require the complete reviewed checklist, and rejection identifies an affected venue arrangement. Execution results live in dated test-runs, not this specification.
+Source: `docs/decisions/session3-decisions.md`, rows26/17/46/47/49/51. Earlier expected automatic reapproval wording is superseded by Coordinator-directed review; existing historical runs are preserved. Decision cases now require the complete reviewed checklist, and rejection identifies an affected venue arrangement. Execution results live in dated test-runs, not this specification.
 
 | Test ID | Scenario | Preconditions | Steps | Expected result | Layer |
 | --- | --- | --- | --- | --- | --- |

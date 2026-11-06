@@ -5,7 +5,7 @@ info:
   description: CS-11/29/27/44 persistent implementation. Authentication uses live opaque session
     validation with internal key, never caller identity headers. No competing transition/assignment
     engine. Deliberate draft-contract amendments and pending matrix/limits/history granularity are
-    documented in docs/event-workflow-decisions.md. Effective trusted auth-service permissions are
+    documented in docs/decisions/event-workflow-decisions.md. Effective trusted auth-service permissions are
     required before record/role guards and before durable replay; missing/malformed permission
     payloads fail closed. JSON request bodies are limited to 10 KB. Malformed JSON returns
     400/BAD_REQUEST; oversized bodies return 413/PAYLOAD_TOO_LARGE with safe messages.

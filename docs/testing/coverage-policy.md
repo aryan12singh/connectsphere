@@ -3,7 +3,7 @@
 Adopted in Sprint 3 and current for Release 1. Decision date: 17 October 2026. Aryan authorized selecting and implementing
 baseline-derived thresholds; peer review of this change records adoption. This
 replaces the earlier pending numerical-policy wording. The separate
-[17 October venue-policy clarification](venue-policy-decisions.md) resolves Q2;
+[17 October venue-policy clarification](../decisions/venue-policy-decisions.md) resolves Q2;
 these numerical coverage floors do not change the booking or Event lifecycle.
 
 ## Metrics and initial floors
@@ -113,9 +113,9 @@ coverage report separately in `frontend-evidence/coverage-gate-proof`; the full
 passing frontend report is preserved. Expected negative controls are not product
 defects or fabricated passing runs.
 
-See [CS-79 cases and dated results](../tests/records/CS-79), the
-[CI workflow](../.github/workflows/event-workflows.yml), and
-[Definition of Done](DEFINITION_OF_DONE.md). The nine already accepted stories
+See [CS-79 cases and dated results](../../tests/records/CS-79), the
+[CI workflow](../../.github/workflows/event-workflows.yml), and
+[Definition of Done](../process/DEFINITION_OF_DONE.md). The nine already accepted stories
 needed this policy merged with green CI on main to clear their shared coverage
 blocker; it was merged and is enforced on every PR and main push.
 

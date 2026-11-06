@@ -40,8 +40,8 @@ and validation. Review, merge and story acceptance remain separate gates.
   make the phase reproducible. PM supplemental Safety cases are preserved with
   source identifiers and remain Not Executed.
 
-See the [model](../venue-data-model.md), [Safety integration handoff](../safety-ui.md),
-[BFF summary](../frontend-bff-venue-booking.md) and [clock research](../hold-expiry.md).
+See the [model](../architecture/venue-data-model.md), [Safety integration handoff](../architecture/safety-ui.md),
+[BFF summary](../architecture/frontend-bff-venue-booking.md) and [clock research](../decisions/hold-expiry.md).
 No new role, Event lifecycle, equipment schema or public Safety endpoint is added.
 
 ## Verification and audit

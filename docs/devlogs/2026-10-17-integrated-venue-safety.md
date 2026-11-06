@@ -18,7 +18,7 @@ Branch `feat/aryan-sprint3-venue-safety`; [PR #11](https://github.com/aryan12sin
 * Actual browser verification also repaired Safety Officer sign-in at the BFF, stable decision/control labels and pre-hydration Preparation selectors. The final required-room note is checked against its persisted booking/round IDs.
 * Source ownership, secondary roles, stale same-key races, Equipment proof/release and operational-window move invalidation defects found during independent review were reproduced and fixed. Decision reasons use the PM boundary's internal default of 1–500 trimmed characters.
 
-[Integration and Marcus handoff](../sprint3-integration-handoff.md), [Event/Safety OpenAPI](../../services/event-service/docs/openapi.yaml), [Equipment OpenAPI](../../services/equipment-service/docs/openapi.yaml). The handoff records inventory/bundle engineering defaults, IDs, start/test commands, delivery boundaries and Q2.
+[Integration and Marcus handoff](../sprints/sprint3/integration-handoff.md), [Event/Safety OpenAPI](../../services/event-service/docs/openapi.yaml), [Equipment OpenAPI](../../services/equipment-service/docs/openapi.yaml). The handoff records inventory/bundle engineering defaults, IDs, start/test commands, delivery boundaries and Q2.
 
 ## Verification and evidence
 

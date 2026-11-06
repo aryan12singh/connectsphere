@@ -73,8 +73,8 @@ intent effect. BFF error status/body remain preserved; refresh/retry are explici
 
 All remaining required rooms must be approved for current needs for venue
 readiness. That projection is not full Event readiness, technical approval or a
-Safety decision. [Policy register](venue-policy-decisions.md) and
-[phase delivery](devlogs/2026-10-12-venue-workflows.md) identify the pending gates.
+Safety decision. [Policy register](../decisions/venue-policy-decisions.md) and
+[phase delivery](../devlogs/2026-10-12-venue-workflows.md) identify the pending gates.
 
 ## Sprint 3 continuation — 13 October 2026
 
@@ -104,7 +104,7 @@ read-only. Historical removed venues do not break future availability. Movement
 appears in both involved venue timelines while creation stays at its origin;
 current-assignment filtering protects both timelines.
 
-See [dated delivery and evidence](devlogs/2026-10-13-venue-workflows.md). The
+See [dated delivery and evidence](../devlogs/2026-10-13-venue-workflows.md). The
 independent audit and automation do not replace team review or PO acceptance.
 
 ## Authentication and errors

@@ -6,7 +6,7 @@ Date of Creation: 2026-10-13T21:11:00+08:00. TC-CS93-30 covers current coordinat
 
 Blue section. Date of Creation: 2026-10-13T20:47:00+08:00.
 
-Source: [CS-93](https://spmg8.atlassian.net/browse/CS-93), reconciled with the [Session 3 customer answers](../../../docs/session3-decisions.md), rows2–3/17/45–51, on 14 October 2026. The current acceptance criteria below supersede contradictory historical examples. CS-77 owns the reviewed API/state mapping; execution records identify actual services versus isolated fixtures. Specifications alone do not establish execution or acceptance. Q2 was resolved on 17 October: the Coordinator requests a tentative hold and Venue Staff approval confirms that venue booking, without an extra Coordinator action. Whole-Event Safety approval, Confirmed and separate Preparation retain their existing ordering.
+Source: [CS-93](https://spmg8.atlassian.net/browse/CS-93), reconciled with the [Session 3 customer answers](../../../docs/decisions/session3-decisions.md), rows2–3/17/45–51, on 14 October 2026. The current acceptance criteria below supersede contradictory historical examples. CS-77 owns the reviewed API/state mapping; execution records identify actual services versus isolated fixtures. Specifications alone do not establish execution or acceptance. Q2 was resolved on 17 October: the Coordinator requests a tentative hold and Venue Staff approval confirms that venue booking, without an extra Coordinator action. Whole-Event Safety approval, Confirmed and separate Preparation retain their existing ordering.
 
 ## Acceptance criteria
 
@@ -19,7 +19,7 @@ Source: [CS-93](https://spmg8.atlassian.net/browse/CS-93), reconciled with the [
 
 ## Preserved source cases — historical snapshot
 
-The raw rows below retain their original examples byte-for-byte. They are historical source proposals, not current policy or execution results. In particular, TC-CS93-06's blanket edit lock and the provisional lifecycle wording in the PM rows must be interpreted through the current acceptance criteria and [Safety integration boundary](../../../docs/safety-ui.md). Do not implement an automatic sign-off reset from an older example.
+The raw rows below retain their original examples byte-for-byte. They are historical source proposals, not current policy or execution results. In particular, TC-CS93-06's blanket edit lock and the provisional lifecycle wording in the PM rows must be interpreted through the current acceptance criteria and [Safety integration boundary](../../../docs/architecture/safety-ui.md). Do not implement an automatic sign-off reset from an older example.
 
 | TC ID | Type · Level | AC | Test Scenario | Pre-conditions | Test Steps | Test Data | Expected Result | Assertions | Intent | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

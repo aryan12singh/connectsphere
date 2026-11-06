@@ -1,6 +1,6 @@
 # CS-92 test cases
 
-Stable case inventory. Current preconditions, steps, data and assertions remain in the [Sprint 4 case sheet](https://docs.google.com/spreadsheets/d/1n7kRH5iPyHaxj5Rs41f53Shbn6TX-KXCdE7JcP9gQB8/edit#gid=1680394087&range=F163:U179). The [execution map](../../../docs/sprint4-venue-test-map.md) links each executable source; the [API contract](../../../docs/api-contract.md) reconciles historical route/status wording. Results belong in dated execution records.
+Stable case inventory. Current preconditions, steps, data and assertions remain in the [Sprint 4 case sheet](https://docs.google.com/spreadsheets/d/1n7kRH5iPyHaxj5Rs41f53Shbn6TX-KXCdE7JcP9gQB8/edit#gid=1680394087&range=F163:U179). The [execution map](../../../docs/testing/sprint4-venue-test-map.md) links each executable source; the [API contract](../../../docs/architecture/api-contract.md) reconciles historical route/status wording. Results belong in dated execution records.
 
 | Case | Acceptance | Scenario |
 |---|---|---|

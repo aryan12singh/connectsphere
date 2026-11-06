@@ -14,9 +14,9 @@ confirmation decision (Q2).
   arrangement while the Event remains Planning. Original source proposals
   and dated execution records remain historical.
 - Added the eight-story venue walkthrough, CS-74 model review and CS-78
-  clock/spike review agenda in [the reviewer packet](../sprint3/reviewer-walkthrough.md).
+  clock/spike review agenda in [the reviewer packet](../sprints/sprint3/reviewer-walkthrough.md).
   Human reviewer, timebox and acceptance fields remain blank.
-- Added [nine screen annotation packs and the async routine](../sprint3/progress-and-design-handoff.md).
+- Added [nine screen annotation packs and the async routine](../sprints/sprint3/progress-and-design-handoff.md).
   The open native Figma file permits viewing and comments; its connector
   account cannot edit. Published and read back four requirements comments
   on pages 11, 12, 13 and 15. Existing canvas frames/spec notes are intact;

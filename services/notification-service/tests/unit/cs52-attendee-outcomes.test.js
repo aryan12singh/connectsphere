@@ -1,7 +1,7 @@
 // CS-52: Notify Attendees of registration outcomes and Event changes.
 //
 // One test per acceptance criterion (TC-CS52-01 to TC-CS52-06). Messages are
-// built in the shape the producers publish (see docs/api-contract.md, CS-52
+// built in the shape the producers publish (see docs/architecture/api-contract.md, CS-52
 // section). Waitlist and withdrawal producers are not in Release 1 main yet
 // (CS-48 excludes the waitlist; CS-49 is pending), so those cases check the
 // notification contract with sample messages only.

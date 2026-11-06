@@ -52,7 +52,7 @@ auth/user-service only. No sample messages; every notice came from an API action
 | Same message republished through RabbitMQ | Still exactly 1 notice (TC-CS50-05) |
 
 The repository's own full runner (`scripts/run-event-review-ci.sh`, see
-`docs/sprint3-integration-handoff.md`) also covers outage/replay, the
+`docs/sprints/sprint3/integration-handoff.md`) also covers outage/replay, the
 dead-letter queue and browser checks.
 
 ## Still open
@@ -61,4 +61,4 @@ dead-letter queue and browser checks.
 
 ### Lead supervisory scopes (3 November)
 
-AC2: Lead notices are not limited by supervisory scope; scopes are an agreed Not available for Release 1 (3 November team decision in [session3-decisions.md](../../../docs/session3-decisions.md)).
+AC2: Lead notices are not limited by supervisory scope; scopes are an agreed Not available for Release 1 (3 November team decision in [session3-decisions.md](../../../docs/decisions/session3-decisions.md)).

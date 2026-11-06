@@ -1,6 +1,6 @@
 # CS-43 — View and Update Event Planning Information: test cases
 
-Index of the automated cases for this story, taken from the test names in the code (3 November 2026). The Sprint 4 test sheet holds the scenario, data and dated results; the [traceability index](../../../docs/test-traceability.md) maps every story.
+Index of the automated cases for this story, taken from the test names in the code (3 November 2026). The Sprint 4 test sheet holds the scenario, data and dated results; the [traceability index](../../../docs/testing/test-traceability.md) maps every story.
 
 | Test Case ID | Automated test | Layer | File |
 |---|---|---|---|

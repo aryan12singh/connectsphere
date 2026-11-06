@@ -76,4 +76,4 @@ CSE2E_WORK_DIR=/tmp/connectsphere-unique-new-review \
 bash scripts/run-event-review-ci.sh
 ```
 
-See [model](../venue-data-model.md), [BFF](../frontend-bff-venue-booking.md), [policy register](../venue-policy-decisions.md), [hold proof](../hold-expiry.md), service Swagger and the [canonical DEVLOG](DEVLOG.md). Hosted evidence remains on the existing branch workflow, including its required aggregate check name.
+See [model](../architecture/venue-data-model.md), [BFF](../architecture/frontend-bff-venue-booking.md), [policy register](../decisions/venue-policy-decisions.md), [hold proof](../decisions/hold-expiry.md), service Swagger and the [canonical DEVLOG](DEVLOG.md). Hosted evidence remains on the existing branch workflow, including its required aggregate check name.
