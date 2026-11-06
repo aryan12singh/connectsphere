@@ -1,6 +1,6 @@
 # CS-31 — Confirm an Event When Essential Arrangements Are Ready: test cases
 
-Index of the automated cases for this story (3 November 2026). The Sprint 3 and Sprint 4 test sheets hold the scenario, data and dated results; the [traceability index](../../../docs/test-traceability.md) maps every story.
+Index of the automated cases for this story (3 November 2026). The Sprint 3 and Sprint 4 test sheets hold the scenario, data and dated results; the [traceability index](../../../docs/testing/test-traceability.md) maps every story.
 
 | Test Case ID | Automated test | Layer | File |
 |---|---|---|---|

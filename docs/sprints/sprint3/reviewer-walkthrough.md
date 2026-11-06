@@ -4,9 +4,9 @@ Updated 17 October 2026 for `feat/aryan-sprint3-venue-safety`. This is an agenda
 
 ## Review baseline and evidence
 
-Current delivery is on [PR #11](https://github.com/aryan12singh/connectsphere/pull/11); use its final source SHA, green CI and linked shared evidence pack. The [17 October delivery log](../devlogs/2026-10-17-integrated-venue-safety.md) and [integration handoff](../sprint3-integration-handoff.md) supersede the earlier 14 October scaffold/peer-dependency checkpoint. Earlier green CI verifies only its recorded revision.
+Current delivery is on [PR #11](https://github.com/aryan12singh/connectsphere/pull/11); use its final source SHA, green CI and linked shared evidence pack. The [17 October delivery log](../../devlogs/2026-10-17-integrated-venue-safety.md) and [integration handoff](integration-handoff.md) supersede the earlier 14 October scaffold/peer-dependency checkpoint. Earlier green CI verifies only its recorded revision.
 
-Current direction is in the [policy register](../venue-policy-decisions.md) and [customer transcript](../session3-decisions.md). Q2 was resolved on 17 October: Coordinator requests a tentative hold, then Venue Staff approval confirms the venue booking; no extra Coordinator Confirm button is required. Parent Event confirmation remains separate. Actual Officer APIs, equipment proof, durable notification delivery, Safety review/rework, confirmation and Preparation are integrated. Screenshots and automated results support review; they do not fill a human sign-off field.
+Current direction is in the [policy register](../../decisions/venue-policy-decisions.md) and [customer transcript](../../decisions/session3-decisions.md). Q2 was resolved on 17 October: Coordinator requests a tentative hold, then Venue Staff approval confirms the venue booking; no extra Coordinator Confirm button is required. Parent Event confirmation remains separate. Actual Officer APIs, equipment proof, durable notification delivery, Safety review/rework, confirmation and Preparation are integrated. Screenshots and automated results support review; they do not fill a human sign-off field.
 
 ## Integrated Safety and delivery walkthrough
 
@@ -21,7 +21,7 @@ For each demonstration, record reviewer, source SHA, observed case, result and e
 
 ## Prepare a retained local review stack
 
-From the repository root, use a clean checkout, Docker Desktop and Node 22. Follow the setup block in [the isolated review recipe](../event-review-run.md), using a fresh `csreview-aryan-ci-…` project, an unused external evidence directory and free ports. Keep that Bash session open: it defines `cs_review_compose`, `cs_review_dir`, `cs_review_port_base` and `cs_review_pg_port`. Do not reseed an existing project or use shared team data.
+From the repository root, use a clean checkout, Docker Desktop and Node 22. Follow the setup block in [the isolated review recipe](../../guides/event-review-run.md), using a fresh `csreview-aryan-ci-…` project, an unused external evidence directory and free ports. Keep that Bash session open: it defines `cs_review_compose`, `cs_review_dir`, `cs_review_port_base` and `cs_review_pg_port`. Do not reseed an existing project or use shared team data.
 
 ```bash
 git rev-parse HEAD
@@ -49,11 +49,11 @@ For each row, the reviewer independently performs or observes the actual UI acti
 | [CS-86](https://spmg8.atlassian.net/browse/CS-86) recheck/rollout | Inspect the explicit inherited-conflict fixture: both commitments remain, flags identify the new occupied-window conflict, current Staff recheck is versioned, and startup/restart retains one completed rollout receipt. | TC-CS86-03/30; Booking flags/activity plus Venue rollout/recheck receipts. No automatic Event cancellation or approval reset. Supplementary TC-CS86-30 proof checks both actual delivered current-Coordinator notices. |
 | [CS-87](https://spmg8.atlassian.net/browse/CS-87) independent rooms | Request two rooms with their own schedule/attendance, approve them separately, select a primary room, then change/release only one. Check simultaneous attendee allocations and current aggregate readiness. | TC-CS87-13/25; separate IDs/versions/statuses, retained other-room approval and primary choice. All required rooms must be ready; capacities are not summed for registration. The primary-location projection is verified here; separately owned Attendee workflows retain their own acceptance gates. |
 
-Use each story's [blue cases and dated yellow runs](../../tests/records) to identify remaining source-layer cases, rather than marking every original scenario passed from a related component check. Record unexpected behavior as a defect; retest its fix before sign-off.
+Use each story's [blue cases and dated yellow runs](../../../tests/records) to identify remaining source-layer cases, rather than marking every original scenario passed from a related component check. Record unexpected behavior as a defect; retest its fix before sign-off.
 
 ## CS-74 model review
 
-Another developer compares [the authoritative model](../venue-data-model.md) with Venue/Booking Prisma schemas, additive migrations and OpenAPI contracts at the reviewed revision. Check:
+Another developer compares [the authoritative model](../../architecture/venue-data-model.md) with Venue/Booking Prisma schemas, additive migrations and OpenAPI contracts at the reviewed revision. Check:
 
 - Each service owns its database; Event/Coordinator/Organiser IDs are logical references, with no cross-database foreign key or direct peer-database read.
 - Existing IDs/history survive migrations; versions, deadlines, occupied snapshots, primary venue and one-time legacy allowance match the documented behavior.
@@ -64,7 +64,7 @@ The author explains an ordinary hold/approval, a failed first confirmation, a co
 
 ## CS-78 clock and persistence-spike review
 
-Review [hold-expiry findings](../hold-expiry.md), [15 technical cases](../../tests/records/CS-78/test-cases.md) and [the original actual PostgreSQL/domain result](../../tests/records/CS-78/test-runs/2026-10-08T16-49-25Z-GREEN-SPIKE.md). Distinguish the disposable prototype from the integrated production deadline worker and actual notification delivery described in the current handoff.
+Review [hold-expiry findings](../../decisions/hold-expiry.md), [15 technical cases](../../../tests/records/CS-78/test-cases.md) and [the original actual PostgreSQL/domain result](../../../tests/records/CS-78/test-runs/2026-10-08T16-49-25Z-GREEN-SPIKE.md). Distinguish the disposable prototype from the integrated production deadline worker and actual notification delivery described in the current handoff.
 
 Optional reproduction on the fresh retained review project's PostgreSQL: create `booking_test` **once** in that isolated project, then run from the repository root with native Node22. The spike validates local database/schema targets, creates its own scratch schema and drops that scratch schema on completion; do not substitute an application or shared database.
 
@@ -125,8 +125,8 @@ Record actual command, revision, start/end time, exit status and evidence locati
 | CS-74 independent model review / author explanation / corrections | |
 | CS-78 agreed timebox / actual spike review / findings / follow-up | |
 | Remaining defects / blockers / owners / next check | |
-| Q2 answer, source and resulting action, if received | 17 October 2026: PO/team reply relayed by Aryan, followed by explicit confirmation that no additional Coordinator button is needed. Existing request → Staff decision flow retained; obsolete pending-policy metadata cleared. [Decision and tests](../devlogs/2026-10-17-venue-confirmation.md). |
+| Q2 answer, source and resulting action, if received | 17 October 2026: PO/team reply relayed by Aryan, followed by explicit confirmation that no additional Coordinator button is needed. Existing request → Staff decision flow retained; obsolete pending-policy metadata cleared. [Decision and tests](../../devlogs/2026-10-17-venue-confirmation.md). |
 | PR review / approved merge SHA / green main CI, when available | |
 | PO acceptance per story, when actually given | |
 
-Keep unresolved items open. This preparation does not move stories to Done: apply the team's [Definition of Done](../DEFINITION_OF_DONE.md), including actual manual verification, independent developer review, main integration/CI and PO acceptance.
+Keep unresolved items open. This preparation does not move stories to Done: apply the team's [Definition of Done](../../process/DEFINITION_OF_DONE.md), including actual manual verification, independent developer review, main integration/CI and PO acceptance.

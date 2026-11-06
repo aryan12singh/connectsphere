@@ -1,4 +1,4 @@
-// Provisional CS-11 field matrix; see docs/event-workflow-decisions.md.
+// Provisional CS-11 field matrix; see docs/decisions/event-workflow-decisions.md.
 // This is the single authoritative validator for save, submit and resubmit.
 const { GuardError } = require('./transitions');
 const LIMITS = Object.freeze({ title:100, text:4000, options:100, option:200, pageSize:20 });

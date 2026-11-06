@@ -177,7 +177,7 @@ calls Kong on the browser's behalf, so the browser never talks to Kong.
   (`organiser@example.com` and similar).
 
 **Tests:** sign-in, sign-up and role routing are covered in `tests/specs`
-(for example `CS-10.spec.ts` and `CS-26.spec.ts`); see [tests/README.md](../tests/README.md).
+(for example `CS-10.spec.ts` and `CS-26.spec.ts`); see [tests/README.md](../../tests/README.md).
 
 **Using it in components and pages** (auto-imported by Nuxt):
 

@@ -1,6 +1,6 @@
 # Sprint 3 Venue, Safety and notification integration
 
-17 October 2026. Branch: `feat/aryan-sprint3-venue-safety`; review: [PR #11](https://github.com/aryan12singh/connectsphere/pull/11). This supplements the earlier phase records. Actual verification is indexed in [the current DEVLOG](devlogs/2026-10-17-integrated-venue-safety.md).
+17 October 2026. Branch: `feat/aryan-sprint3-venue-safety`; review: [PR #11](https://github.com/aryan12singh/connectsphere/pull/11). This supplements the earlier phase records. Actual verification is indexed in [the current DEVLOG](../../devlogs/2026-10-17-integrated-venue-safety.md).
 
 ## Marcus: RabbitMQ and notification handoff
 
@@ -58,7 +58,7 @@ Javier's Event foundation is merged from current main. Marcus's notification and
 * Coordinator review identity follows current Safety facts and attendance allocation. Venue display names and asynchronous recheck versions do not require an otherwise unchanged review again. Booking retains a separate exact-version fingerprint for resource fences, so factual equality never reactivates an invalidated token or bypasses current-source/version checks.
 * Venue maintenance commits a durable owner-side pending fence before the downstream Booking check. Pending/uncertain writes block readiness even after timeout. Exact-operation resume/cancel and atomic apply receipts prevent stale operations from overwriting later work.
 
-See [Event OpenAPI](../services/event-service/docs/openapi.yaml) and [Equipment OpenAPI](../services/equipment-service/docs/openapi.yaml). All `/internal/*` endpoints require the shared private credential and are absent from Kong routes. Actual Event IDs and Event-request IDs are distinct.
+See [Event OpenAPI](../../../services/event-service/docs/openapi.yaml) and [Equipment OpenAPI](../../../services/equipment-service/docs/openapi.yaml). All `/internal/*` endpoints require the shared private credential and are absent from Kong routes. Actual Event IDs and Event-request IDs are distinct.
 
 ## Equipment assumptions used for integration
 
@@ -70,7 +70,7 @@ Stock starts at zero until Technical Support records actual inventory. Reservati
 
 ## Remaining decision and human gates
 
-**Q2 resolved — 17 October:** Aryan confirmed the PO/team reply: the Coordinator requests a tentative/soft hold, then Venue Staff approves/rejects it with a reason. Staff approval confirms that venue booking; no extra Coordinator Confirm button is required. The current request → Staff decision flow matches. The Booking summary reports `policy.pendingClarifications: []`. Whole-Event confirmation remains a distinct Safety/readiness-gated action. The [policy register](venue-policy-decisions.md) and [Q2 verification](devlogs/2026-10-17-venue-confirmation.md) trace the decision and tests; CS-37/38 still require their human acceptance records.
+**Q2 resolved — 17 October:** Aryan confirmed the PO/team reply: the Coordinator requests a tentative/soft hold, then Venue Staff approves/rejects it with a reason. Staff approval confirms that venue booking; no extra Coordinator Confirm button is required. The current request → Staff decision flow matches. The Booking summary reports `policy.pendingClarifications: []`. Whole-Event confirmation remains a distinct Safety/readiness-gated action. The [policy register](../../decisions/venue-policy-decisions.md) and [Q2 verification](../../devlogs/2026-10-17-venue-confirmation.md) trace the decision and tests; CS-37/38 still require their human acceptance records.
 
 Q1 is resolved: buffers remain adjustable until first Staff-confirmed booking, then lock. One-use initial configuration for pre-policy bookings requires Staff's recorded communication with each current Coordinator and attestation that the Coordinator communicated with the Organiser. This records a Staff attestation; it is not independent proof that the external conversation occurred.
 
@@ -93,4 +93,4 @@ CS-54 integration order:
 3. Obtain the remaining required equipment-release and registration-closure receipts under that same Event/action identity. Javier owns orchestration/progress/recovery; Alan owns the resource commands. A venue receipt is not proof those steps finished.
 4. Only after every required receipt completes, commit final `CANCELLED` and one coherent `EventCancelled`, then final notices. Its payload must include `eventRequestId` for the existing relay, matching Event/action/version and actor context. Preserve the immutable accepted version separately from the later final Event version. Do not publish terminal state first.
 
-TC-CS88-06 verifies this public journey through final delivery (2 November); TC-CS88-18 keeps the pre-final failure/restart recovery. The [API contract](api-contract.md) defines the delivered request/proof/receipt fields. Organiser cancellation requests and approval/rejection screens remain part of CS-54; this private command does not expose an extra public Coordinator confirmation button.
+TC-CS88-06 verifies this public journey through final delivery (2 November); TC-CS88-18 keeps the pre-final failure/restart recovery. The [API contract](../../architecture/api-contract.md) defines the delivered request/proof/receipt fields. Organiser cancellation requests and approval/rejection screens remain part of CS-54; this private command does not expose an extra public Coordinator confirmation button.

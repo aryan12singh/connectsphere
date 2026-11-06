@@ -83,7 +83,7 @@ erDiagram
 
 Outbox and IdempotencyRecord have logical references, not FK relations; the diagram names those references. The state guard remains the single source of transition rules. Request states are DRAFT→SUBMITTED→APPROVED or REJECTED, and SUBMITTED→RETURNED_FOR_AMENDMENT→SUBMITTED. Event ARRANGEMENT_PENDING displays Planning; request APPROVED alone is not a Confirmed Event.
 
-See [decisions and pending acceptance](event-workflow-decisions.md), [access matrix](access-matrix.md), [isolated run recipe](event-review-run.md), and the executable [event OpenAPI](../services/event-service/docs/openapi.yaml).
+See [decisions and pending acceptance](../decisions/event-workflow-decisions.md), [access matrix](access-matrix.md), [isolated run recipe](../guides/event-review-run.md), and the executable [event OpenAPI](../../services/event-service/docs/openapi.yaml).
 
 
 ### Effective permission enforcement — 7 October

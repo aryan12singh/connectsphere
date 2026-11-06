@@ -1,6 +1,6 @@
 # Operational Safety implementation and review
 
-Updated 17 October 2026 on `feat/aryan-sprint3-venue-safety`. The current branch integrates the real Officer role, Event-owned Safety workflow, Technical Support proof and notification delivery. [Integration/handoff](sprint3-integration-handoff.md) and [current verification](devlogs/2026-10-17-integrated-venue-safety.md) supersede the 14 October UI-only delivery limits. Historical dated test runs retain their original scope.
+Updated 17 October 2026 on `feat/aryan-sprint3-venue-safety`. The current branch integrates the real Officer role, Event-owned Safety workflow, Technical Support proof and notification delivery. [Integration/handoff](../sprints/sprint3/integration-handoff.md) and [current verification](../devlogs/2026-10-17-integrated-venue-safety.md) supersede the 14 October UI-only delivery limits. Historical dated test runs retain their original scope.
 
 ## Workflow and authority
 
@@ -25,7 +25,7 @@ Current Safety approval permits the Coordinator to Confirm; a separate action st
 | `SafetyReworkPanel` | Retained reusable presentation/validation; production Event workspace supplies actual current state rather than treating emitted intents as persistence |
 | Staff Preparation | Current Event/room selection, controls disabled before hydration, versioned idempotent note and current/history labels |
 
-See [Event/Safety OpenAPI](../services/event-service/docs/openapi.yaml), [Equipment OpenAPI](../services/equipment-service/docs/openapi.yaml) and [architecture/model](connectsphere-architecture.md). Planning Event IDs and EventRequest IDs are distinct.
+See [Event/Safety OpenAPI](../../services/event-service/docs/openapi.yaml), [Equipment OpenAPI](../../services/equipment-service/docs/openapi.yaml) and [architecture/model](connectsphere-architecture.md). Planning Event IDs and EventRequest IDs are distinct.
 
 ## Verification and remaining gates
 

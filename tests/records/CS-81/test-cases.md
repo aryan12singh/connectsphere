@@ -1,6 +1,6 @@
 # CS-81 — View the Unassigned Event Request Queue: test cases
 
-Index of the automated cases for this story, taken from the test names in the code (3 November 2026). The Sprint 4 test sheet holds the scenario, data and dated results; the [traceability index](../../../docs/test-traceability.md) maps every story.
+Index of the automated cases for this story, taken from the test names in the code (3 November 2026). The Sprint 4 test sheet holds the scenario, data and dated results; the [traceability index](../../../docs/testing/test-traceability.md) maps every story.
 
 | Test Case ID | Automated test | Layer | File |
 |---|---|---|---|
@@ -13,4 +13,4 @@ Index of the automated cases for this story, taken from the test names in the co
 
 ### Lead supervisory scopes (3 November)
 
-AC6: the intake notice goes to every active Lead. Per-Lead supervisory scopes are an agreed Not available for Release 1 (3 November team decision in [session3-decisions.md](../../../docs/session3-decisions.md)), so a scope-limited notice is not tested.
+AC6: the intake notice goes to every active Lead. Per-Lead supervisory scopes are an agreed Not available for Release 1 (3 November team decision in [session3-decisions.md](../../../docs/decisions/session3-decisions.md)), so a scope-limited notice is not tested.

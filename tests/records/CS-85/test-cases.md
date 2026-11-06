@@ -31,7 +31,7 @@ Source: [CS-85](https://spmg8.atlassian.net/browse/CS-85), Week 7 change 1 and t
 
 The domain inputs are explicit ISO instants and explicit non-negative whole-minute venue durations. They do not select a default or the proposed 480-minute business maximum, read a venue, persist bookings, enforce per-venue transactions, extend equipment reservations, interpret operating hours or expire holds. Those choices and adapters belong to CS-84/77/78/39 and their consumers.
 
-Current integration, reconciled 17 October 2026: CS-84 supplies persisted settings; the agreed policy permits exact touching. Search, calendar, submission, approval and block paths consume the shared occupied interval; CS-39 owns atomic conflict enforcement. The original source tables retain their illustrative aliases. Use the operative shared-sheet mapping and dated execution records for the cases actually run, rather than inferring execution from a specification. The [policy register](../../../docs/venue-policy-decisions.md) records Q1 and resolved Q2; human acceptance and resulting-main CI remain separate.
+Current integration, reconciled 17 October 2026: CS-84 supplies persisted settings; the agreed policy permits exact touching. Search, calendar, submission, approval and block paths consume the shared occupied interval; CS-39 owns atomic conflict enforcement. The original source tables retain their illustrative aliases. Use the operative shared-sheet mapping and dated execution records for the cases actually run, rather than inferring execution from a specification. The [policy register](../../../docs/decisions/venue-policy-decisions.md) records Q1 and resolved Q2; human acceptance and resulting-main CI remain separate.
 
 
 ## 17 October final evidence audit

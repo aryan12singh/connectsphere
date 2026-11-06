@@ -28,7 +28,7 @@ plugins:
 
   # Identity headers are set by the platform, NEVER by the caller. Strip any
   # copy a client sends so nobody can pretend to be a Coordinator by adding
-  # `x-user-roles: EVENT_COORDINATOR`. (Sprint 2 contract: docs/api-contract.md.)
+  # `x-user-roles: EVENT_COORDINATOR`. (Sprint 2 contract: docs/architecture/api-contract.md.)
   # Today each service derives the identity itself from the session token
   # (auth-service /internal/sessions/validate) and ignores these headers; when
   # the gateway starts adding them, the services can trust them.

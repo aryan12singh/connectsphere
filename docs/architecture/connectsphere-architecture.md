@@ -205,7 +205,7 @@ erDiagram
   }
 ```
 
-Event tables live in `event_db`; Venue maintenance JSON in `venue_db`; technical requirements/coverage JSON and reservation rows in `equipment_db`; Booking outbox/fences in `booking_db`; receipt/inbox in `notification_db`. Receipt/message uniqueness handles at-least-once replay; a delivery marker follows a publisher confirm. Numbered snapshots and decisions have database immutability triggers. Full columns and local relations are in each service's Prisma schema and additive migrations; historical `docs/erd` drafts do not override them.
+Event tables live in `event_db`; Venue maintenance JSON in `venue_db`; technical requirements/coverage JSON and reservation rows in `equipment_db`; Booking outbox/fences in `booking_db`; receipt/inbox in `notification_db`. Receipt/message uniqueness handles at-least-once replay; a delivery marker follows a publisher confirm. Numbered snapshots and decisions have database immutability triggers. Full columns and local relations are in each service's Prisma schema and additive migrations; historical `docs/archive/erd` drafts do not override them.
 
 ## Historical proposed architecture
 

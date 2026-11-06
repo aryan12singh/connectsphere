@@ -1,6 +1,6 @@
 # Agreed venue policies — 14 October 2026
 
-Branch: `feat/aryan-sprint3-venue-safety`; phase base `6529635`. Aryan accepted policy proposals 3–6 in the project discussion. The [policy register](../venue-policy-decisions.md) records those rules; the [customer transcript](../session3-decisions.md) remains unchanged. Questions 1–2 (initial buffer lock/legacy configuration and the Coordinator confirmation action) remain pending customer clarification.
+Branch: `feat/aryan-sprint3-venue-safety`; phase base `6529635`. Aryan accepted policy proposals 3–6 in the project discussion. The [policy register](../decisions/venue-policy-decisions.md) records those rules; the [customer transcript](../decisions/session3-decisions.md) remains unchanged. Questions 1–2 (initial buffer lock/legacy configuration and the Coordinator confirmation action) remain pending customer clarification.
 
 ## Delivered
 

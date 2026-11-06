@@ -12,7 +12,7 @@ revision/PR, actual test result and evidence link, current blocker, and next
 action. The Scrum Master checks stale cards before the next meeting. Record
 observed progress; passing automation alone does not establish story acceptance.
 
-Use [the Sprint 2 evidence log](../sprint2/evidence-log.md) for the shared
+Use [the Sprint 2 evidence log](../sprints/sprint2/evidence-log.md) for the shared
 case-to-result index. Future logs keep the same fields and preserve failed runs.
 The Product Owner annotates Figma with approved requirement/AC links, UI edits,
 displayed data and source revision; unresolved policy stays in Jira CS-76.
@@ -26,8 +26,8 @@ test layer/result and evidence — blocker/decision — next action`.
 ## Earlier design notes (historical)
 
 These notes preserve earlier team choices; they are not a new Sprint 3 contract.
-Use the current [access matrix](../access-matrix.md), service schemas and
-[venue model review](../venue-data-model.md) for running behavior. CS-76/77 owns
+Use the current [access matrix](../architecture/access-matrix.md), service schemas and
+[venue model review](../architecture/venue-data-model.md) for running behavior. CS-76/77 owns
 Week 7 decisions; the entries below identify the dated implementation stage.
 
 - **Microservices, not a monolith.** One folder per service under
@@ -79,6 +79,23 @@ Week 7 decisions; the entries below identify the dated implementation stage.
 ---
 
 ## Entries
+
+### 6 November 2026 — Marc — repository tidy-up and new README
+
+Tidied the repository for new readers. Code and test folders were deliberately left where they are; only the documentation was regrouped.
+- **Docs regrouped:** the 25 flat `docs/` entries now sit in `guides/`, `architecture/`, `decisions/`, `testing/`, `process/` and `sprints/`, with a new `docs/README.md` index. `docs/devlogs/` is unchanged. Files were moved with `git mv`, so history follows them.
+- **Superseded files archived** to `docs/archive/`, with a README explaining why: the old `development-log/dev-log.md` pointer and the Sprint 1 ERD drafts in `docs/erd/`. The live data models are each service's `prisma/schema.prisma`.
+- **Renamed** `sprint3/acceptance-test-guide(login).md` to `sprints/sprint3/acceptance-test-guide-login.md`, dropping the brackets.
+- **Links and references:** every relative Markdown link and every text path to a moved file was rewritten, including code comments in the Kong config, OpenAPI files and two services. A link check finds no broken links.
+- **Traceability index:** `tests/scripts/traceability-index.mjs` now writes `docs/testing/test-traceability.md` with the deeper link prefix. Regenerating it also picked up the spec files added in PR #37/#38 (CS-91, CS-93, CS-95 counts), which the committed index had missed. `traceability.test.cjs` passes.
+- **Test folders kept:** `tests/specs` (Vitest component and BFF tests) and `frontend/e2e` (Playwright live journeys) are separate layers, not duplicates. Both paths are wired into the Vitest and Playwright configs, CI and scripts.
+- **Root README rewritten** for a new team member:
+  - what the system does, the roles and an architecture diagram;
+  - the folder layout and the difference between the two spec folders;
+  - quick start, day-to-day commands, one account per role and local addresses;
+  - the test layers;
+  - Playwright: how to run it, and where results go (`frontend/test-results/e2e`, the runner's `evidence/` folder, CI artifacts kept for 30 days). Results are not written into `tests/` automatically; `tests/records/*/test-runs` holds curated copies.
+  - CI, pull requests, the Definition of Done, conventions (including "never edit a merged migration"), troubleshooting and the deliverables map.
 
 ### 6 November 2026 — Aryan — CS-48 AC3, CS-11 AC2, CS-91 AC3, the Event page Safety panel and two CS-95 Technical Support gaps fixed (added to PR #38)
 
@@ -218,7 +235,7 @@ notification-service only, as agreed:
 - `EventCancelled` uses the publisher's `attendeeRecipientIds` snapshot when
   present, otherwise the lookup (AC3, CS-54 contract).
 - New `tests/unit/cs52-attendee-outcomes.test.js`, TC-CS52-01 to 06.
-- Contract in `docs/api-contract.md`; cases in `tests/records/CS-52`.
+- Contract in `docs/architecture/api-contract.md`; cases in `tests/records/CS-52`.
 
 Decisions (Shadow, 27 Oct):
 - Waitlist cases are contract-only, because CS-48 excludes the waitlist from
@@ -232,7 +249,7 @@ Decisions (Shadow, 27 Oct):
 Results: notification unit 36/36, coverage gate passed, contract 12/12,
 PostgreSQL integration 6/6.
 
-Next: screenshot evidence (guide `docs/sprint4/acceptance-guide-cs52.md`);
+Next: screenshot evidence (guide `docs/sprints/sprint4/acceptance-guide-cs52.md`);
 re-test AC1 withdrawal and AC3 live once CS-49 and CS-54 land.
 
 ### 2026-10-21 — Attendance, test evidence and main integration
@@ -276,7 +293,7 @@ assign/reassign remain CS-81/CS-30; Q11 still pending.
   add Jordan Lim (`jordan.lim@connectsphere.sg`).
 - Frontend: Lead home `/queue` (landing page, guarded by role +
   `assignments.view`) and an "Unassigned queue" nav item. Mock user `lead@example.com`.
-- `docs/access-matrix.md`: seven-role table.
+- `docs/architecture/access-matrix.md`: seven-role table.
 - Tests: 7-role matrix, landings, typed-route denials and Lead BFF session
   (`CS-10.spec.ts`); sign-up refuses both new roles (auth-service); Lead cannot
   approve and Safety Officer cannot edit (event-service PG).
@@ -1098,7 +1115,7 @@ event API is built yet:** `src/app.js` only has `/health`.
   - Priya is the multi-role example (EVENT_ORGANISER + ATTENDEE).
 
 **Shared docs and infra**
-- `docs/api-contract.md` (new): Sprint 2 conventions.
+- `docs/architecture/api-contract.md` (new): Sprint 2 conventions.
   - Identity headers `x-user-id`, `x-user-roles`, `x-organisation-id`,
     stripped by Kong. Each service gets them from
     `/internal/sessions/validate` today.
@@ -1221,7 +1238,7 @@ and `tests/specs/CS-3x.spec.ts`.
   - `/api/bookings/*` maps to `/venue-bookings/*`.
   - `/api/venues/{id}/history/combined` merges venue and booking history,
     newest first.
-  - Contract: `docs/frontend-bff-venue-booking.md`.
+  - Contract: `docs/architecture/frontend-bff-venue-booking.md`.
 - `auth.global.ts`: venue staff now go to `/venue` instead of `/login`.
   Coordinators reach `/venue` through the existing page-permission check
   (`definePageMeta({ permission: 'venues.view' })`).
@@ -1235,7 +1252,7 @@ and `tests/specs/CS-3x.spec.ts`.
 - `backend/seed_data/04_booking_db.sql`: 7 bookings, one in each status.
 
 **Docs:** the run guide (B1/B2 seed steps, a Postman section), the ERD
-(`docs/erd/schema-updated.prisma`) and the frontend agent skill.
+(`docs/archive/erd/schema-updated.prisma`) and the frontend agent skill.
 
 ### 2026-10-02 — Login and auth merged to main (PR #4, Marcang0802)
 
@@ -1255,10 +1272,10 @@ stories or a claim of one-third of accepted story points.
 
 | Item | Published behavior/artifact | Remaining work |
 | --- | --- | --- |
-| [CS-74](https://spmg8.atlassian.net/browse/CS-74) | [Authoritative baseline venue model](../venue-data-model.md): actual migrations/tables, catalogue/hours/history/time handling, fresh HTTP/PostgreSQL checks and explicit gaps | Another developer reviews the artifact; future schema is owned by CS-77. |
-| [CS-78](https://spmg8.atlassian.net/browse/CS-78) | [Runnable expiry spike](../hold-expiry.md): real row locks, clock after waiting, leases, version/token fencing, atomic action rollback, restart and catch-up | Planning timebox, policy choices, independent review and production CS-37/90 integration. |
+| [CS-74](https://spmg8.atlassian.net/browse/CS-74) | [Authoritative baseline venue model](../architecture/venue-data-model.md): actual migrations/tables, catalogue/hours/history/time handling, fresh HTTP/PostgreSQL checks and explicit gaps | Another developer reviews the artifact; future schema is owned by CS-77. |
+| [CS-78](https://spmg8.atlassian.net/browse/CS-78) | [Runnable expiry spike](../decisions/hold-expiry.md): real row locks, clock after waiting, leases, version/token fencing, atomic action rollback, restart and catch-up | Planning timebox, policy choices, independent review and production CS-37/90 integration. |
 | [CS-85](https://spmg8.atlassian.net/browse/CS-85) | Pure occupied-window/overlap functions with explicit buffers/touching policy and strict instant validation | CS-84/77 configuration/data contract; actual search/calendar/suitability/write consumers, including CS-39 atomic enforcement. Original API/browser cases remain Not Executed. |
-| [CS-76](https://spmg8.atlassian.net/browse/CS-76) | [Venue/operations decision register](../venue-policy-decisions.md), with inclusive/strict hold cap and draft defaults clearly Pending | Customer answers and recorded PO/team choices; this subset does not complete release-wide reconciliation. |
+| [CS-76](https://spmg8.atlassian.net/browse/CS-76) | [Venue/operations decision register](../decisions/venue-policy-decisions.md), with inclusive/strict hold cap and draft defaults clearly Pending | Customer answers and recorded PO/team choices; this subset does not complete release-wide reconciliation. |
 | [CS-96](https://spmg8.atlassian.net/browse/CS-96) | Canonical DEVLOG at the agreed path; original history preserved; dated Sprint 2 evidence index linked | Figma annotations, actual async cadence and team adoption remain open. No meeting outcome is invented. |
 
 Verification: **tested code [c73a4aa](https://github.com/aryan12singh/connectsphere/commit/c73a4aaf49810721dc35ba83ea048413658f9f3a), tree `9f825861fdaabae24dc64d44b1fecdbabcaf65c3`. **436/436 local checks passed**: frontend 182 (includes the 52 new domain checks), Event 132, Venue 46, Booking 41, HTTP contracts 25 and PostgreSQL expiry spike 10. Frontend/application and E2E typechecks plus production build passed. Frontend measured statement/branch/function/line coverage: 70.13%/65.67%/66.76%/73.93%; no new coverage threshold is invented. [Final CS-78 composite](../../tests/records/CS-78/test-runs/2026-10-08T16-49-25Z-GREEN-SPIKE.md), [CS-85 domain record](../../tests/records/CS-85/test-runs/2026-10-08T16-49-25Z-GREEN.md) and the other story regressions retain the actual layer and date**. Node 22.23.3 and a fresh
@@ -1293,7 +1310,7 @@ browser evidence labels were normalized without changing results or timestamps.
 
 ### 2026-10-08 — Sprint 2 evidence and Week 7 backlog reconciliation
 
-Verified merged main `46a2bf3` with 411 fresh automated checks, 11 built full-stack smoke checks and one same-ID restart check without reseeding. Main CI run 37605379263 separately records eight green jobs and 46 desktop/mobile browser cases on that revision. The [evidence log](../sprint2/evidence-log.md) links all 13 story comments, the consolidated Jira-table evidence document, 177 named UI/test/SQL/CI images, raw records and the reusable ten-day Scrum meeting template in CS-96. Large files and JSON stay outside the source tree; dated Markdown execution records retain the actual layer/date.
+Verified merged main `46a2bf3` with 411 fresh automated checks, 11 built full-stack smoke checks and one same-ID restart check without reseeding. Main CI run 37605379263 separately records eight green jobs and 46 desktop/mobile browser cases on that revision. The [evidence log](../sprints/sprint2/evidence-log.md) links all 13 story comments, the consolidated Jira-table evidence document, 177 named UI/test/SQL/CI images, raw records and the reusable ten-day Scrum meeting template in CS-96. Large files and JSON stay outside the source tree; dated Markdown execution records retain the actual layer/date.
 
 The evidence keeps CS-30 reassignment incomplete and distinguishes CS-28's working Planning rejection API from its missing UI action. CS-32 later lifecycle remains future integrated work. Aryan's CS-11/27/29/44 preserve the earlier explicit manual/PO/reviewer acceptance; no peer story is closed by automated evidence. Current five-role policy is the Sprint 2 baseline; the new Lead/Safety roles and policies are future Week 7 work.
 
@@ -1303,7 +1320,7 @@ Imported 199 revised PM cases to the actual Jira story owners, retaining the ear
 
 Aryan branch follow-up addresses Marc CS-10/CS-26 and Alan CS-33/CS-34: five functional role homes, sealed multi-role selection, fresh permission unions, exact idle expiry, Organiser/Attendee field-guided signup, transactional/concurrent organisation resolution, seed-only staff provisioning, ordered operating hours and venue-local day/week boundaries. Booking decisions require the decision grant even for multi-role staff. Coordinator booking create/read/edit/list/history verifies current Event assignment through Event service; stale assignment denies403, outage fails503 without writes. An additive migration permits Technical Support venue reads only. Live verification also found an early native form GET before Vue hydration. Request/login/signup/venue inputs/actions and calendar/workspace controls now stay disabled until handlers mount, with actual SSR regressions and no-JavaScript browser checks. Each service retains its own database; static role policy is bundled separately in the images. No Week7 scope was added.
 
-Frontend 130/130 and all application CI jobs passed; live desktop/mobile 46/46 passed. A transient restart-login 404 led to a one-second Kong DNS cache with stale reuse disabled and two consecutive gateway/BFF readiness samples. Two subsequent retained-ID restart cycles passed without reseeding. The [delivery record](../sprint2/event-request-delivery.md) links CI and the remaining acceptance gates.
+Frontend 130/130 and all application CI jobs passed; live desktop/mobile 46/46 passed. A transient restart-login 404 led to a one-second Kong DNS cache with stale reuse disabled and two consecutive gateway/BFF readiness samples. Two subsequent retained-ID restart cycles passed without reseeding. The [delivery record](../sprints/sprint2/event-request-delivery.md) links CI and the remaining acceptance gates.
 
 CI now typechecks browser specs and runs dedicated Auth/User unit and PostgreSQL HTTP suites, PostgreSQL Venue/Booking API suites, source coverage for all five services and frontend V8 coverage. Explicit Bash defaults restore pipefail for tests piped through tee. A deliberately failing PR run verified that Auth/User/Venue failures reject CI. Automated evidence does not replace independent manual review, explanation, merge-commit CI or PO acceptance.
 
@@ -1314,7 +1331,7 @@ CS-11/27/29/44 now use the existing forms, shared event schema/guard and persist
 
 Application source passed frontend 111, Event 131, Venue 52, Booking 48, production desktop/mobile browser 22, live API 11 and no-reseed restart 1 in [run 37524638714](https://github.com/aryan12singh/connectsphere/actions/runs/37524638714). Earlier meaningful RED cases drove parser limits/privacy, permission revocation, date round trips, staff booking permissions, hydration and startup/rate-limit repairs. Selected dated story records and CI artifacts preserve execution evidence.
 
-[Delivery and review gates](../sprint2/event-request-delivery.md), [workflow/ERD](../event-workflows.md), [decisions](../event-workflow-decisions.md) and [clean-stack commands](../event-review-run.md) consolidate the branch documentation. Raw audit JSON and repeated diagnostic reports are archived outside the source tree and recoverable from Git history. The development log retains the team's dated-entry convention.
+[Delivery and review gates](../sprints/sprint2/event-request-delivery.md), [workflow/ERD](../architecture/event-workflows.md), [decisions](../decisions/event-workflow-decisions.md) and [clean-stack commands](../guides/event-review-run.md) consolidate the branch documentation. Raw audit JSON and repeated diagnostic reports are archived outside the source tree and recoverable from Git history. The development log retains the team's dated-entry convention.
 
 CI now separates the frontend and five implemented services, with a real authentication/browser/restart job and an aggregate failure-aware gate. Auth/User still need dedicated unit suites. The current CI revision must obtain its own green PR checks; another developer's review/manual verification, Aryan's code understanding, green main CI and PO acceptance remain required before Done. Week 7 changes stay future planning scope; instructor access is deferred to the final stage. Compatible dependency patches reduced the previous source audit from 29 to 23 inherited findings, which still need release review.
 
@@ -1521,7 +1538,7 @@ package, then ran it from scratch.
   are reproducible.
 - Swagger: the same-origin server (3002) is now listed first, so "Try it
   out" works from /docs without CORS errors.
-- New `docs/how-to-run-and-test.md`: PowerShell-safe start-up (seed via
+- New `docs/guides/how-to-run-and-test.md`: PowerShell-safe start-up (seed via
   `docker compose cp` instead of `<`, which PowerShell lacks) and 26 manual
   test cases (DoD item 2).
 - README: Run section plus links (DoD items 5 and 6). `auth-setup.md`
@@ -1530,7 +1547,7 @@ package, then ran it from scratch.
 **Findings needing a team decision** (not changed):
 1. `backend/seed_data/access_list (1).xlsx` is committed with **plaintext
    passwords** for 100 accounts (commit `386863c`). No seed uses it.
-2. `docs/erd/schema-updated.prisma` still describes "Pattern 2" (user-service
+2. `docs/archive/erd/schema-updated.prisma` still describes "Pattern 2" (user-service
    verifies bcrypt passwords via `/internal/users/verify`; auth-service
    returns `{token}` only). What's built is hybrid Keycloak, plus
    `users.isActive`, nullable `passwordHash`, `sessions.lastUsedAt`,

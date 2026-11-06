@@ -1,6 +1,6 @@
 # Tests
 
-ConnectSphere is tested at four layers. Each layer catches a different kind of fault, so a story usually appears in more than one. The [traceability index](../docs/test-traceability.md) maps every story to its specified cases and to each test file that covers it.
+ConnectSphere is tested at four layers. Each layer catches a different kind of fault, so a story usually appears in more than one. The [traceability index](../docs/testing/test-traceability.md) maps every story to its specified cases and to each test file that covers it.
 
 | Layer | Where | Runner | What it proves | Runs in CI as |
 |---|---|---|---|---|
@@ -20,10 +20,10 @@ ConnectSphere is tested at four layers. Each layer catches a different kind of f
 
 ## Running
 
-See the root [README](../README.md#tests) for commands and [how to run and test](../docs/how-to-run-and-test.md) for the full live stack. After adding or renaming tests, regenerate the index from the repository root:
+See the root [README](../README.md#tests) for commands and [how to run and test](../docs/guides/how-to-run-and-test.md) for the full live stack. After adding or renaming tests, regenerate the index from the repository root:
 
 ```bash
 node tests/scripts/traceability-index.mjs
 ```
 
-Coverage floors are in the [coverage policy](../docs/coverage-policy.md).
+Coverage floors are in the [coverage policy](../docs/testing/coverage-policy.md).

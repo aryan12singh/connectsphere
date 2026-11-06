@@ -1,27 +1,27 @@
 # Hold expiry and occupied-window foundations
 
-CS-78 technical spike and CS-85 domain foundation, initially9 October2026; current integration17 October2026. Production requests, decisions, extensions, search, calendar and readiness persist buffers, versions and deadlines. The Booking deadline worker now persists warning/expiry activity and outbox intent, with actual RabbitMQ/notification inbox delivery. [Integration/handoff](sprint3-integration-handoff.md) records the current worker, broker and exact verification command. The research worker below remains an isolated PostgreSQL proof, not the production scheduler. See the [policy register](venue-policy-decisions.md) for defaults, setup cap, extension authorization and the resolved two-action venue-confirmation policy.
+CS-78 technical spike and CS-85 domain foundation, initially9 October2026; current integration17 October2026. Production requests, decisions, extensions, search, calendar and readiness persist buffers, versions and deadlines. The Booking deadline worker now persists warning/expiry activity and outbox intent, with actual RabbitMQ/notification inbox delivery. [Integration/handoff](../sprints/sprint3/integration-handoff.md) records the current worker, broker and exact verification command. The research worker below remains an isolated PostgreSQL proof, not the production scheduler. See the [policy register](venue-policy-decisions.md) for defaults, setup cap, extension authorization and the resolved two-action venue-confirmation policy.
 
 ## Reusable domain code
 
-[occupiedWindow.js](../services/booking-service/src/occupiedWindow.js) expands
+[occupiedWindow.js](../../services/booking-service/src/occupiedWindow.js) expands
 `[startAt, endAt]` into `[startAt − setupMinutes, endAt + turnaroundMinutes]`.
 It returns normalized UTC instants without mutating the booking. Non-negative
 whole minutes must be supplied. There is no guessed zero default or 480-minute
 cap. `occupiedWindowsOverlap(a, b, { allowTouching })` requires an explicit
 boolean; positive overlap is rejected under either choice.
 
-[holdClock.js](../services/booking-service/src/holdClock.js) accepts a persisted
+[holdClock.js](../../services/booking-service/src/holdClock.js) accepts a persisted
 deadline and supplied check instant. `holdIsExpired` returns true at or after
 the deadline; `holdWarningDue` returns true only while active and within the
 explicit lead. `validateHoldDeadline` requires creation before expiry and an
 explicit inclusive/strict occupied-start policy. These helpers share the
-[instant parser](../services/booking-service/src/time.js): explicit offset,
+[instant parser](../../services/booking-service/src/time.js): explicit offset,
 calendar-valid ISO input, at most millisecond precision and finite Date range.
 Sub-millisecond input is rejected rather than silently truncated.
 
 They are exported through `availability.js` and reused by production
-[workflows](../services/booking-service/src/workflows.js). Availability now derives
+[workflows](../../services/booking-service/src/workflows.js). Availability now derives
 current occupied intervals and excludes ineffective holds. Writes serialize on
 Event/venue locks, use the current database clock after waits and upstream checks,
 and refuse stale/expired decisions. Calendar projections expose expiry and
@@ -46,7 +46,7 @@ instant contract; human displays retain the venue/Event IANA timezone.
 
 ## Runnable persistence proof
 
-[hold-expiry-store.cjs](../services/booking-service/tests/spikes/hold-expiry-store.cjs)
+[hold-expiry-store.cjs](../../services/booking-service/tests/spikes/hold-expiry-store.cjs)
 is test-only. `ACTIVE`, `APPROVED`, `EXPIRED` and the `holds`/`actions` table names
 are research fixtures, not proposed replacements for current business enums.
 The factory refuses non-local targets, any database except `booking_test`, and
@@ -134,15 +134,15 @@ coverage and logs remain outside Git or in CI artifacts. The existing Booking
 CI job runs the spike on every supported branch push/PR and archives both logs
 and JSON. It is a prerequisite of the `Required checks` job that branch protection requires.
 
-[CS-78 cases and dated runs](../tests/records/CS-78/test-cases.md) contain 17 domain
+[CS-78 cases and dated runs](../../tests/records/CS-78/test-cases.md) contain 17 domain
 checks (cases 01–05) and ten PostgreSQL scenarios (06–15). Case 07 exercises 12
 exact-deadline races, six races straddling the boundary, and the real database
 clock. Case 14 observes an actual PostgreSQL lock wait before advancing the
-controlled clock. [CS-85 cases](../tests/records/CS-85/test-cases.md) include domain
+controlled clock. [CS-85 cases](../../tests/records/CS-85/test-cases.md) include domain
 and later component/preflight checks. Separate CS-36/37/38/39/84/86/87 records cover
 integrated venue workflows; a passing related case does not imply execution of
 every original API/browser scenario. Failed runs remain alongside reruns.
-[Phase delivery](devlogs/2026-10-12-venue-workflows.md) records current layers,
+[Phase delivery](../devlogs/2026-10-12-venue-workflows.md) records current layers,
 commands and remaining gates. Neither the spike nor this phase establishes PO
 acceptance or completed Safety/notification stories.
 

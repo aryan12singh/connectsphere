@@ -10,7 +10,7 @@ CSE2E_WORK_DIR=/absolute/new/review-directory \
 CSE2E_PORT_BASE=23000 bash scripts/run-event-review-ci.sh
 ```
 
-It includes Equipment/Notification/RabbitMQ, actual outage/replay/DLQ and Safety/maintenance acceptance, then the full browser and restart checks. The longer historical manual blocks below describe the earlier baseline and do not replace the current complete runner. See [current integration/handoff](sprint3-integration-handoff.md) for exact boundaries and existing-volume upgrades.
+It includes Equipment/Notification/RabbitMQ, actual outage/replay/DLQ and Safety/maintenance acceptance, then the full browser and restart checks. The longer historical manual blocks below describe the earlier baseline and do not replace the current complete runner. See [current integration/handoff](../sprints/sprint3/integration-handoff.md) for exact boundaries and existing-volume upgrades.
 
 CI splits the same runner into parallel jobs with `CSE2E_STAGE`: `integration` runs the host PostgreSQL suites, bus/Safety/maintenance acceptance and the restart check; `browser` runs only the Playwright journeys, and `CSE2E_BROWSER_ARGS` passes options such as `--shard=2/4` or a single spec file. Each stage starts its own fresh stack. The default `all` runs everything in order, as above.
 

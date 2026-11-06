@@ -1,6 +1,6 @@
 # Session 3 venue and Safety reconciliation — 14 October 2026
 
-Branch: `feat/aryan-sprint3-venue-safety`; base `57a713b`. Source: [customer answers](../session3-decisions.md), sheet G8, answer column C. This phase implements the clear independent venue/Safety requirements and updates Jira; it does not close the stories or create a pull request.
+Branch: `feat/aryan-sprint3-venue-safety`; base `57a713b`. Source: [customer answers](../decisions/session3-decisions.md), sheet G8, answer column C. This phase implements the clear independent venue/Safety requirements and updates Jira; it does not close the stories or create a pull request.
 
 ## Delivered behavior
 

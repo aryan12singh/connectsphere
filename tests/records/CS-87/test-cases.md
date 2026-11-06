@@ -4,7 +4,7 @@ Blue section. Date of Creation: 2026-10-12T19:13:47+08:00. Reconciled 12 October
 
 Source: [CS-87](https://spmg8.atlassian.net/browse/CS-87), live acceptance criteria and PM supplemental tables. Source cases retain their IDs and intent. Additional cases below cover observed integration regressions. These are specifications, not execution results; dated yellow records report only the assertions and layers actually run. Passing a related check does not execute the source's browser, message-delivery, parent transition or manual/PO steps.
 
-Current contract, reconciled 17 October 2026: use the actual Planning Event ID, `TENTATIVELY_HELD` for the Coordinator request and `CONFIRMED` for Venue Staff approval of that booking. Validation uses422 `error.fields`; decisions/extensions require the read version and reason. The [policy register](../../../docs/venue-policy-decisions.md) records the customer answers, PO buffer direction and agreed team settings. Q2 is resolved: no extra Coordinator venue-confirmation action; whole-Event confirmation remains separate. Original source examples and dated results below remain historical.
+Current contract, reconciled 17 October 2026: use the actual Planning Event ID, `TENTATIVELY_HELD` for the Coordinator request and `CONFIRMED` for Venue Staff approval of that booking. Validation uses422 `error.fields`; decisions/extensions require the read version and reason. The [policy register](../../../docs/decisions/venue-policy-decisions.md) records the customer answers, PO buffer direction and agreed team settings. Q2 is resolved: no extra Coordinator venue-confirmation action; whole-Event confirmation remains separate. Original source examples and dated results below remain historical.
 
 | Test Case ID | Scenario / AC | Pre-conditions | Test steps / data | Expected result / assertions | Required layer | Date of Creation |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -59,7 +59,7 @@ The cases below preserve current scope and original source assertions. Date of C
 
 ## Session 3 requirements — 14 October 2026
 
-Source: `docs/session3-decisions.md`, rows26/17/46/47/49/51. Earlier expected automatic reapproval wording is superseded by Coordinator-directed review; existing historical runs are preserved. Decision cases now require the complete reviewed checklist, and rejection identifies an affected venue arrangement. Execution results live in dated test-runs, not this specification.
+Source: `docs/decisions/session3-decisions.md`, rows26/17/46/47/49/51. Earlier expected automatic reapproval wording is superseded by Coordinator-directed review; existing historical runs are preserved. Decision cases now require the complete reviewed checklist, and rejection identifies an affected venue arrangement. Execution results live in dated test-runs, not this specification.
 
 | Test ID | Scenario | Preconditions | Steps | Expected result | Layer |
 | --- | --- | --- | --- | --- | --- |
@@ -70,7 +70,7 @@ Source: `docs/session3-decisions.md`, rows26/17/46/47/49/51. Earlier expected au
 
 ## Session 3 audit regressions — 14 October 2026
 
-Source: `docs/session3-decisions.md`, rows4/6/25/26. Old buffer-edit expectations after confirmation are superseded. These specifications do not imply execution or PO acceptance.
+Source: `docs/decisions/session3-decisions.md`, rows4/6/25/26. Old buffer-edit expectations after confirmation are superseded. These specifications do not imply execution or PO acceptance.
 
 | Test ID | Scenario and expected behavior | Layer |
 | --- | --- | --- |

@@ -92,7 +92,7 @@ hours unit cases. CS-38, CS-85 and the newly added CS-87 fixture import use
 `tests/integration/*.test.js` layout rather than the retired `tests/postgres`
 directory. Booking and Equipment retain their all-source combined 81% gates;
 Booking's native unit floors are also retained in `test:coverage:unit`.
-The [coverage policy](../coverage-policy.md) explains the changed suite scope.
+The [coverage policy](../testing/coverage-policy.md) explains the changed suite scope.
 
 Frontend typechecking also exposed an existing implicit `any` in the technical
 request BFF's equipment mapping. Adding the equipment-line response type fixes

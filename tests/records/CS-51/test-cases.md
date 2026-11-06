@@ -18,7 +18,7 @@ suppressed.
 | TC-CS51-04 | Organiser gets no internal staff notices | No `VENUE_UNAVAILABLE`/`BUFFER_CONFLICT` or internal reason for the Organiser. unit + contract `test_cs51_04` pass | — | Check the Organiser's bell after 01/02 | Pass |
 | TC-CS51-05 | Extending a hold moves the expiry warning | `HoldExpiring` keyed by booking + deadline; consumer drops a warning whose deadline is no longer current | booking-service hold scheduler + `VenueHoldExtended` | Extend a hold before its warning time, then let the scheduler run | Live: run |
 | TC-CS51-06 | Safety change request only alerts the affected area | `SafetyChangesRequested` areas → Technical Support for EQUIPMENT/TECHNICAL, Venue Staff for VENUE, plus Coordinator and Organiser (comment only). unit + contract `test_cs51_06` pass | event-service Safety decision | Safety Officer requests changes for EQUIPMENT only | Notice: Pass. Live: run |
-| TC-CS51-07 | Hold-expiry warning time (24 h before) | Timing is the scheduler's (booking-service, `docs/hold-expiry.md`) | booking-service | Controlled clock in the booking-service hold tests | Owned by the hold story |
+| TC-CS51-07 | Hold-expiry warning time (24 h before) | Timing is the scheduler's (booking-service, `docs/decisions/hold-expiry.md`) | booking-service | Controlled clock in the booking-service hold tests | Owned by the hold story |
 
 ## Extra cases
 
@@ -31,7 +31,7 @@ suppressed.
 "Live: run" = the real producer exists on main. Execute it with the app
 running (`docker compose -f infra/docker-compose.yml up -d --build`), or
 with the repository runner `scripts/run-event-review-ci.sh`
-(see `docs/sprint3-integration-handoff.md`). Record the date, commit and
+(see `docs/sprints/sprint3/integration-handoff.md`). Record the date, commit and
 result here.
 
 ## AC3 and AC4: technical and equipment-flag notices (3 November)
